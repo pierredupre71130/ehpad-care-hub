@@ -1,0 +1,1056 @@
+'use client';
+
+/**
+ * Gestion des Résidents — Next.js 15 + Supabase
+ *
+ * Prérequis shadcn : npx shadcn@latest add checkbox textarea select
+ */
+
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Search, Pencil, Save, X, Lock, Unlock,
+  Loader2, UserPlus, Users, AlertTriangle,
+  Stethoscope, Key,
+} from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import { HomeButton } from '@/components/ui/home-button';
+
+import { createClient }        from '@/lib/supabase/client';
+import { Button }              from '@/components/ui/button';
+import { Input }               from '@/components/ui/input';
+import { Checkbox }            from '@/components/ui/checkbox';
+import { Label }               from '@/components/ui/label';
+import { Textarea }            from '@/components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue,
+}                              from '@/components/ui/select';
+import { cn }                  from '@/lib/utils';
+import { AdminUnlockDialog }   from '@/components/dashboard/admin-unlock-dialog';
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+
+interface Resident {
+  id: string;
+  room: string;
+  title: string;
+  first_name: string;
+  last_name: string;
+  date_naissance: string;
+  date_entree: string;
+  floor: 'RDC' | '1ER';
+  section: string;
+  sort_order: number;
+  annotations: string;
+  medecin: string;
+  referent: string;
+  // Régimes alimentaires
+  regime_mixe: boolean;
+  viande_mixee: boolean;
+  regime_diabetique: boolean;
+  epargne_intestinale: boolean;
+  allergie_poisson: boolean;
+  // Traitements
+  traitement_ecrase: boolean;
+  insuline_matin: boolean;
+  insuline_soir: boolean;
+  anticoagulants: boolean;
+  appel_nuit: boolean;
+}
+
+type FloorFilter = 'TOUS' | 'RDC' | '1ER';
+
+interface DoctorConfig { name: string; color: string; }
+interface FloorCodes { digicode_porte: string; digicode_entree: string; mdp_ordi: string; }
+
+const DEFAULT_DOCTORS: DoctorConfig[] = [
+  { name: 'Dr Carrat',   color: '#ef4444' },
+  { name: 'Dr Benazet',  color: '#f9a8d4' },
+  { name: 'Dr Barreau',  color: '#22c55e' },
+  { name: 'Dr Sahraoui', color: '#cbd5e1' },
+];
+const DEFAULT_CODES: Record<string, FloorCodes> = {
+  RDC:  { digicode_porte: '', digicode_entree: '', mdp_ordi: '' },
+  '1ER': { digicode_porte: '', digicode_entree: '', mdp_ordi: '' },
+};
+// ─────────────────────────────────────────────────────────────
+// SETTINGS SUPABASE
+// ─────────────────────────────────────────────────────────────
+
+async function fetchSetting<T>(key: string, fallback: T): Promise<T> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', key).maybeSingle();
+  return data ? (data.value as T) : fallback;
+}
+
+async function saveSetting(key: string, value: unknown): Promise<void> {
+  const sb = createClient();
+  const { error } = await sb
+    .from('settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw new Error(error.message);
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────────────────────
+
+const MEDECINS = ['Dr Carrat', 'Dr Benazet', 'Dr Barreau', 'Dr Sahraoui'];
+const TITLES   = ['Mme', 'Mr', 'Me', 'Dr'];
+
+const REGIME_BADGES = [
+  { key: 'regime_mixe'         as keyof Resident, label: 'Mixé',             cls: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { key: 'viande_mixee'        as keyof Resident, label: 'Viande mixée',     cls: 'bg-amber-100  text-amber-700  border-amber-300'  },
+  { key: 'regime_diabetique'   as keyof Resident, label: 'Diabétique',       cls: 'bg-blue-100   text-blue-700   border-blue-300'   },
+  { key: 'epargne_intestinale' as keyof Resident, label: 'Épargne int.',     cls: 'bg-green-100  text-green-700  border-green-300'  },
+  { key: 'allergie_poisson'    as keyof Resident, label: '⚠ Poisson',        cls: 'bg-red-100    text-red-700    border-red-300'    },
+];
+
+const TRAITEMENT_BADGES = [
+  { key: 'traitement_ecrase' as keyof Resident, label: 'Écrasé',      cls: 'bg-purple-100 text-purple-700 border-purple-300' },
+  { key: 'insuline_matin'    as keyof Resident, label: 'Insuline ☀',  cls: 'bg-cyan-100   text-cyan-700   border-cyan-300'   },
+  { key: 'insuline_soir'     as keyof Resident, label: 'Insuline 🌙', cls: 'bg-cyan-100   text-cyan-700   border-cyan-300'   },
+  { key: 'anticoagulants'    as keyof Resident, label: 'Anticoag.',   cls: 'bg-rose-100   text-rose-700   border-rose-300'   },
+  { key: 'appel_nuit'        as keyof Resident, label: 'Appel nuit',  cls: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
+];
+
+const EMPTY_FORM: Omit<Resident, 'id'> = {
+  room: '', title: 'Mme', first_name: '', last_name: '',
+  date_naissance: '', date_entree: new Date().toISOString().split('T')[0],
+  floor: 'RDC', section: 'MAPAD', sort_order: 999,
+  annotations: '', medecin: '', referent: '',
+  regime_mixe: false, viande_mixee: false, regime_diabetique: false,
+  epargne_intestinale: false, allergie_poisson: false,
+  traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
+  anticoagulants: false, appel_nuit: false,
+};
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
+function calcAge(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const birth = new Date(dateStr + 'T12:00:00');
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return `${age} ans`;
+  } catch { return ''; }
+}
+
+function inferFloor(room: string): 'RDC' | '1ER' {
+  const n = parseInt(room, 10);
+  return !isNaN(n) && n >= 100 ? '1ER' : 'RDC';
+}
+
+// ─────────────────────────────────────────────────────────────
+// SUPABASE
+// ─────────────────────────────────────────────────────────────
+
+async function fetchResidents(): Promise<Resident[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('residents')
+    .select('*')
+    .order('floor',      { ascending: true })
+    .order('sort_order', { ascending: true })
+    .order('room',       { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Resident[];
+}
+
+async function saveResident(
+  payload: Partial<Resident> & { id?: string }
+): Promise<void> {
+  const sb = createClient();
+  if (payload.id) {
+    const { id, ...updates } = payload;
+    const { error } = await sb.from('residents').update(updates).eq('id', id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await sb.from('residents').insert(payload);
+    if (error) throw new Error(error.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPOSANTS UTILITAIRES
+// ─────────────────────────────────────────────────────────────
+
+function FloorBadge({ floor }: { floor: string }) {
+  return (
+    <span className={cn(
+      'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded leading-none',
+      floor === 'RDC' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'
+    )}>
+      {floor}
+    </span>
+  );
+}
+
+function AllBadges({ r }: { r: Resident }) {
+  const active = [
+    ...REGIME_BADGES.filter(b => r[b.key]),
+    ...TRAITEMENT_BADGES.filter(b => r[b.key]),
+  ];
+  if (!active.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {active.map(b => (
+        <span
+          key={String(b.key)}
+          className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded border leading-none', b.cls)}
+        >
+          {b.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CheckField({
+  id, label, checked, onChange,
+}: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={v => onChange(Boolean(v))}
+        className="h-4 w-4 flex-shrink-0"
+      />
+      <Label htmlFor={id} className="text-sm text-slate-700 cursor-pointer font-normal leading-snug">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// LIGNE RÉSIDENT (mode lecture)
+// ─────────────────────────────────────────────────────────────
+
+function ResidentRow({
+  r, onEdit, dimmed,
+}: { r: Resident; onEdit: () => void; dimmed: boolean }) {
+  return (
+    <div className={cn(
+      'flex items-start gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0',
+      'hover:bg-blue-50/30 transition-colors',
+      dimmed && 'opacity-20 pointer-events-none select-none',
+    )}>
+      {/* Chambre + étage */}
+      <div className="flex-shrink-0 w-14 text-center pt-0.5">
+        <div className="text-base font-bold text-slate-800 tabular-nums leading-none">
+          {r.room || '—'}
+        </div>
+        <div className="mt-1.5"><FloorBadge floor={r.floor} /></div>
+      </div>
+
+      {/* Identité, badges, annotations */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-800 leading-tight">
+          {r.title}{' '}
+          <span className="uppercase">{r.last_name}</span>{' '}
+          {r.first_name}
+          {r.date_naissance && (
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              {calcAge(r.date_naissance)}
+            </span>
+          )}
+        </p>
+        {r.medecin && (
+          <p className="text-xs text-slate-400 mt-0.5">{r.medecin}</p>
+        )}
+        <AllBadges r={r} />
+        {r.annotations && (
+          <p className="text-[11px] text-slate-400 mt-1 italic line-clamp-2 max-w-2xl">
+            {r.annotations}
+          </p>
+        )}
+      </div>
+
+      {/* Bouton Éditer */}
+      <div className="flex-shrink-0 pt-0.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onEdit}
+          className="h-8 gap-1.5 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-100"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Éditer</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// FORMULAIRE D'ÉDITION INLINE
+// ─────────────────────────────────────────────────────────────
+
+function EditForm({
+  form, patch,
+  roomUnlocked, onUnlockRoom,
+  onSave, onCancel,
+  saving, isNew,
+}: {
+  form: Partial<Resident>;
+  patch: (u: Partial<Resident>) => void;
+  roomUnlocked: boolean;
+  onUnlockRoom: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  isNew: boolean;
+}) {
+  const headerTitle = isNew
+    ? 'Nouveau résident'
+    : `Édition — ${form.title ?? ''} ${(form.last_name ?? '').toUpperCase()} ${form.first_name ?? ''}`.trim();
+
+  return (
+    <div className="rounded-xl border-2 border-blue-400 bg-white shadow-xl overflow-hidden">
+
+      {/* En-tête bleu */}
+      <div className="flex items-center justify-between bg-blue-600 px-4 py-3">
+        <span className="text-sm font-semibold text-white truncate">{headerTitle}</span>
+        <Button
+          variant="ghost" size="icon"
+          onClick={onCancel} disabled={saving}
+          className="h-7 w-7 flex-shrink-0 ml-2 text-blue-200 hover:text-white hover:bg-blue-700"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="p-4 sm:p-5 space-y-6">
+
+        {/* ══ 1. IDENTITÉ ══════════════════════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Identité
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+            {/* Chambre — protégée */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Chambre *</Label>
+              <div className="relative">
+                <Input
+                  value={form.room ?? ''}
+                  onChange={e => patch({ room: e.target.value })}
+                  disabled={!roomUnlocked}
+                  placeholder="Ex : 12"
+                  className={cn(
+                    'h-9 text-sm pr-9',
+                    !roomUnlocked && 'bg-slate-100 cursor-not-allowed text-slate-400'
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={!roomUnlocked ? onUnlockRoom : undefined}
+                  className={cn(
+                    'absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors',
+                    roomUnlocked
+                      ? 'text-emerald-500 cursor-default'
+                      : 'text-slate-400 hover:text-blue-600 cursor-pointer'
+                  )}
+                  title={
+                    roomUnlocked
+                      ? 'Chambre déverrouillée'
+                      : 'Cliquer pour déverrouiller — mot de passe admin requis'
+                  }
+                >
+                  {roomUnlocked
+                    ? <Unlock className="h-3.5 w-3.5" />
+                    : <Lock   className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-tight">
+                {roomUnlocked
+                  ? (form.room ? `Étage détecté : ${inferFloor(form.room)}` : 'Saisir le numéro')
+                  : '🔒 Cliquer sur le cadenas pour modifier'}
+              </p>
+            </div>
+
+            {/* Titre */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Titre</Label>
+              <Select value={form.title ?? 'Mme'} onValueChange={v => patch({ title: v })}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Prénom */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Prénom</Label>
+              <Input
+                value={form.first_name ?? ''}
+                onChange={e => patch({ first_name: e.target.value })}
+                placeholder="Prénom"
+                className="h-9 text-sm"
+              />
+            </div>
+
+            {/* Nom */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Nom *</Label>
+              <Input
+                value={form.last_name ?? ''}
+                onChange={e => patch({ last_name: e.target.value })}
+                placeholder="NOM DE FAMILLE"
+                className="h-9 text-sm uppercase"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 2. INFORMATIONS MÉDICALES ════════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Informations médicales
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Date de naissance</Label>
+              <Input
+                type="date"
+                value={form.date_naissance ?? ''}
+                onChange={e => patch({ date_naissance: e.target.value })}
+                className="h-9 text-sm"
+              />
+              {form.date_naissance && (
+                <p className="text-[10px] text-slate-400">→ {calcAge(form.date_naissance)}</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Date d'entrée</Label>
+              <Input
+                type="date"
+                value={form.date_entree ?? ''}
+                onChange={e => patch({ date_entree: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs font-semibold text-slate-600">Médecin traitant</Label>
+              <Select
+                value={form.medecin || '_none'}
+                onValueChange={v => patch({ medecin: v === '_none' ? '' : v })}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="— Choisir un médecin —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Aucun —</SelectItem>
+                  {MEDECINS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 3. RÉGIMES ALIMENTAIRES ══════════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Régimes alimentaires
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-y-3 gap-x-6">
+            <CheckField
+              id="f_regime_mixe"
+              label="Régime mixé"
+              checked={form.regime_mixe ?? false}
+              onChange={v => patch({ regime_mixe: v })}
+            />
+            <CheckField
+              id="f_viande_mixee"
+              label="Viande mixée"
+              checked={form.viande_mixee ?? false}
+              onChange={v => patch({ viande_mixee: v })}
+            />
+            <CheckField
+              id="f_regime_diabetique"
+              label="Régime diabétique"
+              checked={form.regime_diabetique ?? false}
+              onChange={v => patch({ regime_diabetique: v })}
+            />
+            <CheckField
+              id="f_epargne_intestinale"
+              label="Épargne intestinale"
+              checked={form.epargne_intestinale ?? false}
+              onChange={v => patch({ epargne_intestinale: v })}
+            />
+            <CheckField
+              id="f_allergie_poisson"
+              label="⚠ Allergie poisson"
+              checked={form.allergie_poisson ?? false}
+              onChange={v => patch({ allergie_poisson: v })}
+            />
+          </div>
+        </section>
+
+        {/* ══ 4. TRAITEMENTS PARTICULIERS ══════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Traitements particuliers
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-y-3 gap-x-6">
+            <CheckField
+              id="f_traitement_ecrase"
+              label="Traitement écrasé"
+              checked={form.traitement_ecrase ?? false}
+              onChange={v => patch({ traitement_ecrase: v })}
+            />
+            <CheckField
+              id="f_insuline_matin"
+              label="Insuline matin ☀"
+              checked={form.insuline_matin ?? false}
+              onChange={v => patch({ insuline_matin: v })}
+            />
+            <CheckField
+              id="f_insuline_soir"
+              label="Insuline soir 🌙"
+              checked={form.insuline_soir ?? false}
+              onChange={v => patch({ insuline_soir: v })}
+            />
+            <CheckField
+              id="f_anticoagulants"
+              label="Anticoagulants"
+              checked={form.anticoagulants ?? false}
+              onChange={v => patch({ anticoagulants: v })}
+            />
+            {/* appel_nuit : lecture seule — géré uniquement via GIR / Niveau de soin */}
+            <div className="flex items-center gap-2 opacity-60 cursor-not-allowed select-none" title="Modifiable uniquement depuis la page GIR / Niveau de soin">
+              <div className={`h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.appel_nuit ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 bg-white'}`}>
+                {form.appel_nuit && <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+              </div>
+              <span className="text-sm text-slate-500 font-normal leading-snug">
+                Appel nuit <span className="text-[10px] text-slate-400">(via GIR)</span>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 5. ANNOTATIONS ═══════════════════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Annotations / Consignes spéciales
+          </h3>
+          <Textarea
+            value={form.annotations ?? ''}
+            onChange={e => patch({ annotations: e.target.value })}
+            placeholder="Notes médicales, consignes particulières, informations utiles pour l'équipe soignante…"
+            rows={3}
+            className="text-sm resize-none"
+          />
+        </section>
+
+        {/* ══ ACTIONS ══════════════════════════════════════════ */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {saving ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Sauvegarde en cours…</>
+            ) : (
+              <><Save className="h-4 w-4" /> {isNew ? 'Créer le résident' : 'Sauvegarder les modifications'}</>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={saving}
+            className="gap-1.5"
+          >
+            <X className="h-4 w-4" /> Annuler
+          </Button>
+          <span className="text-xs text-slate-300">* Champs requis</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CARTE MÉDECINS
+// ─────────────────────────────────────────────────────────────
+
+function DoctorsCard({
+  doctors, onEdit,
+}: { doctors: DoctorConfig[]; onEdit: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 flex items-center gap-4">
+      <Stethoscope className="h-4 w-4 text-slate-400 flex-shrink-0" />
+      <span className="text-sm font-semibold text-slate-700 flex-shrink-0">Médecins traitants</span>
+      <div className="flex flex-wrap gap-2 flex-1">
+        {doctors.map((d, i) => (
+          <span key={i} className="flex items-center gap-1.5 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-full px-3 py-1">
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+            {d.name}
+          </span>
+        ))}
+      </div>
+      <Button variant="ghost" size="sm" onClick={onEdit} className="gap-1.5 text-xs text-slate-400 hover:text-blue-600 flex-shrink-0">
+        <Pencil className="h-3.5 w-3.5" /> Modifier
+      </Button>
+    </div>
+  );
+}
+
+function DoctorsEditDialog({
+  open, onOpenChange, doctors, onSave,
+}: { open: boolean; onOpenChange: (v: boolean) => void; doctors: DoctorConfig[]; onSave: (d: DoctorConfig[]) => void }) {
+  const [form, setForm] = useState<DoctorConfig[]>(doctors);
+  const patch = (i: number, field: keyof DoctorConfig, val: string) =>
+    setForm(prev => prev.map((d, idx) => idx === i ? { ...d, [field]: val } : d));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Stethoscope className="h-4 w-4 text-slate-500" /> Médecins traitants
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1">
+          {form.map((d, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input type="color" value={d.color} onChange={e => patch(i, 'color', e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer border border-slate-200 p-0.5" />
+              <Input value={d.name} onChange={e => patch(i, 'name', e.target.value)} className="h-8 text-sm flex-1" />
+            </div>
+          ))}
+          <div className="flex gap-2 pt-2 border-t border-slate-100">
+            <Button onClick={() => { onSave(form); onOpenChange(false); }} className="flex-1 gap-1.5">
+              <Save className="h-4 w-4" /> Sauvegarder
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CARTE CODES D'ACCÈS
+// ─────────────────────────────────────────────────────────────
+
+function AccessCodesCard({
+  floor, codes, onEdit,
+}: { floor: string; codes: FloorCodes; onEdit: () => void }) {
+  const hasData = codes.digicode_porte || codes.digicode_entree || codes.mdp_ordi;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 flex items-center gap-4">
+      <Key className="h-4 w-4 text-slate-400 flex-shrink-0" />
+      <span className="text-sm font-semibold text-slate-700 flex-shrink-0">Codes d'accès — {floor}</span>
+      <div className="flex flex-wrap gap-4 flex-1 text-sm text-slate-600">
+        {codes.digicode_porte   && <span>Digicode porte : <strong>{codes.digicode_porte}</strong></span>}
+        {codes.digicode_entree  && <span>Digicode entrée : <strong>{codes.digicode_entree}</strong></span>}
+        {codes.mdp_ordi         && <span>MDP ordi : <strong>{codes.mdp_ordi}</strong></span>}
+        {!hasData && <span className="text-slate-300 italic text-xs">Aucun code renseigné</span>}
+      </div>
+      <Button variant="ghost" size="sm" onClick={onEdit} className="gap-1.5 text-xs text-slate-400 hover:text-blue-600 flex-shrink-0">
+        <Pencil className="h-3.5 w-3.5" /> Modifier
+      </Button>
+    </div>
+  );
+}
+
+function AccessCodesEditDialog({
+  open, onOpenChange, floor, codes, onSave,
+}: { open: boolean; onOpenChange: (v: boolean) => void; floor: string; codes: FloorCodes; onSave: (c: FloorCodes) => void }) {
+  const [form, setForm] = useState<FloorCodes>(codes);
+  const p = (field: keyof FloorCodes, val: string) => setForm(prev => ({ ...prev, [field]: val }));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Key className="h-4 w-4 text-slate-500" /> Codes d'accès — {floor}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1">
+          {([
+            ['digicode_porte',  'Digicode porte'],
+            ['digicode_entree', 'Digicode entrée'],
+            ['mdp_ordi',        'Mot de passe ordinateur'],
+          ] as [keyof FloorCodes, string][]).map(([field, label]) => (
+            <div key={field} className="space-y-1">
+              <Label className="text-xs font-medium text-slate-600">{label}</Label>
+              <Input value={form[field]} onChange={e => p(field, e.target.value)} className="h-9 text-sm font-mono" />
+            </div>
+          ))}
+          <div className="flex gap-2 pt-2 border-t border-slate-100">
+            <Button onClick={() => { onSave(form); onOpenChange(false); }} className="flex-1 gap-1.5">
+              <Save className="h-4 w-4" /> Sauvegarder
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// PAGE PRINCIPALE
+// ─────────────────────────────────────────────────────────────
+
+export default function ResidentsPage() {
+  const queryClient = useQueryClient();
+
+  const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
+  const [search, setSearch]             = useState('');
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [editForm, setEditForm]         = useState<Partial<Resident>>({});
+  const [roomUnlocked, setRoomUnlocked] = useState(false);
+  const [showAdminDlg, setShowAdminDlg] = useState(false);
+
+  const { data: doctors = DEFAULT_DOCTORS, refetch: refetchDoctors } = useQuery({
+    queryKey: ['settings', 'doctors'],
+    queryFn: () => fetchSetting('doctors', DEFAULT_DOCTORS),
+  });
+  const { data: floorCodes = DEFAULT_CODES, refetch: refetchCodes } = useQuery({
+    queryKey: ['settings', 'floor_codes'],
+    queryFn: () => fetchSetting('floor_codes', DEFAULT_CODES),
+  });
+  const [showDoctorsEdit, setShowDoctorsEdit] = useState(false);
+  const [editingFloor, setEditingFloor] = useState<string | null>(null);
+
+  /* ── Data ── */
+  const { data: residents = [], isLoading, error } = useQuery({
+    queryKey: ['residents'],
+    queryFn: fetchResidents,
+  });
+
+  /* ── Mutation ── */
+  const saveMutation = useMutation({
+    mutationFn: saveResident,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      toast.success(editingId === 'NEW' ? 'Résident créé ✓' : 'Modifications sauvegardées ✓');
+      setEditingId(null);
+      setEditForm({});
+      setRoomUnlocked(false);
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Liste filtrée ── */
+  const filtered = useMemo(() => {
+    return residents
+      .filter(r => {
+        if (floorFilter !== 'TOUS' && r.floor !== floorFilter) return false;
+        if (search.trim()) {
+          const q = search.toLowerCase().trim();
+          const name = `${r.last_name} ${r.first_name}`.toLowerCase();
+          if (!name.includes(q) && !r.room.toLowerCase().includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const parse = (room: string) => {
+          const withDot = room.match(/^(\d+)\.([A-Za-z]+)$/);
+          if (withDot) return { num: parseInt(withDot[1], 10), suffix: withDot[2].toUpperCase(), dot: true };
+          const noDot = room.match(/^(\d+)([A-Za-z]*)$/);
+          if (noDot)   return { num: parseInt(noDot[1],   10), suffix: noDot[2].toUpperCase(),   dot: false };
+          return { num: 9999, suffix: '', dot: false };
+        };
+        const ra = parse(a.room);
+        const rb = parse(b.room);
+        // 1. Tri par numéro
+        if (ra.num !== rb.num) return ra.num - rb.num;
+        // 2. Même numéro : avec point AVANT sans point
+        if (ra.dot !== rb.dot) return ra.dot ? -1 : 1;
+        // 3. Les deux avec point → G avant D
+        if (ra.dot && rb.dot) {
+          const o: Record<string, number> = { G: 0, D: 1 };
+          return (o[ra.suffix] ?? 99) - (o[rb.suffix] ?? 99);
+        }
+        // 4. Les deux sans point → ordre alphabétique (D avant G)
+        return ra.suffix.localeCompare(rb.suffix);
+      });
+  }, [residents, floorFilter, search]);
+
+  /* ── Helpers édition ── */
+  function startEdit(r: Resident) {
+    setEditingId(r.id);
+    setEditForm({ ...r });
+    setRoomUnlocked(false);
+  }
+
+  function startCreate() {
+    setEditingId('NEW');
+    setEditForm({ ...EMPTY_FORM });
+    setRoomUnlocked(true);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm({});
+    setRoomUnlocked(false);
+  }
+
+  function patch(updates: Partial<Resident>) {
+    setEditForm(prev => {
+      const next = { ...prev, ...updates };
+      if ('room' in updates) next.floor = inferFloor(updates.room ?? '');
+      return next;
+    });
+  }
+
+  function handleSave() {
+    if (!editForm.last_name?.trim()) { toast.error('Le nom de famille est obligatoire'); return; }
+    if (!editForm.room?.trim())      { toast.error('Le numéro de chambre est obligatoire'); return; }
+    const payload = editingId === 'NEW'
+      ? editForm
+      : { ...editForm, id: editingId! };
+    saveMutation.mutate(payload);
+  }
+
+  const isSaving = saveMutation.isPending;
+  const rdcCount = residents.filter(r => r.floor === 'RDC').length;
+  const erCount  = residents.filter(r => r.floor === '1ER').length;
+
+  /* ── Render ── */
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-100">
+
+      {/* ══ HEADER ══════════════════════════════════════════════ */}
+      <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/80 sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2">
+          <Users className="h-4 w-4 text-slate-500 flex-shrink-0" />
+          <h1 className="text-base font-bold text-slate-800 flex-1 truncate">
+            Gestion des Résidents
+            <span className="ml-2 text-sm font-normal text-slate-400">({residents.length})</span>
+          </h1>
+          <Button
+            size="sm"
+            onClick={startCreate}
+            disabled={editingId !== null}
+            className="h-8 gap-1.5 text-xs flex-shrink-0"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Nouveau résident</span>
+            <span className="sm:hidden">+</span>
+          </Button>
+        </div>
+      </header>
+
+      {/* ══ BARRE DE FILTRES ════════════════════════════════════ */}
+      <div className="bg-white border-b border-slate-200/60">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+
+          {/* Filtres étage */}
+          <div className="flex gap-1 flex-shrink-0">
+            {([
+              ['TOUS', `Tous · ${residents.length}`],
+              ['RDC',  `RDC · ${rdcCount}`],
+              ['1ER',  `1er étage · ${erCount}`],
+            ] as [FloorFilter, string][]).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setFloorFilter(val)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap',
+                  floorFilter === val
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Recherche */}
+          <div className="relative w-full sm:ml-auto sm:max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Input
+              placeholder="Rechercher par nom ou chambre…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm bg-slate-50 border-slate-200"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══ CONTENU PRINCIPAL ═══════════════════════════════════ */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-4 space-y-3 pb-12">
+
+        {/* Cartes infos */}
+        <DoctorsCard doctors={doctors} onEdit={() => setShowDoctorsEdit(true)} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <AccessCodesCard floor="RDC"  codes={floorCodes['RDC']}  onEdit={() => setEditingFloor('RDC')} />
+          <AccessCodesCard floor="1ER"  codes={floorCodes['1ER']}  onEdit={() => setEditingFloor('1ER')} />
+        </div>
+
+        {/* Chargement */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-20 gap-2 text-slate-400">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm">Chargement des résidents…</span>
+          </div>
+        )}
+
+        {/* Erreur */}
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span>{(error as Error).message}</span>
+          </div>
+        )}
+
+        {/* Formulaire nouveau résident — apparaît en haut de liste */}
+        {editingId === 'NEW' && (
+          <EditForm
+            form={editForm}   patch={patch}
+            roomUnlocked      onUnlockRoom={() => {}}
+            onSave={handleSave} onCancel={cancelEdit}
+            saving={isSaving} isNew
+          />
+        )}
+
+        {/* Liste des résidents */}
+        {!isLoading && !error && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+            {/* En-tête colonnes (desktop) */}
+            <div className="hidden sm:flex items-center px-4 py-2 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-widest gap-3">
+              <div className="w-14">Ch.</div>
+              <div className="flex-1">Résident</div>
+              <div className="w-16 text-right">Action</div>
+            </div>
+
+            {/* Aucun résultat */}
+            {filtered.length === 0 && (
+              <div className="py-16 text-center">
+                <Users className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">
+                  {search
+                    ? `Aucun résident trouvé pour « ${search} »`
+                    : 'Aucun résident enregistré.'}
+                </p>
+              </div>
+            )}
+
+            {/* Lignes */}
+            {filtered.map((r, idx) => {
+              const prevFloor    = idx > 0 ? filtered[idx - 1].floor : null;
+              const showFloorSep = floorFilter === 'TOUS' &&
+                (idx === 0 || (prevFloor !== null && prevFloor !== r.floor));
+
+              return (
+                <div key={r.id}>
+
+                  {/* Séparateur d'étage */}
+                  {showFloorSep && (
+                    <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-50 border-y border-slate-200">
+                      <div className={cn(
+                        'h-1.5 w-1.5 rounded-full flex-shrink-0',
+                        r.floor === 'RDC' ? 'bg-sky-400' : 'bg-violet-400'
+                      )} />
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        {r.floor === 'RDC' ? 'Rez-de-chaussée' : '1er Étage'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Formulaire inline si ce résident est en édition */}
+                  {editingId === r.id ? (
+                    <div className="p-3 border-b border-slate-100 last:border-0 bg-slate-50/50">
+                      <EditForm
+                        form={editForm}   patch={patch}
+                        roomUnlocked={roomUnlocked}
+                        onUnlockRoom={() => setShowAdminDlg(true)}
+                        onSave={handleSave} onCancel={cancelEdit}
+                        saving={isSaving}   isNew={false}
+                      />
+                    </div>
+                  ) : (
+                    <ResidentRow
+                      r={r}
+                      onEdit={() => startEdit(r)}
+                      dimmed={editingId !== null && editingId !== r.id}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Compteur résultats */}
+        {!isLoading && filtered.length > 0 && (
+          <p className="text-center text-xs text-slate-300 pb-2">
+            {filtered.length} résident{filtered.length > 1 ? 's' : ''} affiché
+            {filtered.length > 1 ? 's' : ''}
+          </p>
+        )}
+      </main>
+
+      {/* Dialog déverrouillage numéro de chambre */}
+      <AdminUnlockDialog
+        open={showAdminDlg}
+        onOpenChange={setShowAdminDlg}
+        onUnlock={() => setRoomUnlocked(true)}
+      />
+
+      {/* Dialog médecins */}
+      <DoctorsEditDialog
+        open={showDoctorsEdit}
+        onOpenChange={setShowDoctorsEdit}
+        doctors={doctors}
+        onSave={async d => { await saveSetting('doctors', d); refetchDoctors(); }}
+      />
+
+      {/* Dialogs codes d'accès */}
+      {(['RDC', '1ER'] as const).map(fl => (
+        <AccessCodesEditDialog
+          key={fl}
+          open={editingFloor === fl}
+          onOpenChange={v => { if (!v) setEditingFloor(null); }}
+          floor={fl}
+          codes={floorCodes[fl]}
+          onSave={async c => {
+            const updated = { ...floorCodes, [fl]: c };
+            await saveSetting('floor_codes', updated);
+            refetchCodes();
+          }}
+        />
+      ))}
+      <HomeButton />
+    </div>
+  );
+}
