@@ -470,19 +470,40 @@ function ResidentModal({ resident, allMesures, allComplements, allDossiers, aler
 
   const evolutionEntree = useMemo(() => {
     if (!resident.date_entree || !latest || sorted.length < 2) return null;
-    // Priorité : poids dans les 30 jours avant l'entrée (le plus proche de l'entrée)
+    const entreeTs = new Date(resident.date_entree).getTime();
+
+    // Poids dans les 30 jours avant l'entrée (le plus proche de l'entrée)
     const d30avant = new Date(resident.date_entree);
     d30avant.setDate(d30avant.getDate() - 30);
     const iso30 = d30avant.toISOString().slice(0, 10);
     const preEntree = [...sorted]
       .filter(m => m.date >= iso30 && m.date < resident.date_entree!)
       .sort((a, b) => b.date.localeCompare(a.date))[0];
-    // Sinon : premier poids après l'entrée
+
+    // Premier poids après (ou le jour de) l'entrée
     const postEntree = sorted.find(m => m.date >= resident.date_entree!);
-    const ref = preEntree ?? postEntree ?? sorted[0];
+
+    // Choisir le plus proche de la date d'entrée
+    let ref: PoidsMesure | undefined;
+    let isPreEntree = false;
+    if (preEntree && postEntree) {
+      const distPre  = Math.abs(entreeTs - new Date(preEntree.date).getTime());
+      const distPost = Math.abs(new Date(postEntree.date).getTime() - entreeTs);
+      if (distPost <= distPre) {
+        ref = postEntree;
+        isPreEntree = false;
+      } else {
+        ref = preEntree;
+        isPreEntree = true;
+      }
+    } else {
+      ref = preEntree ?? postEntree ?? sorted[0];
+      isPreEntree = !!preEntree;
+    }
+
     if (!ref || ref.id === latest.id) return null;
     const diff = parseFloat((latest.poids_kg - ref.poids_kg).toFixed(1));
-    return { diff, pct: parseFloat((diff / ref.poids_kg * 100).toFixed(1)), refDate: ref.date, preEntree: !!preEntree };
+    return { diff, pct: parseFloat((diff / ref.poids_kg * 100).toFixed(1)), refDate: ref.date, preEntree: isPreEntree };
   }, [sorted, resident.date_entree, latest]);
 
   const chartData = sorted.map(m => ({ date: new Date(m.date).getTime(), poids: m.poids_kg }));
