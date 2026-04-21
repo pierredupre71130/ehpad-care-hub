@@ -356,7 +356,7 @@ function BulkInjectModal({ column, label, records, onClose, onDone }: {
   const [saving, setSaving] = useState(false);
 
   const eligible = records.filter(r => {
-    const v = (r as Record<string, string | null | undefined>)[column];
+    const v = (r as unknown as Record<string, string | null | undefined>)[column];
     if (!v) return true;
     return !v.toLowerCase().includes('refus');
   });
