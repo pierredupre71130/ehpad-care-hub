@@ -84,7 +84,7 @@ export function DashboardGrid({ modules, isAdminMode }: DashboardGridProps) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={order} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
           {orderedModules.map((module) => (
             <ModuleCard
               key={module.id}

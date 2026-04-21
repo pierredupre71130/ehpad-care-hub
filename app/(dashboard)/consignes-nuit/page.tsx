@@ -14,6 +14,16 @@ import { toast } from 'sonner';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface IdeConfig {
+  nom: string;
+  email: string;
+}
+
+interface AstreinteSettings {
+  ides: IdeConfig[];
+  cadreEmail: string;
+}
+
 interface Resident {
   id: string;
   first_name?: string;
@@ -117,6 +127,21 @@ async function fetchConsignesNuit(date: string, floor: string): Promise<Consigne
   const { data, error } = await sb.from('consigne_nuit').select('*').eq('date', date).eq('floor', floor);
   if (error) throw new Error(error.message);
   return (data ?? []) as ConsigneNuit[];
+}
+
+async function fetchAstreinteSettings(): Promise<AstreinteSettings> {
+  const sb = createClient();
+  const { data } = await sb.from('astreinte_settings').select('key,value');
+  const rows = (data ?? []) as { key: string; value: unknown }[];
+  const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return {
+    ides: (byKey['ides'] as IdeConfig[]) ?? [
+      { nom: 'Pierre', email: '' },
+      { nom: 'Florence', email: '' },
+      { nom: 'Mandy', email: '' },
+    ],
+    cadreEmail: (byKey['cadre_email'] as string) ?? '',
+  };
 }
 
 async function fetchArchivedDates(): Promise<string[]> {
@@ -429,6 +454,10 @@ function Legend() {
   );
 }
 
+// Stable empty arrays — used as default values for useQuery so that the
+// useEffect deps don't change on every render while data is still loading.
+const EMPTY_CONSIGNES: ConsigneNuit[] = [];
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ConsignesNuitPage() {
@@ -442,19 +471,22 @@ export default function ConsignesNuitPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showArchives, setShowArchives] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteError, setDeleteError] = useState(false);
 
   // Queries
+  const { data: astreinteSettings } = useQuery({ queryKey: ['astreinte_settings'], queryFn: fetchAstreinteSettings });
+  const ides = astreinteSettings?.ides ?? [{ nom: 'Pierre', email: '' }, { nom: 'Florence', email: '' }, { nom: 'Mandy', email: '' }];
   const { data: residents = [], isLoading } = useQuery({ queryKey: ['residents'], queryFn: fetchResidents });
   const { data: girData = [] } = useQuery({ queryKey: ['niveau_soin'], queryFn: fetchNiveauSoin });
   const { data: contentionFiches = [] } = useQuery({ queryKey: ['contentions'], queryFn: fetchContentions });
-  const { data: savedRDC = [], isLoading: loadingRDC } = useQuery({ queryKey: ['consignes_nuit', date, 'RDC'], queryFn: () => fetchConsignesNuit(date, 'RDC'), enabled: !!date });
-  const { data: saved1ER = [], isLoading: loading1ER } = useQuery({ queryKey: ['consignes_nuit', date, '1ER'], queryFn: () => fetchConsignesNuit(date, '1ER'), enabled: !!date });
+  const { data: savedRDC = EMPTY_CONSIGNES, isLoading: loadingRDC, status: rdcStatus } = useQuery({ queryKey: ['consignes_nuit', date, 'RDC'], queryFn: () => fetchConsignesNuit(date, 'RDC'), enabled: !!date });
+  const { data: saved1ER = EMPTY_CONSIGNES, isLoading: loading1ER, status: erStatus } = useQuery({ queryKey: ['consignes_nuit', date, '1ER'], queryFn: () => fetchConsignesNuit(date, '1ER'), enabled: !!date });
   const { data: archivedDates = [] } = useQuery({ queryKey: ['consignes_nuit_dates'], queryFn: fetchArchivedDates });
 
-  // Populate notes from Supabase when data arrives
+  // Populate notes from Supabase when data arrives.
+  // Guard: skip while the query is still loading (rdcStatus !== 'success') so that
+  // the useEffect dep on `savedRDC` never triggers a setState→re-render loop.
   useEffect(() => {
+    if (rdcStatus !== 'success') return;
     const notesMap: Record<string, string> = {};
     let infos = '';
     savedRDC.forEach(n => {
@@ -464,9 +496,10 @@ export default function ConsignesNuitPage() {
     setNotesByFloor(prev => ({ ...prev, RDC: notesMap }));
     setInfosByFloor(prev => ({ ...prev, RDC: infos }));
     if (savedRDC[0]?.ide_astreinte) setIdeAstreinte(savedRDC[0].ide_astreinte);
-  }, [savedRDC]);
+  }, [savedRDC, rdcStatus]);
 
   useEffect(() => {
+    if (erStatus !== 'success') return;
     const notesMap: Record<string, string> = {};
     let infos = '';
     saved1ER.forEach(n => {
@@ -476,7 +509,7 @@ export default function ConsignesNuitPage() {
     setNotesByFloor(prev => ({ ...prev, '1ER': notesMap }));
     setInfosByFloor(prev => ({ ...prev, '1ER': infos }));
     if (saved1ER[0]?.ide_astreinte) setIdeAstreinte(saved1ER[0].ide_astreinte);
-  }, [saved1ER]);
+  }, [saved1ER, erStatus]);
 
   // Build contention map: resident.id → [{type, siBesoin}]
   const contentionMap = useMemo(() => {
@@ -569,9 +602,6 @@ export default function ConsignesNuitPage() {
 
   const handleDeleteArchive = async () => {
     if (!deleteConfirm) return;
-    const now = new Date();
-    const expected = `${String(now.getDate()).padStart(2, '0')}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    if (deletePassword !== expected) { setDeleteError(true); return; }
     const sb = createClient();
     await sb.from('consigne_nuit').delete().eq('date', deleteConfirm.date);
     queryClient.invalidateQueries({ queryKey: ['consignes_nuit', deleteConfirm.date, 'RDC'] });
@@ -579,8 +609,6 @@ export default function ConsignesNuitPage() {
     queryClient.invalidateQueries({ queryKey: ['consignes_nuit_dates'] });
     if (date === deleteConfirm.date) setDate(new Date().toISOString().split('T')[0]);
     setDeleteConfirm(null);
-    setDeletePassword('');
-    setDeleteError(false);
     toast.success('Archive supprimée');
   };
 
@@ -730,12 +758,61 @@ export default function ConsignesNuitPage() {
     return h;
   };
 
+  const sendEmail = async () => {
+    // Collecter tous les résidents avec une consigne non vide (RDC + 1ER)
+    const allConsignes: Array<{ room: string; nom: string; floor: string; note: string }> = [];
+
+    const rdcResidents = residents.filter(r => r.floor === 'RDC');
+    const erResidents = residents.filter(r => r.floor === '1ER');
+
+    [...rdcResidents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).forEach(r => {
+      const note = (notesByFloor['RDC'] ?? {})[r.id] ?? '';
+      if (note.trim()) allConsignes.push({ room: r.room ?? '', nom: `${r.last_name} ${r.first_name ?? ''}`.trim(), floor: 'RDC', note });
+    });
+    [...erResidents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).forEach(r => {
+      const note = (notesByFloor['1ER'] ?? {})[r.id] ?? '';
+      if (note.trim()) allConsignes.push({ room: r.room ?? '', nom: `${r.last_name} ${r.first_name ?? ''}`.trim(), floor: '1ER', note });
+    });
+
+    const ideConfig = ides.find(i => i.nom === ideAstreinte);
+    const ideEmail = ideConfig?.email ?? '';
+    const cadreEmail = astreinteSettings?.cadreEmail ?? '';
+
+    try {
+      const res = await fetch('/api/send-consignes-nuit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          ideNom: ideAstreinte || 'Non renseigné',
+          ideEmail,
+          cadreEmail,
+          consignes: allConsignes,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error('Email non envoyé : ' + (json.error ?? 'Erreur inconnue'), { duration: 6000 });
+      } else {
+        toast.success(`Email envoyé à ${(json.recipients as string[]).join(', ')}`, { duration: 5000 });
+      }
+    } catch {
+      toast.error('Erreur réseau lors de l\'envoi de l\'email');
+    }
+  };
+
   const handlePrint = async () => {
+    if (!ideAstreinte) {
+      toast.error('Veuillez choisir une IDE d\'astreinte avant d\'imprimer');
+      return;
+    }
     try {
       if (!areBothLocked) {
         await handleSaveAndLock();
         toast.success('Consignes sauvegardées', { duration: 3000 });
       }
+      // Envoi email en parallèle (non bloquant pour l'impression)
+      sendEmail();
       const notes = notesByFloor[activeFloor] ?? {};
       const currentInfos = infosByFloor[activeFloor] ?? '';
       const pageContentH = 1083;
@@ -817,7 +894,21 @@ export default function ConsignesNuitPage() {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-slate-600 uppercase">IDE d'astreinte</label>
-              <input type="text" placeholder="Nom" value={ideAstreinte} onChange={e => setIdeAstreinte(e.target.value)} disabled={areBothLocked} className="px-2 py-1 border border-slate-300 rounded text-sm disabled:opacity-50" />
+              <select
+                value={ideAstreinte}
+                onChange={e => setIdeAstreinte(e.target.value)}
+                disabled={areBothLocked}
+                className="px-2 py-1 border border-slate-300 rounded text-sm disabled:opacity-50 bg-white"
+              >
+                <option value="">— Sélectionner —</option>
+                {ides.map(ide => (
+                  <option key={ide.nom} value={ide.nom}>{ide.nom}</option>
+                ))}
+                {/* Si la valeur stockée ne correspond à aucun IDE connu */}
+                {ideAstreinte && !ides.find(i => i.nom === ideAstreinte) && (
+                  <option value={ideAstreinte}>{ideAstreinte}</option>
+                )}
+              </select>
             </div>
           </div>
         </div>
@@ -830,7 +921,7 @@ export default function ConsignesNuitPage() {
             archivedDates={archivedDates}
             currentDate={date}
             onSelectDate={d => { setDate(d); setShowArchives(false); }}
-            onDeleteDate={d => { setDeleteConfirm({ date: d }); setDeletePassword(''); setDeleteError(false); }}
+            onDeleteDate={d => setDeleteConfirm({ date: d })}
             onClean={cleanEmptyArchives}
           />
           <button onClick={() => setShowArchives(false)} className="mt-3 text-slate-400 hover:text-slate-700 text-xs underline">
@@ -866,17 +957,11 @@ export default function ConsignesNuitPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
             <h3 className="font-bold text-slate-900 mb-1">Supprimer les consignes</h3>
-            <p className="text-sm text-slate-500 mb-4">{new Date(deleteConfirm.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            <p className="text-xs text-slate-600 mb-3">Code du jour (jjmm) :</p>
-            <input
-              type="password" inputMode="numeric" placeholder="Code du jour" value={deletePassword}
-              onChange={e => { setDeletePassword(e.target.value); setDeleteError(false); }}
-              className={`w-full px-3 py-2 border rounded-lg text-sm mb-1 ${deleteError ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
-              autoFocus onKeyDown={e => e.key === 'Enter' && handleDeleteArchive()}
-            />
-            {deleteError && <p className="text-xs text-red-600 mb-2">Code incorrect.</p>}
-            <div className="flex gap-2 mt-4 justify-end">
-              <button onClick={() => { setDeleteConfirm(null); setDeletePassword(''); setDeleteError(false); }} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
+            <p className="text-sm text-slate-500 mb-5">
+              {new Date(deleteConfirm.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
               <button onClick={handleDeleteArchive} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">Supprimer</button>
             </div>
           </div>

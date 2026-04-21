@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus } from 'lucide-react';
+import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus, Plus } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -402,7 +402,7 @@ export default function ContentionsPage() {
     <>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
       {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white py-6 px-8 shadow-lg border-b border-slate-700">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white py-6 px-8 pl-36 shadow-lg border-b border-slate-700">
         <h1 className="text-3xl font-bold">Gestion des Contentions</h1>
         <p className="text-slate-300 mt-1">Suivi et prescription des contentions par étage</p>
       </div>
@@ -519,6 +519,14 @@ export default function ContentionsPage() {
           <div className="px-6 py-4 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-slate-200 sticky top-0 z-10 flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-bold text-slate-900">Contentions — {activeFloor} ({fichersByFloor.length})</h2>
             <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => {
+                setForm(EMPTY_FORM);
+                setActiveId(null);
+                setResidentLocked(false);
+                setShowModal(true);
+              }} size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Plus className="h-4 w-4" /> Ajouter manuellement
+              </Button>
               <Button onClick={() => setShowImportImageModal(true)} size="sm" variant="outline" className="gap-2 border-blue-400 text-blue-700 hover:bg-blue-100">
                 <ImagePlus className="h-4 w-4" /> Prescription (image)
               </Button>

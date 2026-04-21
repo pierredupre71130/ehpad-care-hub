@@ -6,12 +6,12 @@
  * Prérequis shadcn : npx shadcn@latest add checkbox textarea select
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
   Loader2, UserPlus, Users, AlertTriangle,
-  Stethoscope, Key,
+  Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -62,6 +62,11 @@ interface Resident {
   insuline_soir: boolean;
   anticoagulants: boolean;
   appel_nuit: boolean;
+  // Sortie
+  archived?: boolean;
+  date_sortie?: string;
+  // Photo
+  photo_url?: string;
 }
 
 type FloorFilter = 'TOUS' | 'RDC' | '1ER';
@@ -129,6 +134,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   epargne_intestinale: false, allergie_poisson: false,
   traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
   anticoagulants: false, appel_nuit: false,
+  archived: false, date_sortie: '',
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -236,12 +242,79 @@ function CheckField({
 }
 
 // ─────────────────────────────────────────────────────────────
+// BOUTON UPLOAD PHOTO
+// ─────────────────────────────────────────────────────────────
+
+function ResidentPhotoButton({ resident, onUploaded }: {
+  resident: Resident;
+  onUploaded: (path: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const sb = createClient();
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `${resident.id}.${ext}`;
+      const { error: upErr } = await sb.storage
+        .from('resident-photos')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+      const { error: updErr } = await sb
+        .from('residents').update({ photo_url: path }).eq('id', resident.id);
+      if (updErr) throw new Error(updErr.message);
+      onUploaded(path);
+      toast.success('Photo enregistrée');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        title={resident.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
+        className={cn(
+          'h-8 gap-1.5 text-xs',
+          resident.photo_url
+            ? 'text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
+            : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50'
+        )}
+      >
+        {uploading
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <Camera className="h-3.5 w-3.5" />
+        }
+        <span className="hidden sm:inline">
+          {resident.photo_url ? 'Photo ✓' : 'Photo'}
+        </span>
+      </Button>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // LIGNE RÉSIDENT (mode lecture)
 // ─────────────────────────────────────────────────────────────
 
 function ResidentRow({
-  r, onEdit, dimmed,
-}: { r: Resident; onEdit: () => void; dimmed: boolean }) {
+  r, onEdit, onPhotoUploaded, dimmed,
+}: { r: Resident; onEdit: () => void; onPhotoUploaded: (path: string) => void; dimmed: boolean }) {
   return (
     <div className={cn(
       'flex items-start gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0',
@@ -279,8 +352,9 @@ function ResidentRow({
         )}
       </div>
 
-      {/* Bouton Éditer */}
-      <div className="flex-shrink-0 pt-0.5">
+      {/* Actions */}
+      <div className="flex-shrink-0 pt-0.5 flex items-center gap-1">
+        <ResidentPhotoButton resident={r} onUploaded={onPhotoUploaded} />
         <Button
           variant="ghost"
           size="sm"
@@ -296,6 +370,67 @@ function ResidentRow({
 }
 
 // ─────────────────────────────────────────────────────────────
+// SECTION SORTIE / DÉCÈS
+// ─────────────────────────────────────────────────────────────
+
+function SortieSection({ nomPrenom, onConfirm, disabled }: {
+  nomPrenom: string;
+  onConfirm: (dateSortie: string) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  return (
+    <div className="mt-2 border-t border-red-100">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 mt-3 text-xs text-red-400 hover:text-red-600 transition-colors"
+      >
+        <LogOut className="h-3.5 w-3.5" />
+        Sortie / Décès du résident
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-red-800">
+            Enregistrer la sortie de {nomPrenom}
+          </p>
+          <p className="text-xs text-red-600 leading-relaxed">
+            Le résident sera retiré des listes actives. Son historique de vaccination sera conservé dans la section &laquo;&nbsp;Résidents sortis&nbsp;&raquo;.
+          </p>
+          <div className="flex items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-red-700">Date de sortie</Label>
+              <Input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="h-9 text-sm border-red-300 w-44"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => {
+                if (confirm(`Confirmer la sortie de ${nomPrenom} le ${new Date(date + 'T12:00:00').toLocaleDateString('fr-FR')} ?\n\nCette action est irréversible depuis cette interface.`)) {
+                  onConfirm(date);
+                }
+              }}
+              disabled={disabled || !date}
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white h-9"
+            >
+              <LogOut className="h-4 w-4" /> Confirmer la sortie
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // FORMULAIRE D'ÉDITION INLINE
 // ─────────────────────────────────────────────────────────────
 
@@ -304,6 +439,7 @@ function EditForm({
   roomUnlocked, onUnlockRoom,
   onSave, onCancel,
   saving, isNew,
+  onArchive,
 }: {
   form: Partial<Resident>;
   patch: (u: Partial<Resident>) => void;
@@ -313,6 +449,7 @@ function EditForm({
   onCancel: () => void;
   saving: boolean;
   isNew: boolean;
+  onArchive?: (dateSortie: string) => void;
 }) {
   const headerTitle = isNew
     ? 'Nouveau résident'
@@ -586,6 +723,15 @@ function EditForm({
           </Button>
           <span className="text-xs text-slate-300">* Champs requis</span>
         </div>
+
+        {/* ══ SORTIE DU RÉSIDENT ══════════════════════════════ */}
+        {!isNew && onArchive && (
+          <SortieSection
+            nomPrenom={`${form.title ?? ''} ${(form.last_name ?? '').toUpperCase()} ${form.first_name ?? ''}`.trim()}
+            onConfirm={onArchive}
+            disabled={saving}
+          />
+        )}
       </div>
     </div>
   );
@@ -758,10 +904,92 @@ export default function ResidentsPage() {
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
 
+  /* ── Mutation sortie/archivage ── */
+  const archiveMutation = useMutation({
+    mutationFn: async ({ id, dateSortie }: { id: string; dateSortie: string }) => {
+      const sb = createClient();
+      // Archiver le résident et libérer la chambre (room → '')
+      const { error: rErr } = await sb.from('residents')
+        .update({ archived: true, date_sortie: dateSortie, room: '' })
+        .eq('id', id);
+      if (rErr) throw new Error(rErr.message);
+      // Marquer ses vaccinations comme archivées
+      await sb.from('vaccination')
+        .update({ archived: true })
+        .eq('resident_id', id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
+      toast.success('Résident archivé — données conservées dans l\'historique');
+      setEditingId(null);
+      setEditForm({});
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Mutation libération chambre (résidents déjà archivés) ── */
+  const releaseRoomMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('residents').update({ room: '' }).eq('id', id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      toast.success('Chambre libérée — elle réapparaît dans les listes');
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Mutation suppression définitive résident archivé ── */
+  const deleteArchivedMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      await sb.from('vaccination').delete().eq('resident_id', id);
+      const { error } = await sb.from('residents').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
+      toast.success('Résident supprimé définitivement');
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  const [deleteArchivedTarget, setDeleteArchivedTarget] = useState<{ id: string; nom: string } | null>(null);
+  const [deleteArchivedPwd, setDeleteArchivedPwd] = useState('');
+  const [deleteArchivedPwdError, setDeleteArchivedPwdError] = useState(false);
+
+  const openDeleteArchived = (id: string, nom: string) => {
+    setDeleteArchivedPwd('');
+    setDeleteArchivedPwdError(false);
+    setDeleteArchivedTarget({ id, nom });
+  };
+
+  const handleDeleteArchivedSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (deleteArchivedPwd === 'mapad2022') {
+      deleteArchivedMutation.mutate(deleteArchivedTarget!.id);
+      setDeleteArchivedTarget(null);
+    } else {
+      setDeleteArchivedPwdError(true);
+      setDeleteArchivedPwd('');
+    }
+  };
+
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedResidents = useMemo(() =>
+    residents.filter(r => r.archived).sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'fr')),
+    [residents]
+  );
+
   /* ── Liste filtrée ── */
   const filtered = useMemo(() => {
     return residents
       .filter(r => {
+        if (r.archived) return false; // exclure les résidents sortis
         if (floorFilter !== 'TOUS' && r.floor !== floorFilter) return false;
         if (search.trim()) {
           const q = search.toLowerCase().trim();
@@ -996,12 +1224,18 @@ export default function ResidentsPage() {
                         onUnlockRoom={() => setShowAdminDlg(true)}
                         onSave={handleSave} onCancel={cancelEdit}
                         saving={isSaving}   isNew={false}
+                        onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie })}
                       />
                     </div>
                   ) : (
                     <ResidentRow
                       r={r}
                       onEdit={() => startEdit(r)}
+                      onPhotoUploaded={(path) => {
+                        queryClient.setQueryData(['residents'], (prev: Resident[] = []) =>
+                          prev.map(p => p.id === r.id ? { ...p, photo_url: path } : p)
+                        );
+                      }}
                       dimmed={editingId !== null && editingId !== r.id}
                     />
                   )}
@@ -1018,6 +1252,67 @@ export default function ResidentsPage() {
             {filtered.length > 1 ? 's' : ''}
           </p>
         )}
+
+        {/* ── Résidents sortis ── */}
+        {!isLoading && archivedResidents.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              className="flex items-center gap-2 w-full px-4 py-2.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Résidents sortis / décédés
+              <span className="ml-1 bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 text-[10px]">
+                {archivedResidents.length}
+              </span>
+              <span className="ml-auto">
+                {showArchived ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </span>
+            </button>
+
+            {showArchived && (
+              <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden mt-2">
+                <div className="hidden sm:flex items-center px-4 py-2 bg-amber-50 border-b border-amber-100 text-[10px] font-bold text-amber-500 uppercase tracking-widest gap-3">
+                  <div className="w-14">Ch.</div>
+                  <div className="flex-1">Résident</div>
+                  <div className="w-32">Date de sortie</div>
+                </div>
+                {archivedResidents.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0 text-slate-500">
+                    <div className="w-14 text-sm font-bold text-slate-400">{r.room || '—'}</div>
+                    <div className="flex-1 text-sm">
+                      <span className="font-medium">{r.title} {r.last_name?.toUpperCase()} {r.first_name}</span>
+                    </div>
+                    <div className="text-xs text-slate-400 w-32">
+                      {r.date_sortie
+                        ? `Sorti le ${new Date(r.date_sortie + 'T12:00:00').toLocaleDateString('fr-FR')}`
+                        : 'Date inconnue'}
+                    </div>
+                    {r.room && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Libérer la chambre ${r.room} de ${r.last_name} ${r.first_name} ?\nLa chambre réapparaîtra comme disponible.`))
+                            releaseRoomMutation.mutate(r.id);
+                        }}
+                        className="text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50 px-2 py-1 rounded-lg border border-amber-200 transition-colors flex-shrink-0"
+                        title="Libérer la chambre pour la rendre disponible"
+                      >
+                        Libérer ch. {r.room}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => openDeleteArchived(r.id, `${r.title ?? ''} ${r.last_name?.toUpperCase() ?? ''} ${r.first_name ?? ''}`.trim())}
+                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                      title="Supprimer définitivement"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Dialog déverrouillage numéro de chambre */}
@@ -1026,6 +1321,50 @@ export default function ResidentsPage() {
         onOpenChange={setShowAdminDlg}
         onUnlock={() => setRoomUnlocked(true)}
       />
+
+      {/* ── Modale suppression résident archivé ── */}
+      {deleteArchivedTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-7 w-full max-w-sm">
+            <div className="flex flex-col items-center gap-2 mb-5">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="h-6 w-6 text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-slate-900">Supprimer définitivement</h2>
+              <p className="text-sm text-slate-600 text-center font-medium">{deleteArchivedTarget.nom}</p>
+              <p className="text-xs text-red-500 text-center">Cette action est irréversible. Toutes les données seront effacées.</p>
+            </div>
+            <form onSubmit={handleDeleteArchivedSubmit} className="flex flex-col gap-3">
+              <input
+                type="password"
+                value={deleteArchivedPwd}
+                onChange={e => { setDeleteArchivedPwd(e.target.value); setDeleteArchivedPwdError(false); }}
+                placeholder="Mot de passe administrateur"
+                autoFocus
+                className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400 transition-colors ${
+                  deleteArchivedPwdError ? 'border-red-400 bg-red-50' : 'border-slate-300'
+                }`}
+              />
+              {deleteArchivedPwdError && <p className="text-xs text-red-500">Mot de passe incorrect</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  Supprimer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteArchivedTarget(null)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Dialog médecins */}
       <DoctorsEditDialog

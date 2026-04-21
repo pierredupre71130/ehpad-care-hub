@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, RotateCcw, Loader2, Crosshair, X, ChevronLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { HomeButton } from '@/components/ui/home-button';
+import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
 import { toast } from 'sonner';
 import { PDF_CALIBRATION_DEFAULTS, PdfCalibration, generateBilanPDF, openPdfBlob } from '@/lib/generate-bilan-pdf';
 
@@ -182,6 +183,7 @@ export default function CalibrationPDFBilanPage() {
   };
 
   return (
+    <AdminPasswordGate title="Calibration PDF Bilan" subtitle="Paramètres avancés — accès administrateur">
     <div className="min-h-screen bg-slate-50">
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
@@ -315,5 +317,6 @@ export default function CalibrationPDFBilanPage() {
 
       <HomeButton />
     </div>
+    </AdminPasswordGate>
   );
 }

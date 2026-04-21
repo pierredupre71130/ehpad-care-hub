@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   TestTube2, ChevronDown, ChevronUp, Plus, X, Check, Loader2,
   Printer, ChevronLeft, ChevronRight, Search, Pencil, Trash2, Save,
-  Calendar,
+  Calendar, Lock,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { HomeButton } from '@/components/ui/home-button';
@@ -669,6 +669,26 @@ export default function BilansSanguinsPage() {
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
+  const [calibPwdTarget, setCalibPwdTarget] = useState<string | null>(null);
+  const [calibPwdInput, setCalibPwdInput] = useState('');
+  const [calibPwdError, setCalibPwdError] = useState(false);
+
+  const openCalibWithPassword = (href: string) => {
+    setCalibPwdInput('');
+    setCalibPwdError(false);
+    setCalibPwdTarget(href);
+  };
+
+  const handleCalibPwdSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (calibPwdInput === 'mapad2022') {
+      sessionStorage.setItem('ehpad_admin_unlocked', 'true');
+      window.location.href = calibPwdTarget!;
+    } else {
+      setCalibPwdError(true);
+      setCalibPwdInput('');
+    }
+  };
 
   // ── Queries ──
   const { data: residents = [] } = useQuery<Resident[]>({
@@ -847,14 +867,16 @@ export default function BilansSanguinsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <a href="/calibration-pdf-bilan"
+              <button
+                onClick={() => openCalibWithPassword('/calibration-pdf-bilan')}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors">
-                Calibration PDF
-              </a>
-              <a href="/calibration-examens"
+                <Lock className="h-3 w-3 opacity-70" /> Calibration PDF
+              </button>
+              <button
+                onClick={() => openCalibWithPassword('/calibration-examens')}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors">
-                Calibration examens
-              </a>
+                <Lock className="h-3 w-3 opacity-70" /> Calibration examens
+              </button>
             </div>
           </div>
         </div>
@@ -923,6 +945,51 @@ export default function BilansSanguinsPage() {
       )}
 
       <HomeButton />
+
+      {/* ══ Modale mot de passe Calibration ══ */}
+      {calibPwdTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-7 w-full max-w-xs">
+            <div className="flex flex-col items-center gap-2 mb-5">
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
+                <Lock className="h-6 w-6 text-slate-500" />
+              </div>
+              <h2 className="text-base font-bold text-slate-900">Accès administrateur</h2>
+              <p className="text-xs text-slate-500 text-center">
+                {calibPwdTarget === '/calibration-pdf-bilan' ? 'Calibration PDF Bilan' : 'Calibration des examens'}
+              </p>
+            </div>
+            <form onSubmit={handleCalibPwdSubmit} className="flex flex-col gap-3">
+              <input
+                type="password"
+                value={calibPwdInput}
+                onChange={e => { setCalibPwdInput(e.target.value); setCalibPwdError(false); }}
+                placeholder="Mot de passe"
+                autoFocus
+                className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-slate-400 transition-colors ${
+                  calibPwdError ? 'border-red-400 bg-red-50' : 'border-slate-300'
+                }`}
+              />
+              {calibPwdError && <p className="text-xs text-red-500">Mot de passe incorrect</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  Déverrouiller
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalibPwdTarget(null)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

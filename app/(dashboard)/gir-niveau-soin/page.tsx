@@ -47,13 +47,6 @@ interface PendingChange {
 const GIR_OPTIONS = ['1', '2', '3', '4', 'N/A'];
 const NIVEAU_OPTIONS = ['A', 'B', 'C', 'D', 'En cours'];
 
-function getDailyPassword(): string {
-  const now = new Date();
-  const day   = String(now.getDate()).padStart(2, '0');
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return day + month;
-}
-
 // ─────────────────────────────────────────────────────────────
 // COULEURS
 // ─────────────────────────────────────────────────────────────
@@ -242,11 +235,6 @@ function ConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel
 export default function GIRNiveauSoinPage() {
   const queryClient = useQueryClient();
 
-  // ── Auth mot de passe journalier ──
-  const [pageUnlocked, setPageUnlocked] = useState(false);
-  const [pagePassword, setPagePassword] = useState('');
-  const [passwordError, setPasswordError] = useState(false);
-
   // ── UI state ──
   const [modal, setModal] = useState<ModalType>(null);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -344,54 +332,11 @@ export default function GIRNiveauSoinPage() {
     return v === undefined || v === null;
   }), [sorted, getRec]);
 
-  // ── Password gate ──
-  const tryUnlock = () => {
-    if (pagePassword === getDailyPassword()) {
-      setPageUnlocked(true);
-      setPasswordError(false);
-    } else {
-      setPasswordError(true);
-    }
-  };
-
   if (loadingResidents || loadingNiveaux) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
       </div>
-    );
-  }
-
-  if (!pageUnlocked) {
-    return (
-      <>
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="bg-white rounded-2xl shadow-xl p-8 w-80">
-          <HeartPulse className="h-8 w-8 text-purple-700 mx-auto mb-3" />
-          <h2 className="text-lg font-bold text-slate-800 mb-1 text-center">GIR / Niveau de soin</h2>
-          <p className="text-xs text-slate-400 text-center mb-5">Mot de passe journalier requis</p>
-          <input
-            autoFocus
-            type="password"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2 outline-none focus:border-purple-500 text-center tracking-widest"
-            value={pagePassword}
-            onChange={e => { setPagePassword(e.target.value); setPasswordError(false); }}
-            onKeyDown={e => e.key === 'Enter' && tryUnlock()}
-            placeholder="••••"
-          />
-          {passwordError && (
-            <p className="text-xs text-red-500 mb-2 text-center">Mot de passe incorrect</p>
-          )}
-          <button
-            onClick={tryUnlock}
-            className="w-full bg-purple-800 hover:bg-purple-700 text-white rounded-lg py-2 text-sm font-medium transition-colors"
-          >
-            Accéder
-          </button>
-        </div>
-      </div>
-      <HomeButton />
-      </>
     );
   }
 

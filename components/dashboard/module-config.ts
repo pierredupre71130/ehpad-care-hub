@@ -11,6 +11,7 @@ import {
   Syringe,
   TestTube2,
   Users,
+  BriefcaseMedical,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -20,6 +21,11 @@ export interface ModuleConfig {
   description: string;
   href: string;
   icon: LucideIcon;
+  /** Gradient start color (hex) for the new card design */
+  cardFrom: string;
+  /** Gradient end color (hex) for the new card design */
+  cardTo: string;
+  /** Legacy – kept for backward compat */
   colorClass: string;
   iconBg: string;
   visibleRoles: string[] | null;
@@ -32,6 +38,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'Consignes médicales par étage et section',
     href: '/consignes',
     icon: FileText,
+    cardFrom: '#3b72d8',
+    cardTo: '#1a4db5',
     colorClass: 'border-blue-100 hover:border-blue-300 hover:bg-blue-50/60',
     iconBg: 'bg-blue-100 text-blue-600',
     visibleRoles: null,
@@ -42,8 +50,22 @@ export const MODULES: ModuleConfig[] = [
     description: "Tableau compact pour l'équipe nocturne",
     href: '/consignes-nuit',
     icon: Moon,
+    cardFrom: '#0f7e8e',
+    cardTo: '#074f5c',
     colorClass: 'border-indigo-100 hover:border-indigo-300 hover:bg-indigo-50/60',
     iconBg: 'bg-indigo-100 text-indigo-600',
+    visibleRoles: null,
+  },
+  {
+    id: 'contentions',
+    label: 'Contentions',
+    description: 'Suivi et import des contentions médicales',
+    href: '/contentions',
+    icon: Shield,
+    cardFrom: '#e07820',
+    cardTo: '#b85a05',
+    colorClass: 'border-orange-100 hover:border-orange-300 hover:bg-orange-50/60',
+    iconBg: 'bg-orange-100 text-orange-600',
     visibleRoles: null,
   },
   {
@@ -52,6 +74,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'AS Matin · Soir · Nuit · ASH · IDE',
     href: '/fiches-de-poste',
     icon: ClipboardList,
+    cardFrom: '#2e8b40',
+    cardTo: '#1a6530',
     colorClass: 'border-amber-100 hover:border-amber-300 hover:bg-amber-50/60',
     iconBg: 'bg-amber-100 text-amber-600',
     visibleRoles: null,
@@ -62,6 +86,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'Régimes alimentaires et allergies',
     href: '/etiquettes-repas',
     icon: UtensilsCrossed,
+    cardFrom: '#8b30d4',
+    cardTo: '#6018a8',
     colorClass: 'border-green-100 hover:border-green-300 hover:bg-green-50/60',
     iconBg: 'bg-green-100 text-green-600',
     visibleRoles: null,
@@ -72,39 +98,11 @@ export const MODULES: ModuleConfig[] = [
     description: "Projets d'Accompagnement Personnalisé",
     href: '/pap',
     icon: Heart,
+    cardFrom: '#d63052',
+    cardTo: '#a81535',
     colorClass: 'border-rose-100 hover:border-rose-300 hover:bg-rose-50/60',
     iconBg: 'bg-rose-100 text-rose-600',
     visibleRoles: ['psychologue', 'cadre', 'aide-soignante', 'as', 'admin'],
-  },
-  {
-    id: 'contentions',
-    label: 'Contentions',
-    description: 'Suivi et import des contentions médicales',
-    href: '/contentions',
-    icon: Shield,
-    colorClass: 'border-orange-100 hover:border-orange-300 hover:bg-orange-50/60',
-    iconBg: 'bg-orange-100 text-orange-600',
-    visibleRoles: null,
-  },
-  {
-    id: 'surveillancePoids',
-    label: 'Surveillance du Poids',
-    description: 'Bilan nutritionnel annuel et suppléments',
-    href: '/surveillance-poids',
-    icon: Scale,
-    colorClass: 'border-teal-100 hover:border-teal-300 hover:bg-teal-50/60',
-    iconBg: 'bg-teal-100 text-teal-600',
-    visibleRoles: ['dieteticienne', 'admin'],
-  },
-  {
-    id: 'girNiveauSoin',
-    label: 'GIR & Niveaux de Soin',
-    description: 'Classification GIR 1-4 et niveaux A-D',
-    href: '/gir-niveau-soin',
-    icon: Stethoscope,
-    colorClass: 'border-cyan-100 hover:border-cyan-300 hover:bg-cyan-50/60',
-    iconBg: 'bg-cyan-100 text-cyan-600',
-    visibleRoles: null,
   },
   {
     id: 'morphiniques',
@@ -112,6 +110,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'Fiches de dispensation des morphiniques',
     href: '/morphiniques',
     icon: Pill,
+    cardFrom: '#7725cc',
+    cardTo: '#5210a0',
     colorClass: 'border-purple-100 hover:border-purple-300 hover:bg-purple-50/60',
     iconBg: 'bg-purple-100 text-purple-600',
     visibleRoles: null,
@@ -122,6 +122,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'Suivi Covid & Grippe 2026',
     href: '/vaccination',
     icon: Syringe,
+    cardFrom: '#0d9080',
+    cardTo: '#087060',
     colorClass: 'border-emerald-100 hover:border-emerald-300 hover:bg-emerald-50/60',
     iconBg: 'bg-emerald-100 text-emerald-600',
     visibleRoles: null,
@@ -132,8 +134,46 @@ export const MODULES: ModuleConfig[] = [
     description: 'Catalogue UBILAB · Planning annuel',
     href: '/bilans-sanguins',
     icon: TestTube2,
+    cardFrom: '#d84040',
+    cardTo: '#b01818',
     colorClass: 'border-red-100 hover:border-red-300 hover:bg-red-50/60',
     iconBg: 'bg-red-100 text-red-600',
+    visibleRoles: null,
+  },
+  {
+    id: 'surveillancePoids',
+    label: 'Surveillance du Poids',
+    description: 'Bilan nutritionnel annuel et suppléments',
+    href: '/surveillance-poids',
+    icon: Scale,
+    cardFrom: '#d48010',
+    cardTo: '#a85800',
+    colorClass: 'border-teal-100 hover:border-teal-300 hover:bg-teal-50/60',
+    iconBg: 'bg-teal-100 text-teal-600',
+    visibleRoles: ['dieteticienne', 'admin'],
+  },
+  {
+    id: 'priseEnCharge',
+    label: 'Prises en Charge',
+    description: 'Prises en charge personnalisées des résidents',
+    href: '/prises-en-charge',
+    icon: BriefcaseMedical,
+    cardFrom: '#c2640a',
+    cardTo: '#954a00',
+    colorClass: 'border-amber-100 hover:border-amber-300 hover:bg-amber-50/60',
+    iconBg: 'bg-amber-100 text-amber-600',
+    visibleRoles: null,
+  },
+  {
+    id: 'girNiveauSoin',
+    label: 'GIR & Niveaux de Soin',
+    description: 'Classification GIR 1-4 et niveaux A-D',
+    href: '/gir-niveau-soin',
+    icon: Stethoscope,
+    cardFrom: '#0280c0',
+    cardTo: '#015c90',
+    colorClass: 'border-cyan-100 hover:border-cyan-300 hover:bg-cyan-50/60',
+    iconBg: 'bg-cyan-100 text-cyan-600',
     visibleRoles: null,
   },
   {
@@ -142,6 +182,8 @@ export const MODULES: ModuleConfig[] = [
     description: 'Données, régimes et informations résidents',
     href: '/residents',
     icon: Users,
+    cardFrom: '#4a5568',
+    cardTo: '#2d3748',
     colorClass: 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60',
     iconBg: 'bg-slate-100 text-slate-600',
     visibleRoles: null,
@@ -157,3 +199,6 @@ export const ROLE_MODULES: Record<string, string[] | null> = {
   as: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
   ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions'],
 };
+
+/** IDs shown in the bottom nav bar (excluded from the main grid) */
+export const BOTTOM_NAV_IDS = ['residents', 'girNiveauSoin'];

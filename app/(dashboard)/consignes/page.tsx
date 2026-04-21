@@ -70,11 +70,6 @@ const DEFAULT_PRINT: PrintSettings = {
 
 const GIR_ROMAN: Record<string, string> = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' };
 
-function getDailyPassword(): string {
-  const now = new Date();
-  return String(now.getDate()).padStart(2, '0') + String(now.getMonth() + 1).padStart(2, '0');
-}
-
 function calcAge(dateStr: string): number | null {
   if (!dateStr) return null;
   try {
@@ -408,9 +403,10 @@ export default function ConsignesPage() {
 
   const [activeFloor, setActiveFloor] = useState<'RDC' | '1ER'>('RDC');
   const [settingsLocked, setSettingsLocked] = useState(true);
-  const [showPwd, setShowPwd] = useState(false);
+  const [showPwdDialog, setShowPwdDialog] = useState(false);
   const [pwdInput, setPwdInput] = useState('');
   const [pwdError, setPwdError] = useState(false);
+  const [showPwdText, setShowPwdText] = useState(false);
   const [localPrint, setLocalPrint] = useState<PrintSettings>(DEFAULT_PRINT);
 
   // ── Data ──
@@ -468,17 +464,6 @@ export default function ConsignesPage() {
     savePrintSettings(next);
   };
 
-  const handleUnlockSettings = () => {
-    if (pwdInput === getDailyPassword()) {
-      setSettingsLocked(false);
-      setShowPwd(false);
-      setPwdInput('');
-      setPwdError(false);
-    } else {
-      setPwdError(true);
-    }
-  };
-
   // ── Derived data ──
   const niveauSoinMap = useMemo(() => {
     const map: Record<string, NiveauSoinRecord> = {};
@@ -510,6 +495,31 @@ export default function ConsignesPage() {
     );
   }
 
+  const handleSettingsClick = () => {
+    if (!settingsLocked) {
+      // Already open → close it
+      setSettingsLocked(true);
+    } else {
+      // Locked → ask for password
+      setPwdInput('');
+      setPwdError(false);
+      setShowPwdDialog(true);
+    }
+  };
+
+  const handlePwdSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdInput === 'mapad2022') {
+      setSettingsLocked(false);
+      setShowPwdDialog(false);
+      setPwdInput('');
+      setPwdError(false);
+    } else {
+      setPwdError(true);
+      setPwdInput('');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
 
@@ -538,45 +548,18 @@ export default function ConsignesPage() {
                 ))}
               </div>
 
-              {/* Verrou paramètres */}
-              <div className="relative">
-                {settingsLocked ? (
-                  <>
-                    <button
-                      onClick={() => { setShowPwd(!showPwd); setPwdError(false); setPwdInput(''); }}
-                      className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded-lg px-3 py-1.5 text-xs text-amber-700 font-medium hover:bg-amber-100 transition-colors"
-                    >
-                      <Lock className="h-3.5 w-3.5" /> Paramètres impression
-                    </button>
-                    {showPwd && (
-                      <div className="absolute top-10 right-0 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-4 w-64">
-                        <p className="text-xs text-slate-700 font-medium mb-2">Mot de passe journalier</p>
-                        <input
-                          autoFocus
-                          type="password"
-                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2 outline-none focus:border-slate-500 text-center tracking-widest"
-                          value={pwdInput}
-                          onChange={e => { setPwdInput(e.target.value); setPwdError(false); }}
-                          onKeyDown={e => e.key === 'Enter' && handleUnlockSettings()}
-                          placeholder="••••"
-                        />
-                        {pwdError && <p className="text-xs text-red-500 mb-2 text-center">Code incorrect</p>}
-                        <button
-                          onClick={handleUnlockSettings}
-                          className="w-full bg-slate-800 hover:bg-slate-700 text-white rounded-lg py-1.5 text-sm font-medium transition-colors"
-                        >Déverrouiller</button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setSettingsLocked(true)}
-                    className="flex items-center gap-1.5 bg-green-50 border border-green-300 rounded-lg px-3 py-1.5 text-xs text-green-700 font-medium hover:bg-green-100 transition-colors"
-                  >
-                    <Unlock className="h-3.5 w-3.5" /> Paramètres ouverts
-                  </button>
-                )}
-              </div>
+              {/* Toggle paramètres */}
+              <button
+                onClick={handleSettingsClick}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border ${
+                  settingsLocked
+                    ? 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-slate-100'
+                    : 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
+                }`}
+              >
+                {settingsLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                Paramètres impression
+              </button>
 
               <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
                 <Printer className="h-4 w-4" /> Imprimer
@@ -726,6 +709,59 @@ export default function ConsignesPage() {
         </div>
       </div>
       <HomeButton />
+
+      {/* ══ Modale mot de passe Paramètres impression ══ */}
+      {showPwdDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-7 w-full max-w-xs">
+            <div className="flex flex-col items-center gap-2 mb-5">
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center">
+                <Lock className="h-6 w-6 text-slate-500" />
+              </div>
+              <h2 className="text-base font-bold text-slate-900">Paramètres impression</h2>
+              <p className="text-xs text-slate-500 text-center">Entrez le mot de passe administrateur</p>
+            </div>
+            <form onSubmit={handlePwdSubmit} className="flex flex-col gap-3">
+              <div className="relative">
+                <input
+                  type={showPwdText ? 'text' : 'password'}
+                  value={pwdInput}
+                  onChange={e => { setPwdInput(e.target.value); setPwdError(false); }}
+                  placeholder="Mot de passe"
+                  autoFocus
+                  className={`w-full border rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-slate-400 transition-colors ${
+                    pwdError ? 'border-red-400 bg-red-50' : 'border-slate-300'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwdText(v => !v)}
+                  tabIndex={-1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPwdText ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                </button>
+              </div>
+              {pwdError && <p className="text-xs text-red-500">Mot de passe incorrect</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  Déverrouiller
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPwdDialog(false)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

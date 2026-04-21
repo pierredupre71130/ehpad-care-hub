@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Lock } from 'lucide-react';
+import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -9,10 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-
-const ADMIN_PASSWORD = 'mapad2022';
+import { PhoneCall } from 'lucide-react';
 
 interface AdminUnlockDialogProps {
   open: boolean;
@@ -25,67 +21,44 @@ export function AdminUnlockDialog({
   onOpenChange,
   onUnlock,
 }: AdminUnlockDialogProps) {
-  const [value, setValue] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (value === ADMIN_PASSWORD) {
-      onUnlock();
-      onOpenChange(false);
-      setValue('');
-      setError('');
-    } else {
-      setError('Mot de passe incorrect.');
-      setValue('');
-    }
+  const handleUnlock = () => {
+    onUnlock();
+    onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Lock className="h-4 w-4 text-slate-500" />
-            Déverrouillage administrateur
-          </DialogTitle>
+          <DialogTitle className="text-base">Déverrouillage administrateur</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-          <div className="space-y-1.5">
-            <Label htmlFor="admin-pwd" className="text-sm text-slate-600">
-              Mot de passe
-            </Label>
-            <Input
-              id="admin-pwd"
-              type="password"
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError('');
-              }}
-              autoFocus
-              placeholder="••••••••"
-              className="h-10"
-            />
-            {error && <p className="text-xs text-red-600">{error}</p>}
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" className="flex-1">
-              Déverrouiller
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                onOpenChange(false);
-                setValue('');
-                setError('');
-              }}
-            >
-              Annuler
-            </Button>
-          </div>
-        </form>
+        <p className="text-sm text-slate-500 pt-1">
+          Voulez-vous accéder aux paramètres administrateur ?
+        </p>
+        <div className="flex gap-2 pt-2">
+          <Button onClick={handleUnlock} className="flex-1">
+            Déverrouiller
+          </Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Annuler
+          </Button>
+        </div>
+        <div className="border-t border-slate-100 pt-3 mt-1">
+          <p className="text-xs text-slate-400 mb-2 uppercase font-semibold tracking-wide">Paramètres</p>
+          <Link
+            href="/astreinte-settings"
+            onClick={() => onOpenChange(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700 font-medium"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+              <PhoneCall className="h-4 w-4 text-indigo-600" />
+            </div>
+            <div>
+              <div>Astreintes & Emails</div>
+              <div className="text-xs text-slate-400 font-normal">IDEs, email cadre, Resend</div>
+            </div>
+          </Link>
+        </div>
       </DialogContent>
     </Dialog>
   );
