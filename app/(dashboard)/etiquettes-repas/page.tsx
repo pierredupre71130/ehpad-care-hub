@@ -46,7 +46,7 @@ async function fetchResidents(): Promise<Resident[]> {
       .createSignedUrls(withPhotos.map(r => r.photo_url!), 3600);
     if (signed) {
       const urlMap: Record<string, string> = {};
-      signed.forEach(s => { if (s.signedUrl) urlMap[s.path] = s.signedUrl; });
+      signed.forEach(s => { if (s.signedUrl && s.path) urlMap[s.path] = s.signedUrl; });
       return residents.map(r =>
         r.photo_url && urlMap[r.photo_url] ? { ...r, photo_url: urlMap[r.photo_url] } : r
       );
