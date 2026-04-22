@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/api-auth';
 
-// ── PATCH /api/admin/users/[id] — modifie rôle / nom ─────────────────────────
+// ── PATCH /api/admin/users/[id] — modifie rôle / nom / mot de passe ──────────
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const sb = await createClient();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const { response } = await requireAdmin();
+  if (response) return response;
 
   const { id } = await params;
   const body = await req.json();
@@ -21,19 +20,17 @@ export async function PATCH(
 
   const admin = createAdminClient();
 
-  // Mise à jour mot de passe si fourni
   if (password) {
     const { error } = await admin.auth.admin.updateUserById(id, { password });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  // Mise à jour profil
-  const update: Record<string, string> = {};
-  if (role) update.role = role;
-  if (display_name !== undefined) update.display_name = display_name;
+  const upsertData: Record<string, string> = { id };
+  if (role) upsertData.role = role;
+  if (display_name !== undefined) upsertData.display_name = display_name;
 
-  if (Object.keys(update).length > 0) {
-    await admin.from('profiles').update(update).eq('id', id);
+  if (Object.keys(upsertData).length > 1) {
+    await admin.from('profiles').upsert(upsertData, { onConflict: 'id' });
   }
 
   return NextResponse.json({ success: true });
@@ -44,9 +41,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const sb = await createClient();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const { response } = await requireAdmin();
+  if (response) return response;
 
   const { id } = await params;
   const admin = createAdminClient();

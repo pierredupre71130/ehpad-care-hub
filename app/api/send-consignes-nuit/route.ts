@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { createClient } from '@/lib/supabase/server';
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
@@ -11,6 +12,11 @@ interface ConsigneItem {
 }
 
 export async function POST(req: NextRequest) {
+  // Vérification : utilisateur connecté requis pour envoyer des données médicales
+  const sb = await createClient();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+
   try {
     const { date, ideNom, ideEmail, cadreEmail, consignes } = await req.json() as {
       date: string;

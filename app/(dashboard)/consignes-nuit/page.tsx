@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
+import { useAuth } from '@/lib/auth-context';
 import {
   Lock, FolderOpen, Printer, Loader2, ChevronDown, X,
   AlertTriangle, PhoneCall, Pill, Moon,
@@ -519,6 +520,8 @@ const EMPTY_CONSIGNES: ConsigneNuit[] = [];
 
 export default function ConsignesNuitPage() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [notesByFloor, setNotesByFloor] = useState<Record<string, Record<string, string>>>({ RDC: {}, '1ER': {} });
   const [infosByFloor, setInfosByFloor] = useState<Record<string, string>>({ RDC: '', '1ER': '' });
@@ -527,6 +530,7 @@ export default function ConsignesNuitPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showArchives, setShowArchives] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
+  const [sendCadre, setSendCadre] = useState(false); // admin : désactivé par défaut
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -833,7 +837,9 @@ export default function ConsignesNuitPage() {
 
     const ideConfig = ides.find(i => i.nom === ideAstreinte);
     const ideEmail = ideConfig?.email ?? '';
-    const cadreEmail = astreinteSettings?.cadreEmail ?? '';
+    // Non-admin : toujours envoyer au cadre ; admin : selon le toggle
+    const effectiveSendCadre = !isAdmin || sendCadre;
+    const cadreEmail = effectiveSendCadre ? (astreinteSettings?.cadreEmail ?? '') : '';
 
     try {
       const res = await fetch('/api/send-consignes-nuit', {
@@ -1019,6 +1025,42 @@ export default function ConsignesNuitPage() {
               >
                 <Printer className="h-4 w-4" /> Imprimer (test)
               </Button>
+
+              {/* Toggle cadre en copie */}
+              {isAdmin ? (
+                /* Admin : interactif, désactivé par défaut */
+                <button
+                  type="button"
+                  onClick={() => setSendCadre(v => !v)}
+                  title={sendCadre ? 'Cadre en copie — cliquer pour désactiver' : 'Cadre non inclus — cliquer pour activer'}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium"
+                  style={sendCadre
+                    ? { background: 'rgba(255,255,255,0.22)', borderColor: 'rgba(255,255,255,0.35)', color: 'white' }
+                    : { background: 'rgba(0,0,0,0.2)', borderColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.45)' }
+                  }
+                >
+                  <span className="relative inline-flex items-center flex-shrink-0" style={{ width: 28, height: 16 }}>
+                    <span className="absolute inset-0 rounded-full transition-colors"
+                      style={{ background: sendCadre ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.15)' }} />
+                    <span className="absolute w-3 h-3 rounded-full bg-white shadow transition-transform"
+                      style={{ transform: sendCadre ? 'translateX(14px)' : 'translateX(2px)', top: 2 }} />
+                  </span>
+                  <span>Cadre en copie</span>
+                </button>
+              ) : (
+                /* Autres comptes : toujours ON, non modifiable */
+                <span
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-default"
+                  style={{ background: 'rgba(255,255,255,0.22)', borderColor: 'rgba(255,255,255,0.35)', color: 'white' }}
+                  title="Le mail est toujours envoyé au cadre"
+                >
+                  <span className="relative inline-flex items-center flex-shrink-0" style={{ width: 28, height: 16 }}>
+                    <span className="absolute inset-0 rounded-full" style={{ background: 'rgba(255,255,255,0.5)' }} />
+                    <span className="absolute w-3 h-3 rounded-full bg-white shadow" style={{ transform: 'translateX(14px)', top: 2 }} />
+                  </span>
+                  <span>Mail au cadre</span>
+                </span>
+              )}
 
               <Button
                 variant="ghost"

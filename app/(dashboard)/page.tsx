@@ -108,13 +108,15 @@ function CaduceusIcon() {
 // ── Sélecteur de rôle compact ─────────────────────────────────────────────────
 
 const ROLES = [
-  { value: 'all', label: 'Tous les modules' },
-  { value: 'cadre', label: 'Cadre de santé' },
+  { value: 'all',            label: 'Tous les modules' },
+  { value: 'cadre',          label: 'Cadre de santé' },
   { value: 'aide-soignante', label: 'Aide-soignant(e)' },
-  { value: 'as', label: 'ASH' },
-  { value: 'ide', label: 'IDE' },
-  { value: 'psychologue', label: 'Psychologue' },
-  { value: 'dieteticienne', label: 'Diététicienne' },
+  { value: 'as',             label: 'ASH' },
+  { value: 'ide',            label: 'IDE' },
+  { value: 'psychologue',    label: 'Psychologue' },
+  { value: 'dieteticienne',  label: 'Diététicienne' },
+  { value: 'secretaire',     label: 'Secrétaire' },
+  { value: 'medecin',        label: 'Médecin' },
 ];
 
 function RoleDropdown({ currentRole, onChange }: { currentRole: string; onChange: (r: string) => void }) {

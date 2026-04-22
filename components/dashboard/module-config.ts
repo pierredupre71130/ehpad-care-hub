@@ -198,6 +198,8 @@ export const ROLE_MODULES: Record<string, string[] | null> = {
   'aide-soignante': ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
   as: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
   ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions'],
+  secretaire: ['residents'],
+  medecin: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'pap', 'surveillancePoids'],
 };
 
 /** IDs shown in the bottom nav bar (excluded from the main grid) */

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Users, Home, UserPlus, Trash2, Pencil, Eye, EyeOff,
   Loader2, Check, X, ShieldAlert, KeyRound, ChevronDown,
-  Wand2, Copy, ClipboardCheck,
+  Wand2, Copy, ClipboardCheck, AlertTriangle,
 } from 'lucide-react';
 import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
 import { CONFIGURABLE_ROLES } from '@/lib/role-permissions';
@@ -156,8 +156,9 @@ interface AppUser {
   email: string;
   created_at: string;
   last_sign_in_at: string | null;
-  role: string;
+  role: string | null;
   display_name: string;
+  has_profile: boolean;
 }
 
 // ── Role helpers ──────────────────────────────────────────────────────────────
@@ -167,11 +168,21 @@ const ALL_ROLES = [
   ...CONFIGURABLE_ROLES.map(r => ({ value: r.value, label: r.label, color: r.color })),
 ];
 
-function getRoleStyle(role: string) {
+function getRoleStyle(role: string | null) {
+  if (!role) return { label: 'Sans profil', color: '#94a3b8' };
   return ALL_ROLES.find(r => r.value === role) ?? { label: role, color: '#64748b' };
 }
 
-function RoleBadge({ role }: { role: string }) {
+function RoleBadgeNoProfile() {
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+      <AlertTriangle className="h-3 w-3" /> Profil à configurer
+    </span>
+  );
+}
+
+function RoleBadge({ role }: { role: string | null }) {
+  if (!role) return <RoleBadgeNoProfile />;
   const r = getRoleStyle(role);
   return (
     <span
@@ -183,7 +194,7 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-function Avatar({ name, email, color }: { name: string; email: string; color: string }) {
+function Avatar({ name, email, color }: { name: string; email: string; color: string | undefined }) {
   const initials = name
     ? name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
     : email.slice(0, 2).toUpperCase();
@@ -577,7 +588,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 function EditUserModal({ user, onClose, onSaved }: { user: AppUser; onClose: () => void; onSaved: () => void }) {
   const [display_name, setDisplayName] = useState(user.display_name);
-  const [role, setRole] = useState(user.role);
+  const [role, setRole] = useState(user.role ?? 'ide');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
 

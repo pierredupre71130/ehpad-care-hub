@@ -15,6 +15,8 @@ export const CONFIGURABLE_ROLES: {
   { value: 'ide',            label: 'IDE',               shortLabel: 'IDE',    color: '#d84040' },
   { value: 'psychologue',    label: 'Psychologue',       shortLabel: 'Psy',    color: '#d63052' },
   { value: 'dieteticienne',  label: 'Diététicienne',     shortLabel: 'Diét.',  color: '#d48010' },
+  { value: 'secretaire',     label: 'Secrétaire',        shortLabel: 'Secr.',  color: '#7c3aed' },
+  { value: 'medecin',        label: 'Médecin',           shortLabel: 'Méd.',   color: '#0369a1' },
 ];
 
 export function getDefaultPermissions(): RolePermissions {

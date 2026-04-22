@@ -5,7 +5,9 @@ export type UserRole =
   | 'dieteticienne'
   | 'aide-soignante'
   | 'as'
-  | 'ide';
+  | 'ide'
+  | 'secretaire'
+  | 'medecin';
 
 export interface UserProfile {
   id: string;
