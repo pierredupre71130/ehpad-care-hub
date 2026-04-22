@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList } from 'lucide-react';
+import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
@@ -164,6 +164,7 @@ export default function DashboardPage() {
   const [currentRole, setCurrentRole] = useState<string>('all');
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
+  const [showRgpdModal, setShowRgpdModal] = useState(false);
 
   // Redirection si non authentifié
   useEffect(() => {
@@ -356,6 +357,17 @@ export default function DashboardPage() {
             </button>
           )}
 
+          {/* Bouton RGPD — visible par tous */}
+          <button
+            onClick={() => setShowRgpdModal(true)}
+            className="flex flex-col items-center gap-1 px-4 py-3 text-emerald-300 hover:text-emerald-200 transition-colors group"
+          >
+            <div className="w-8 h-8 rounded-full bg-emerald-500/25 group-hover:bg-emerald-500/40 flex items-center justify-center transition-colors ring-1 ring-emerald-400/40">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] font-semibold text-center leading-tight">Sécurité<br/>& RGPD</span>
+          </button>
+
           <button
             onClick={signOut}
             className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-red-400 transition-colors group"
@@ -375,6 +387,126 @@ export default function DashboardPage() {
         onOpenChange={setShowAdminDialog}
         onUnlock={() => setIsAdminMode(v => !v)}
       />
+
+      {/* ── Modale Sécurité & RGPD ── */}
+      {showRgpdModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: 'rgba(10,20,50,0.7)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowRgpdModal(false)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 py-4 flex items-center gap-3 flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #1a3560, #0e6e80)' }}>
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <ShieldCheck className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-base font-bold text-white">Sécurisation & RGPD</h2>
+                <p className="text-xs text-white/70">EHPAD Care Hub — Résidence La Fourrier</p>
+              </div>
+              <button onClick={() => setShowRgpdModal(false)}
+                className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors">
+                <X className="h-4 w-4 text-white" />
+              </button>
+            </div>
+
+            {/* Contenu scrollable */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Cette application traite des données médicales sensibles. Les mesures suivantes ont été mises en place pour garantir leur sécurité et la conformité au Règlement Général sur la Protection des Données (RGPD — UE 2016/679).
+              </p>
+
+              {/* Mesures */}
+              {[
+                {
+                  icon: <Clock className="h-4 w-4" />,
+                  color: '#f59e0b',
+                  title: 'Déconnexion automatique',
+                  desc: 'La session se ferme automatiquement après 30 minutes d\'inactivité. Un avertissement apparaît 2 minutes avant pour permettre de rester connecté.',
+                },
+                {
+                  icon: <Lock className="h-4 w-4" />,
+                  color: '#3b72d8',
+                  title: 'Contrôle d\'accès par rôle',
+                  desc: 'Chaque utilisateur ne voit que les modules correspondant à son rôle (IDE, cadre, aide-soignant, médecin…). Les routes administratives sont protégées côté serveur.',
+                },
+                {
+                  icon: <ShieldCheck className="h-4 w-4" />,
+                  color: '#0e6e80',
+                  title: 'En-têtes de sécurité HTTP',
+                  desc: 'Protection contre le clickjacking (X-Frame-Options), le sniffing MIME, et forçage HTTPS en production. Une politique de sécurité du contenu (CSP) limite les sources autorisées.',
+                },
+                {
+                  icon: <ScrollText className="h-4 w-4" />,
+                  color: '#d97706',
+                  title: 'Journal d\'audit',
+                  desc: 'Toutes les actions sensibles sont tracées : connexions, déconnexions, envois d\'emails, créations et modifications de comptes utilisateurs.',
+                },
+                {
+                  icon: <Database className="h-4 w-4" />,
+                  color: '#7c3aed',
+                  title: 'Sécurité des données (RLS)',
+                  desc: 'La sécurité au niveau des lignes (Row Level Security) est activée sur toutes les tables Supabase. Seuls les utilisateurs authentifiés peuvent accéder aux données.',
+                },
+                {
+                  icon: <Scale className="h-4 w-4" />,
+                  color: '#16a34a',
+                  title: 'Droits RGPD',
+                  desc: 'L\'administrateur peut exporter l\'intégralité des données d\'un résident (Art. 15 — droit d\'accès) ou les anonymiser sur demande (Art. 17 — droit à l\'effacement), tout en respectant l\'obligation légale de conservation des dossiers médicaux (20 ans — Art. R.1112-7 CSP).',
+                },
+                {
+                  icon: <FileCheck className="h-4 w-4" />,
+                  color: '#0369a1',
+                  title: 'Chiffrement & hébergement',
+                  desc: 'Les données sont hébergées sur Supabase (infrastructure certifiée SOC 2 Type II) avec chiffrement en transit (TLS 1.3) et au repos. L\'application est déployée sur Vercel avec HTTPS forcé.',
+                },
+              ].map((item, i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{ background: item.color + '18', color: item.color }}>
+                    {item.icon}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Contact */}
+              <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Pour toute question relative à la sécurité ou à vos droits RGPD, contactez l&apos;administrateur de l&apos;application :
+                </p>
+                <a
+                  href="mailto:pierre.dupre@ch-paray.fr"
+                  className="text-sm font-semibold text-blue-600 hover:text-blue-700 mt-1 flex items-center gap-1"
+                >
+                  pierre.dupre@ch-paray.fr
+                </a>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-slate-100 flex-shrink-0">
+              <button
+                onClick={() => setShowRgpdModal(false)}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+                style={{ background: 'linear-gradient(135deg, #1a3560, #0e4a7a)' }}
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
