@@ -45,10 +45,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
           fetchProfile(session.user.id);
+          // Log connexion
+          if (event === 'SIGNED_IN') {
+            try {
+              await fetch('/api/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'login' }),
+              });
+            } catch { /* silencieux */ }
+          }
         } else {
           setProfile(null);
         }
@@ -61,6 +71,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     const supabase = createClient();
+    // Log avant la déconnexion (après on n'est plus auth)
+    try {
+      await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'logout' }),
+      });
+    } catch { /* silencieux */ }
     await supabase.auth.signOut();
   };
 

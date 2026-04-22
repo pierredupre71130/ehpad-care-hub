@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { PhoneCall, ShieldCheck, UserCog } from 'lucide-react';
+import { PhoneCall, ShieldCheck, UserCog, ScrollText } from 'lucide-react';
 
 interface AdminUnlockDialogProps {
   open: boolean;
@@ -82,6 +82,19 @@ export function AdminUnlockDialog({
             <div>
               <div>Gestion des Utilisateurs</div>
               <div className="text-xs text-slate-400 font-normal">Comptes, rôles, mots de passe</div>
+            </div>
+          </Link>
+          <Link
+            href="/admin-audit"
+            onClick={() => onOpenChange(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700 font-medium"
+          >
+            <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <ScrollText className="h-4 w-4 text-orange-600" />
+            </div>
+            <div>
+              <div>Journal d&apos;audit</div>
+              <div className="text-xs text-slate-400 font-normal">Traçabilité des actions RGPD</div>
             </div>
           </Link>
         </div>

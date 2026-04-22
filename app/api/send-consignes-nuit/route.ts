@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
@@ -119,6 +120,16 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Audit
+    const admin = createAdminClient();
+    await admin.from('audit_logs').insert({
+      user_id: user.id,
+      user_email: user.email ?? null,
+      action: 'consignes_email_sent',
+      resource: 'consignes_nuit',
+      details: { date, recipients: to, resident_count: consignes.length, ide: ideNom },
+    });
 
     return NextResponse.json({ ok: true, recipients: to });
   } catch (err: unknown) {

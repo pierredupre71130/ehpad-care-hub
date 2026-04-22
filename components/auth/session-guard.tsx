@@ -52,7 +52,14 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
       setShowWarning(true);
       startCountdown();
       // Déconnexion forcée à 30 min
-      timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = setTimeout(async () => {
+        try {
+          await fetch('/api/audit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'session_timeout', details: { reason: 'inactivity_30min' } }),
+          });
+        } catch { /* silencieux */ }
         signOut();
       }, WARNING_MS);
     }, WARN_AT_MS);

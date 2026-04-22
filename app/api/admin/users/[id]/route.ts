@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/api-auth';
 
 // ── PATCH /api/admin/users/[id] — modifie rôle / nom / mot de passe ──────────
@@ -33,6 +34,16 @@ export async function PATCH(
     await admin.from('profiles').upsert(upsertData, { onConflict: 'id' });
   }
 
+  // Audit
+  const { data: { user: adminUser } } = await (await createClient()).auth.getUser();
+  await admin.from('audit_logs').insert({
+    user_id: adminUser?.id ?? null,
+    user_email: adminUser?.email ?? null,
+    action: 'user_update',
+    resource: 'users',
+    details: { target_user_id: id, changes: { role, display_name, password_changed: !!password } },
+  });
+
   return NextResponse.json({ success: true });
 }
 
@@ -51,6 +62,16 @@ export async function DELETE(
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   await admin.from('profiles').delete().eq('id', id);
+
+  // Audit
+  const { data: { user: adminUser } } = await (await createClient()).auth.getUser();
+  await admin.from('audit_logs').insert({
+    user_id: adminUser?.id ?? null,
+    user_email: adminUser?.email ?? null,
+    action: 'user_delete',
+    resource: 'users',
+    details: { deleted_user_id: id },
+  });
 
   return NextResponse.json({ success: true });
 }

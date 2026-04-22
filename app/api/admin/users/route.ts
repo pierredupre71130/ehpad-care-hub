@@ -64,5 +64,15 @@ export async function POST(req: NextRequest) {
     display_name: display_name || null,
   }, { onConflict: 'id' });
 
+  // Audit
+  const { data: { user: adminUser } } = await (await createClient()).auth.getUser();
+  await admin.from('audit_logs').insert({
+    user_id: adminUser?.id ?? null,
+    user_email: adminUser?.email ?? null,
+    action: 'user_create',
+    resource: 'users',
+    details: { created_email: email, role, display_name },
+  });
+
   return NextResponse.json({ id: newId, email, role, display_name });
 }
