@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -50,8 +51,11 @@ export async function GET(req: NextRequest) {
   ]);
 
   // Audit
-  const { data: { user } } = await admin.auth.admin.listUsers({ perPage: 1 });
+  const sb = await createClient();
+  const { data: { user } } = await sb.auth.getUser();
   await admin.from('audit_logs').insert({
+    user_id: user?.id ?? null,
+    user_email: user?.email ?? null,
     action: 'rgpd_export',
     resource: 'residents',
     details: { resident_id: residentId, resident_name: resident ? `${resident.last_name} ${resident.first_name ?? ''}`.trim() : residentId },
