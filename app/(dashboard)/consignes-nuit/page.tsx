@@ -822,7 +822,7 @@ export default function ConsignesNuitPage() {
     return h;
   };
 
-  const sendEmail = async () => {
+  const sendEmail = async (): Promise<boolean> => {
     const allConsignes: Array<{ room: string; nom: string; floor: string; note: string }> = [];
     const rdcResidents = residents.filter(r => r.floor === 'RDC');
     const erResidents = residents.filter(r => r.floor === '1ER');
@@ -849,12 +849,22 @@ export default function ConsignesNuitPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        toast.error('Email non envoyé : ' + (json.error ?? 'Erreur inconnue'), { duration: 6000 });
+        toast.error('Email non envoyé : ' + (json.error ?? 'Erreur inconnue'), { duration: 8000 });
+        return false;
       } else {
-        toast.success(`Email envoyé à ${(json.recipients as string[]).join(', ')}`, { duration: 5000 });
+        const recipients = json.recipients as string[];
+        toast.success(
+          `📧 Email${recipients.length > 1 ? 's' : ''} envoyé${recipients.length > 1 ? 's' : ''} :\n${recipients.join('\n')}`,
+          {
+            duration: 12000,
+            style: { whiteSpace: 'pre-line', fontSize: '13px', lineHeight: '1.6' },
+          }
+        );
+        return true;
       }
     } catch {
-      toast.error('Erreur réseau lors de l\'envoi de l\'email');
+      toast.error('Erreur réseau lors de l\'envoi de l\'email', { duration: 8000 });
+      return false;
     }
   };
 
@@ -903,7 +913,9 @@ export default function ConsignesNuitPage() {
         await handleSaveAndLock();
         toast.success('Consignes sauvegardées', { duration: 3000 });
       }
-      sendEmail();
+      await sendEmail();
+      // Petit délai pour laisser la notification s'afficher avant l'impression
+      await new Promise(resolve => setTimeout(resolve, 800));
       const notes = notesByFloor[activeFloor] ?? {};
       const currentInfos = infosByFloor[activeFloor] ?? '';
       const pageContentH = 1083;
