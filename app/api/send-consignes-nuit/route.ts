@@ -43,12 +43,16 @@ export async function POST(req: NextRequest) {
     const heureStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
     const tableRows = consignes.map(c => `
-      <tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;white-space:nowrap;font-size:13px;">${c.room}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;">${c.nom}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">${c.floor}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;white-space:pre-wrap;line-height:1.5;">${c.note.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
-      </tr>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;overflow:hidden;">
+        <!-- En-tête de la carte : chambre + nom + étage -->
+        <div style="background:#f1f5f9;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+          <span style="background:#1a3560;color:white;font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;">Ch. ${c.room}</span>
+          <span style="font-size:14px;font-weight:700;color:#1e293b;">${c.nom}</span>
+          <span style="font-size:12px;color:#64748b;margin-left:auto;white-space:nowrap;">${c.floor}</span>
+        </div>
+        <!-- Consigne -->
+        <div style="padding:10px 14px;font-size:13px;color:#334155;line-height:1.6;white-space:pre-wrap;word-break:break-word;">${c.note.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      </div>
     `).join('');
 
     const html = `<!DOCTYPE html>
@@ -85,22 +89,12 @@ export async function POST(req: NextRequest) {
       </table>
     </div>
 
-    <!-- Table -->
-    <div style="padding:20px 28px;">
-      <h2 style="margin:0 0 16px;font-size:15px;color:#1e293b;font-weight:700;">Consignes par résident</h2>
+    <!-- Cards -->
+    <div style="padding:20px 20px;">
+      <h2 style="margin:0 0 14px;font-size:15px;color:#1e293b;font-weight:700;">Consignes par résident</h2>
       ${consignes.length === 0
         ? '<p style="color:#94a3b8;font-style:italic;font-size:13px;">Aucune consigne pour cette nuit.</p>'
-        : `<table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead>
-            <tr style="background:#f1f5f9;">
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Chambre</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Nom</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Étage</th>
-              <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Consigne de nuit</th>
-            </tr>
-          </thead>
-          <tbody>${tableRows}</tbody>
-        </table>`
+        : tableRows
       }
     </div>
 
