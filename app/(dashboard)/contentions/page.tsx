@@ -126,7 +126,7 @@ const TYPE_ICONS_SMALL: Record<string, React.ReactNode> = {
 
 async function fetchContentions(): Promise<Contention[]> {
   const sb = createClient();
-  const { data, error } = await sb.from('suivi_antalgique').select('*').eq('type_suivi', 'contention').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('contentions').select('*').eq('type_suivi', 'contention').order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Contention[];
 }
@@ -204,7 +204,7 @@ export default function ContentionsPage() {
   const createMutation = useMutation({
     mutationFn: async (data: Omit<Contention, 'id'>) => {
       const sb = createClient();
-      const { error } = await sb.from('suivi_antalgique').insert(data);
+      const { error } = await sb.from('contentions').insert(data);
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
@@ -218,7 +218,7 @@ export default function ContentionsPage() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Contention> }) => {
       const sb = createClient();
-      const { error } = await sb.from('suivi_antalgique').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+      const { error } = await sb.from('contentions').update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
@@ -232,7 +232,7 @@ export default function ContentionsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const sb = createClient();
-      const { error } = await sb.from('suivi_antalgique').delete().eq('id', id);
+      const { error } = await sb.from('contentions').delete().eq('id', id);
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
