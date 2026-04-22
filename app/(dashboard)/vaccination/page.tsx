@@ -6,8 +6,10 @@ import {
   Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -542,10 +544,78 @@ function ColHeader({ label, colorClass, onBulk }: { label: string; colorClass: s
   );
 }
 
+// ── Network background ────────────────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function VaccinationPage() {
   const queryClient = useQueryClient();
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const vacModule = MODULES.find(m => m.id === 'vaccination');
+  const colorFrom = colorOverrides['vaccination']?.from ?? vacModule?.cardFrom ?? '#0d9080';
+  const colorTo   = colorOverrides['vaccination']?.to   ?? vacModule?.cardTo   ?? '#087060';
+
   const [search, setSearch] = useState('');
   const [floorFilter, setFloorFilter] = useState('ALL');
   const [showArchivedSection, setShowArchivedSection] = useState(false);
@@ -707,7 +777,21 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
+      </div>
+
       {bulkModal && (
         <BulkInjectModal
           column={bulkModal.column}
@@ -718,38 +802,45 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
         />
       )}
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <HomeButton />
-            <div className="p-2.5 rounded-full bg-green-100">
-              <Syringe className="h-6 w-6 text-green-600" />
+      <div className="relative" style={{ zIndex: 1 }}>
+        {/* ── Gradient Header ── */}
+        <div className="print:hidden relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+          <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+          <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+              <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+              <span>›</span>
+              <span className="text-white/90">Vaccination</span>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Vaccination</h1>
-              <p className="text-slate-500 text-sm">Suivi Covid &amp; Grippe — Année {CURRENT_YEAR}</p>
+            {/* Icon + title + controls */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <Syringe className="h-6 w-6 text-white" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold text-white">Vaccination</h1>
+                <p className="text-white/70 text-sm hidden sm:block">Suivi Covid &amp; Grippe — Année {CURRENT_YEAR}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={handlePrint}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 hover:bg-white/20 text-white text-sm font-medium transition-colors">
+                  <Printer className="h-4 w-4" /> Imprimer
+                </button>
+                <button onClick={invalidate}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 hover:bg-white/20 text-white text-sm font-medium transition-colors">
+                  <RefreshCw className="h-4 w-4" /> Actualiser
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg"
-            >
-              <Printer className="h-3.5 w-3.5" /> Imprimer
-            </button>
-            <button
-              onClick={invalidate}
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Actualiser
-            </button>
           </div>
         </div>
 
+        <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Stats */}
         <div className="flex flex-wrap gap-3 mb-5">
-          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 min-w-[200px]">
+          <div className="flex items-center gap-3 bg-white border border-blue-200 rounded-xl px-5 py-3 min-w-[200px] shadow-sm">
             <div className="p-2 bg-blue-100 rounded-full">
               <Syringe className="h-5 w-5 text-blue-600" />
             </div>
@@ -759,7 +850,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
               <div className="text-xs text-blue-400">résident{covidEnAttente > 1 ? 's' : ''} à vacciner</div>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 rounded-xl px-5 py-3 min-w-[200px]">
+          <div className="flex items-center gap-3 bg-white border border-purple-200 rounded-xl px-5 py-3 min-w-[200px] shadow-sm">
             <div className="p-2 bg-purple-100 rounded-full">
               <Syringe className="h-5 w-5 text-purple-600" />
             </div>
@@ -794,12 +885,18 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
         </div>
 
         {/* Légende */}
-        <div className="flex flex-wrap gap-4 mb-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Date injectée</span>
-          <span className="flex items-center gap-1.5"><span className="text-blue-600 font-bold text-xs">✓</span>Accepte</span>
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />REFUS</span>
-          <span className="flex items-center gap-1.5"><Zap className="h-3 w-3 text-slate-400" />Cliquer sur en-tête pour injection en masse</span>
-          <span className="flex items-center gap-1.5">✏️ Cliquer sur une cellule pour éditer</span>
+        <div className="flex flex-wrap gap-3 mb-4">
+          {[
+            { el: <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />, label: 'Date injectée' },
+            { el: <span className="text-blue-600 font-bold text-xs">✓</span>, label: 'Accepte' },
+            { el: <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />, label: 'REFUS' },
+            { el: <Zap className="h-3 w-3 text-slate-500" />, label: 'Cliquer sur en-tête pour injection en masse' },
+            { el: <span>✏️</span>, label: 'Cliquer sur une cellule pour éditer' },
+          ].map(({ el, label }, i) => (
+            <span key={i} className="flex items-center gap-1.5 bg-white/90 shadow-sm border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-700 font-medium">
+              {el}{label}
+            </span>
+          ))}
         </div>
 
         {/* Table année courante */}
@@ -998,7 +1095,8 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
             </div>
           </div>
         )}
-      </div>
+        </div>{/* fin max-w-7xl */}
+      </div>{/* fin zIndex: 1 */}
     </div>
   );
 }

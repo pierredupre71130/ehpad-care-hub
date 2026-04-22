@@ -6,11 +6,86 @@ import {
   Pencil, Check, X, Heart, Pill, Syringe, Sun, Moon,
   AlertTriangle, Printer, Loader2, Lock, Unlock,
 } from 'lucide-react';
-import { HomeButton } from '@/components/ui/home-button';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { fetchColorOverrides, darkenHex } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+
+// ─────────────────────────────────────────────────────────────
+// BACKGROUND & ICÔNE (style page d'accueil)
+// ─────────────────────────────────────────────────────────────
+
+// Réseau header (clairsemé, style page d'accueil)
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// Réseau page (dense, fond clair)
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+function CaduceusIcon() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="19" cy="19" r="18" fill="white" fillOpacity="0.15" />
+      <line x1="19" y1="5" x2="19" y2="33" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M13 9.5 Q10 5 14 4 Q17 3 19 6 Q21 3 24 4 Q28 5 25 9.5" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      <path d="M19 10 Q13 13.5 15 17 Q17 20 19 19 Q21 18 23 21 Q25 24.5 19 28" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      <path d="M19 10 Q25 13.5 23 17 Q21 20 19 19 Q17 18 15 21 Q13 24.5 19 28" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+    </svg>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -401,6 +476,16 @@ function SectionTable({
 export default function ConsignesPage() {
   const queryClient = useQueryClient();
 
+  const { data: colorOverrides = {} } = useQuery({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+
+  const consignesModule = MODULES.find(m => m.id === 'consignes');
+  const colorFrom = colorOverrides['consignes']?.from ?? consignesModule?.cardFrom ?? '#3b72d8';
+  const colorTo = colorOverrides['consignes']?.to ?? consignesModule?.cardTo ?? '#1a4db5';
+
   const [activeFloor, setActiveFloor] = useState<'RDC' | '1ER'>('RDC');
   const [settingsLocked, setSettingsLocked] = useState(true);
   const [showPwdDialog, setShowPwdDialog] = useState(false);
@@ -521,69 +606,110 @@ export default function ConsignesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+
+      {/* ── Fond réseau clair — z-index 0, sous tout le contenu ── */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000"
+          preserveAspectRatio="xMidYMid slice"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
+      </div>
+
+      {/* Tout le contenu au-dessus du SVG */}
+      <div className="relative" style={{ zIndex: 1 }}>
 
       {/* ══ HEADER (masqué à l'impression) ══════════════════════ */}
-      <div className="print:hidden sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-slate-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-3">
+      <div className="print:hidden relative overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+        {/* Fond réseau */}
+        <div className="absolute inset-0 pointer-events-none">
+          <NetworkBackground />
+        </div>
+
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+            <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+            <span>›</span>
+            <span className="text-white/75">Feuilles de Consignes</span>
+          </div>
+
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">Feuilles de Consignes</h1>
+            {/* Titre + icône */}
+            <div className="flex items-center gap-4">
+              <CaduceusIcon />
+              <div>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">
+                  Feuilles de Consignes
+                </h1>
+                <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
+            {/* Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Onglets étage */}
-              <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+              <div className="flex gap-1 bg-white/10 rounded-xl p-1">
                 {(['RDC', '1ER'] as const).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setActiveFloor(f)}
+                  <button key={f} onClick={() => setActiveFloor(f)}
                     className={cn(
-                      'px-3 py-1 rounded-md text-sm font-medium transition-all',
-                      activeFloor === f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-600 hover:text-slate-800'
-                    )}
-                  >
+                      'px-4 py-1.5 rounded-lg text-sm font-semibold transition-all',
+                      activeFloor === f
+                        ? 'bg-white text-slate-800 shadow-md'
+                        : 'text-white/70 hover:text-white hover:bg-white/10'
+                    )}>
                     {f === 'RDC' ? 'RDC' : '1er Étage'}
                   </button>
                 ))}
               </div>
 
-              {/* Toggle paramètres */}
-              <button
-                onClick={handleSettingsClick}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border ${
+              {/* Paramètres */}
+              <button onClick={handleSettingsClick}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium border transition-colors',
                   settingsLocked
-                    ? 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-slate-100'
-                    : 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
-                }`}
-              >
+                    ? 'bg-white/10 border-white/20 text-white/75 hover:bg-white/20 hover:text-white'
+                    : 'bg-emerald-400/20 border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/30'
+                )}>
                 {settingsLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                 Paramètres impression
               </button>
 
-              <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
-                <Printer className="h-4 w-4" /> Imprimer
-              </Button>
+              {/* Imprimer */}
+              <button onClick={() => window.print()}
+                className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors">
+                <Printer className="h-4 w-4" />
+                Imprimer
+              </button>
             </div>
           </div>
 
           {/* Sliders paramètres */}
           {!settingsLocked && (
-            <div className="flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-white/20">
               {([
-                { label: 'Espace sections', min: 0,  max: 120, step: 4,  value: currentSpacing,          onChange: (v: number) => activeFloor === 'RDC' ? updatePrintSetting({ spacingRDC: v }) : updatePrintSetting({ spacing1ER: v }) },
-                { label: 'Hauteur lignes',  min: 16, max: 60,  step: 2,  value: localPrint.rowHeight,    onChange: (v: number) => updatePrintSetting({ rowHeight: v }) },
-                { label: 'Police consignes',min: 7,  max: 18,  step: 1,  value: localPrint.fontSize,     onChange: (v: number) => updatePrintSetting({ fontSize: v }) },
-                { label: 'Zoom impression', min: 50, max: 200, step: 2,  value: localPrint.printScale,   onChange: (v: number) => updatePrintSetting({ printScale: v }) },
+                { label: 'Espace sections', min: 0,  max: 120, step: 4,  value: currentSpacing,        onChange: (v: number) => activeFloor === 'RDC' ? updatePrintSetting({ spacingRDC: v }) : updatePrintSetting({ spacing1ER: v }) },
+                { label: 'Hauteur lignes',  min: 16, max: 60,  step: 2,  value: localPrint.rowHeight,  onChange: (v: number) => updatePrintSetting({ rowHeight: v }) },
+                { label: 'Police consignes',min: 7,  max: 18,  step: 1,  value: localPrint.fontSize,   onChange: (v: number) => updatePrintSetting({ fontSize: v }) },
+                { label: 'Zoom impression', min: 50, max: 200, step: 2,  value: localPrint.printScale, onChange: (v: number) => updatePrintSetting({ printScale: v }) },
               ] as { label: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void }[]).map(s => (
-                <div key={s.label} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                  <span className="text-xs text-slate-500 font-medium whitespace-nowrap">{s.label}</span>
-                  <input
-                    type="range" min={s.min} max={s.max} step={s.step} value={s.value}
+                <div key={s.label} className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-lg px-3 py-1.5">
+                  <span className="text-xs text-white/70 font-medium whitespace-nowrap">{s.label}</span>
+                  <input type="range" min={s.min} max={s.max} step={s.step} value={s.value}
                     onChange={e => s.onChange(Number(e.target.value))}
-                    className="w-28 accent-slate-700"
-                  />
-                  <span className="text-xs font-semibold text-slate-700 w-10 text-right">
+                    className="w-28 accent-white" />
+                  <span className="text-xs font-semibold text-white w-10 text-right">
                     {s.value}{s.label === 'Zoom impression' ? '%' : 'px'}
                   </span>
                 </div>
@@ -598,6 +724,9 @@ export default function ConsignesPage() {
         className="print-scale-wrapper max-w-6xl mx-auto px-4 py-6 print:px-2 print:py-2 print:max-w-none"
         style={{ zoom: `${localPrint.printScale}%` }}
       >
+        {/* Card écran */}
+        <div className="bg-white rounded-2xl shadow-md border border-white/60 px-5 py-5 print:shadow-none print:rounded-none print:border-none print:px-0 print:py-0">
+
         {/* En-tête date / IDE */}
         <div className="mb-6 print:mb-4">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4 print:mb-2">
@@ -707,8 +836,8 @@ export default function ConsignesPage() {
             </div>
           </div>
         </div>
+        </div>{/* fin card écran */}
       </div>
-      <HomeButton />
 
       {/* ══ Modale mot de passe Paramètres impression ══ */}
       {showPwdDialog && (
@@ -762,6 +891,7 @@ export default function ConsignesPage() {
           </div>
         </div>
       )}
+      </div>{/* fin z-index: 1 */}
     </div>
   );
 }

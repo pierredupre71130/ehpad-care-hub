@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Printer, Loader2, BriefcaseMedical } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -149,29 +151,91 @@ const SEED_1ER: Omit<PecRow, 'id'>[] = [
   { floor:'1ER', table_index:3, table_color:'rose', row_order:12, chambre:'113',  nom:'Me Arnoux',            matin:'TC au lavabo - Habillage - Déambulateur / Fauteuil de confort',                                                                                    apres_midi:'Se déshabille seule après le repas du soir - Aide au coucher + enlever Bande de contention',   protection:'Pull-ups J/N' },
 ];
 
+// ── Network background ────────────────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
 // ── Badge couleur ──────────────────────────────────────────────────────────────
+
+const OUTLINE = { textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000' } as React.CSSProperties;
 
 function ColorBadge({ color }: { color: TableColor }) {
   if (color === 'jaune')
     return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-yellow-400 text-yellow-900">JAUNE</span>;
   if (color === 'vert-cercle')
     return (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded font-bold text-sm bg-green-700 text-white">
+      <span className="inline-flex items-center justify-center gap-2 px-3 py-1 rounded font-bold text-sm bg-green-600 text-white min-w-[72px]">
         <span className="w-4 h-4 rounded-full bg-white border-2 border-black flex-shrink-0" />
       </span>
     );
   if (color === 'vert')
-    return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-green-600 text-white">VERT</span>;
+    return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-green-600 text-white"><span style={OUTLINE}>VERT</span></span>;
   if (color === 'bleu')
     return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-blue-600 text-white">BLEU</span>;
   if (color === 'rose-triangle')
     return (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded font-bold text-sm bg-pink-500 text-white">
-        <span className="inline-block w-0 h-0 border-l-[8px] border-r-[8px] border-b-[13px] border-l-transparent border-r-transparent border-b-white flex-shrink-0" style={{ filter: 'drop-shadow(0 0 0.5px black)' }} />
+      <span className="inline-flex items-center justify-center gap-2 px-3 py-1 rounded font-bold text-sm bg-pink-400 text-white min-w-[72px]">
+        <svg width="16" height="14" viewBox="0 0 14 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+          <path d="M7 1.5L12.5 10.5H1.5L7 1.5Z" fill="white" stroke="black" strokeWidth="1.2" strokeLinejoin="round"/>
+        </svg>
       </span>
     );
   // rose
-  return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-pink-400 text-white">ROSE</span>;
+  return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-pink-400 text-white"><span style={OUTLINE}>ROSE</span></span>;
 }
 
 // ── Cellule éditable ───────────────────────────────────────────────────────────
@@ -250,6 +314,16 @@ export default function PrisesEnChargePage() {
   const qc = useQueryClient();
   const [activeFloor, setActiveFloor] = useState<Floor>('RDC');
   const [activeColor, setActiveColor] = useState<TableColor>('jaune');
+
+  // Module color system
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const pecModule = MODULES.find(m => m.id === 'priseEnCharge');
+  const colorFrom = colorOverrides['priseEnCharge']?.from ?? pecModule?.cardFrom ?? '#c2640a';
+  const colorTo   = colorOverrides['priseEnCharge']?.to   ?? pecModule?.cardTo   ?? '#954a00';
   const [seeding, setSeeding] = useState(false);
   const seedingStarted = useRef(false);
   const syncedFloors = useRef<Set<string>>(new Set());
@@ -449,79 +523,118 @@ export default function PrisesEnChargePage() {
   const isLoading = loadingRows || seeding;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm print:hidden">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <HomeButton />
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-amber-100">
-                <BriefcaseMedical className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">Prises en Charge</h1>
-                <p className="text-xs text-slate-500">Prises en charge personnalisées des résidents</p>
-              </div>
-            </div>
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
+      </div>
+      <div className="relative" style={{ zIndex: 1 }}>
+
+      {/* ── Gradient Header ── */}
+      <div className="print:hidden relative overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+        <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+            <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+            <span>›</span>
+            <span className="text-white/75">Prises en Charge</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Sélecteur de tableau (couleur) */}
-            <div className="flex gap-1.5">
-              {FLOOR_TABLES[activeFloor].map(({ table_color }) => {
-                const bg =
-                  table_color === 'jaune' ? 'bg-yellow-400 text-yellow-900' :
-                  table_color === 'vert-cercle' ? 'bg-green-700 text-white' :
-                  table_color === 'vert' ? 'bg-green-600 text-white' :
-                  table_color === 'bleu' ? 'bg-blue-600 text-white' :
-                  table_color === 'rose-triangle' ? 'bg-pink-500 text-white' :
-                  'bg-pink-400 text-white';
-                const label =
-                  table_color === 'jaune' ? 'JAUNE' :
-                  table_color === 'vert' ? 'VERT' :
-                  table_color === 'bleu' ? 'BLEU' :
-                  table_color === 'rose' ? 'ROSE' : null;
-                return (
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Title */}
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <BriefcaseMedical className="h-6 w-6 text-white" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight">Prises en Charge</h1>
+                <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
+              </div>
+            </div>
+
+            {/* Right side controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Onglets étage */}
+              <div className="flex gap-1 bg-black/20 rounded-xl p-1">
+                {(['RDC', '1ER'] as Floor[]).map(f => (
                   <button
-                    key={table_color}
-                    onClick={() => setActiveColor(table_color)}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border-2 transition-all text-xs font-semibold min-w-[48px] ${
-                      activeColor === table_color ? 'border-slate-500 shadow-sm scale-105' : 'border-transparent opacity-60 hover:opacity-90'
-                    } ${bg}`}
+                    key={f}
+                    onClick={() => { setActiveFloor(f); setActiveColor(FLOOR_DEFAULT_COLOR[f]); }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                      activeFloor === f
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-white/80 hover:text-white hover:bg-white/10'
+                    }`}
                   >
-                    {table_color === 'vert-cercle' && <span className="w-3.5 h-3.5 rounded-full bg-white border-2 border-black flex-shrink-0" />}
-                    {table_color === 'rose-triangle' && <span className="inline-block w-0 h-0 border-l-[7px] border-r-[7px] border-b-[11px] border-l-transparent border-r-transparent border-b-white flex-shrink-0" style={{ filter: 'drop-shadow(0 0 0.5px black)' }} />}
-                    {label}
+                    {f}
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
 
-            {/* Onglets étage */}
-            <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
-              {(['RDC', '1ER'] as Floor[]).map(f => (
-                <button
-                  key={f}
-                  onClick={() => { setActiveFloor(f); setActiveColor(FLOOR_DEFAULT_COLOR[f]); }}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    activeFloor === f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+              {/* Sélecteur de tableau (couleur) */}
+              <div className="flex gap-1.5 bg-black/20 rounded-xl p-1.5">
+                {FLOOR_TABLES[activeFloor].map(({ table_color }) => {
+                  const bg =
+                    table_color === 'jaune' ? 'bg-yellow-400 text-yellow-900' :
+                    table_color === 'vert-cercle' ? 'bg-green-600 text-white' :
+                    table_color === 'vert' ? 'bg-green-600 text-white' :
+                    table_color === 'bleu' ? 'bg-blue-600 text-white' :
+                    table_color === 'rose-triangle' ? 'bg-pink-400 text-white' :
+                    'bg-pink-400 text-white';
+                  const label =
+                    table_color === 'jaune' ? 'JAUNE' :
+                    table_color === 'vert' ? 'VERT' :
+                    table_color === 'bleu' ? 'BLEU' :
+                    table_color === 'rose' ? 'ROSE' : null;
+                  return (
+                    <button
+                      key={table_color}
+                      onClick={() => setActiveColor(table_color)}
+                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border-2 transition-all text-xs font-semibold min-w-[72px] ${
+                        activeColor === table_color
+                          ? 'border-white shadow-lg scale-105'
+                          : 'border-transparent hover:brightness-110'
+                      } ${bg}`}
+                    >
+                      {table_color === 'vert-cercle' && <span className="w-3.5 h-3.5 rounded-full bg-white border-2 border-black flex-shrink-0" />}
+                      {table_color === 'rose-triangle' && (
+                        <svg width="14" height="12" viewBox="0 0 14 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+                          <path d="M7 1.5L12.5 10.5H1.5L7 1.5Z" fill="white" stroke="black" strokeWidth="1.2" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                      {label && (
+                        <span style={
+                          table_color === 'vert' || table_color === 'rose'
+                            ? { textShadow: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000' }
+                            : undefined
+                        }>{label}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
 
-            {/* Imprimer */}
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 text-xs font-medium transition-colors shadow-sm"
-              title="Imprimer le tableau sélectionné"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              Imprimer
-            </button>
+              {/* Imprimer */}
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 border border-white/30 text-white text-sm font-medium transition-colors"
+                title="Imprimer le tableau sélectionné"
+              >
+                <Printer className="h-4 w-4" />
+                Imprimer
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -543,7 +656,7 @@ export default function PrisesEnChargePage() {
             .sort((a, b) => a.row_order - b.row_order);
 
           return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-white/60 shadow-sm overflow-hidden">
               {/* En-tête du tableau */}
               <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-slate-50">
                 <ColorBadge color={table_color} />
@@ -637,7 +750,7 @@ export default function PrisesEnChargePage() {
           );
         })()}
       </div>
-
+      </div>{/* fin z-index: 1 */}
     </div>
   );
 }

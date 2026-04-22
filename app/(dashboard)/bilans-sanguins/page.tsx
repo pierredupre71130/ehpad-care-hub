@@ -7,8 +7,10 @@ import {
   Printer, ChevronLeft, ChevronRight, Search, Pencil, Trash2, Save,
   Calendar, Lock,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -661,6 +663,64 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
   );
 }
 
+// ── Network background (header) ───────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BilansSanguinsPage() {
@@ -672,6 +732,15 @@ export default function BilansSanguinsPage() {
   const [calibPwdTarget, setCalibPwdTarget] = useState<string | null>(null);
   const [calibPwdInput, setCalibPwdInput] = useState('');
   const [calibPwdError, setCalibPwdError] = useState(false);
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const bilansModule = MODULES.find(m => m.id === 'bilansSanguins');
+  const colorFrom = colorOverrides['bilansSanguins']?.from ?? bilansModule?.cardFrom ?? '#d84040';
+  const colorTo   = colorOverrides['bilansSanguins']?.to   ?? bilansModule?.cardTo   ?? '#b01818';
 
   const openCalibWithPassword = (href: string) => {
     setCalibPwdInput('');
@@ -855,74 +924,115 @@ export default function BilansSanguinsPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-50">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-red-700 to-red-900 text-white py-5 px-8 shadow-lg">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <TestTube2 className="h-7 w-7 text-red-200" />
-              <div>
-                <h1 className="text-2xl font-bold">Bilans Sanguins</h1>
-                <p className="text-red-200 text-sm">Planning annuel · {residents.length} résidents</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => openCalibWithPassword('/calibration-pdf-bilan')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors">
-                <Lock className="h-3 w-3 opacity-70" /> Calibration PDF
-              </button>
-              <button
-                onClick={() => openCalibWithPassword('/calibration-examens')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs transition-colors">
-                <Lock className="h-3 w-3 opacity-70" /> Calibration examens
-              </button>
-            </div>
-          </div>
+      <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+
+        {/* Dense page background network */}
+        <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+            viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+            {PG_EDGES.map(([i, j], idx) => (
+              <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+                stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+            ))}
+            {PG_NODES.map(([x, y], idx) => (
+              <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+            ))}
+          </svg>
         </div>
 
-        <div className="max-w-6xl mx-auto px-8 py-6">
-          {/* Collapsible sections */}
-          <Section title="Jours de prélèvement par médecin" icon={<Calendar className="h-4 w-4" />}>
-            <MedecinJoursSection residents={residents} configs={medecinConfigs}
-              onSave={(name, jours, existingId) => saveMedecinConfig.mutate({ name, jours, existingId })} />
-          </Section>
+        <div className="relative" style={{ zIndex: 1 }}>
 
-          <Section title="Référentiel des bilans biologiques" icon={<TestTube2 className="h-4 w-4" />}>
-            <BilanReferentielSection refs={refs}
-              onCreate={d => createRef.mutate(d)}
-              onUpdate={(id, d) => updateRef.mutate({ id, ...d })}
-              onDelete={id => deleteRef.mutate(id)} />
-          </Section>
+          {/* ── Gradient Header ── */}
+          <div className="print:hidden relative overflow-hidden"
+            style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+            <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+            <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
 
-          <Section title="Bilans spéciaux" icon={<TestTube2 className="h-4 w-4" />}>
-            <BilanSpeciauxSection specials={specials}
-              onCreate={d => createSpecial.mutate(d)}
-              onDelete={id => deleteSpecial.mutate(id)} />
-          </Section>
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+                <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+                <span>›</span>
+                <span className="text-white/90">Bilans Sanguins</span>
+              </div>
 
-          {/* Planning annuel */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                <TestTube2 className="h-5 w-5 text-red-500" /> Planning annuel des bilans
-              </h2>
-              <div className="flex items-center gap-2">
+              {/* Icon + title + controls */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <TestTube2 className="h-6 w-6 text-white" strokeWidth={1.5} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl font-bold text-white">Bilans Sanguins</h1>
+                  <p className="text-white/70 text-sm hidden sm:block">Planning annuel · {residents.length} résidents</p>
+                </div>
+
+                {/* Year navigation */}
+                <div className="flex items-center gap-1 bg-black/20 rounded-xl px-2 py-1">
+                  <button onClick={() => setAnnee(a => a - 1)}
+                    className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="font-bold text-white text-sm w-12 text-center">{annee}</span>
+                  <button onClick={() => setAnnee(a => a + 1)}
+                    className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Calibration buttons */}
+                <button
+                  onClick={() => openCalibWithPassword('/calibration-pdf-bilan')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/20 hover:bg-white/20 text-white text-xs font-medium transition-colors">
+                  <Lock className="h-3 w-3 opacity-70" /> Calibration PDF
+                </button>
+                <button
+                  onClick={() => openCalibWithPassword('/calibration-examens')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/20 hover:bg-white/20 text-white text-xs font-medium transition-colors">
+                  <Lock className="h-3 w-3 opacity-70" /> Calibration examens
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Contenu ── */}
+          <div className="max-w-6xl mx-auto px-6 py-6">
+
+            <Section title="Jours de prélèvement par médecin" icon={<Calendar className="h-4 w-4" />}>
+              <MedecinJoursSection residents={residents} configs={medecinConfigs}
+                onSave={(name, jours, existingId) => saveMedecinConfig.mutate({ name, jours, existingId })} />
+            </Section>
+
+            <Section title="Référentiel des bilans biologiques" icon={<TestTube2 className="h-4 w-4" />}>
+              <BilanReferentielSection refs={refs}
+                onCreate={d => createRef.mutate(d)}
+                onUpdate={(id, d) => updateRef.mutate({ id, ...d })}
+                onDelete={id => deleteRef.mutate(id)} />
+            </Section>
+
+            <Section title="Bilans spéciaux" icon={<TestTube2 className="h-4 w-4" />}>
+              <BilanSpeciauxSection specials={specials}
+                onCreate={d => createSpecial.mutate(d)}
+                onDelete={id => deleteSpecial.mutate(id)} />
+            </Section>
+
+            {/* Planning annuel */}
+            <div className="bg-white rounded-2xl border border-white/60 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-bold text-slate-800 flex items-center gap-2">
+                  <TestTube2 className="h-5 w-5 text-red-500" /> Planning annuel des bilans
+                </h2>
                 <p className="text-xs text-slate-400 hidden sm:block">Cliquez sur un mois pour gérer les dates</p>
-                <button onClick={() => setAnnee(a => a - 1)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors"><ChevronLeft className="h-4 w-4" /></button>
-                <span className="font-bold text-slate-700 w-14 text-center">{annee}</span>
-                <button onClick={() => setAnnee(a => a + 1)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors"><ChevronRight className="h-4 w-4" /></button>
               </div>
+              <PlanningGrid
+                residents={residents} cells={cells} refs={refs} specials={specials}
+                annee={annee} floor={floor} onFloorChange={setFloor}
+                onCellSave={(data, existingId) => saveCell.mutate({ data, existingId })}
+                onCellDelete={id => deleteCell.mutate(id)}
+                onMonthClick={mois => setGenerateModal({ mois })}
+              />
             </div>
-            <PlanningGrid
-              residents={residents} cells={cells} refs={refs} specials={specials}
-              annee={annee} floor={floor} onFloorChange={setFloor}
-              onCellSave={(data, existingId) => saveCell.mutate({ data, existingId })}
-              onCellDelete={id => deleteCell.mutate(id)}
-              onMonthClick={mois => setGenerateModal({ mois })}
-            />
           </div>
-        </div>
+
+        </div>{/* fin z-index: 1 */}
       </div>
 
       {/* GenerateDatesModal */}
@@ -943,8 +1053,6 @@ export default function BilansSanguinsPage() {
           onClose={() => setGenerateModal(null)}
         />
       )}
-
-      <HomeButton />
 
       {/* ══ Modale mot de passe Calibration ══ */}
       {calibPwdTarget && (

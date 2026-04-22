@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus, Plus } from 'lucide-react';
+import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus, Plus, Shield } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import Link from 'next/link';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { ImportContentionModal } from '@/components/contentions/import-contention-modal';
 import { ImportContentionFromImage } from '@/components/contentions/import-contention-from-image';
 import type { Keywords } from '@/lib/import-parser';
@@ -168,10 +170,78 @@ function formatNameLastFirst(fullName: string) {
   return `${lastName} ${firstName}`.trim();
 }
 
+// ── Network background (header) ───────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function ContentionsPage() {
   const queryClient = useQueryClient();
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const contentionsModule = MODULES.find(m => m.id === 'contentions');
+  const colorFrom = colorOverrides['contentions']?.from ?? contentionsModule?.cardFrom ?? '#e07820';
+  const colorTo   = colorOverrides['contentions']?.to   ?? contentionsModule?.cardTo   ?? '#b85a05';
+
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [residentLocked, setResidentLocked] = useState(false);
@@ -421,12 +491,43 @@ export default function ContentionsPage() {
 
   return (
     <>
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white py-6 px-8 pl-36 shadow-lg border-b border-slate-700">
-        <h1 className="text-3xl font-bold">Gestion des Contentions</h1>
-        <p className="text-slate-300 mt-1">Suivi et prescription des contentions par étage</p>
+    <div className="min-h-screen flex flex-col relative" style={{ background: '#dde4ee' }}>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
       </div>
+
+      <div className="relative flex flex-col flex-1" style={{ zIndex: 1 }}>
+        {/* ── Gradient Header ── */}
+        <div className="print:hidden relative overflow-hidden flex-shrink-0"
+          style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+          <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+          <div className="relative z-10 max-w-full px-6 py-5">
+            <div className="flex items-center gap-1.5 text-white/50 text-xs mb-3">
+              <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+              <span>›</span>
+              <span className="text-white/90">Gestion des Contentions</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <Shield className="h-6 w-6 text-white" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold text-white">Gestion des Contentions</h1>
+                <p className="text-white/70 text-sm hidden sm:block">Suivi et prescription des contentions par étage</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
       {/* Alerts */}
       <div className="bg-white border-b border-slate-200 px-8 py-4">
@@ -866,8 +967,8 @@ export default function ContentionsPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>{/* fin z-index: 1 */}
     </div>
-    <HomeButton />
     </>
   );
 }

@@ -28,8 +28,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Save, Trash2, Printer, Pill, ChevronRight, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -491,12 +493,79 @@ function WizardForm({
   );
 }
 
+// ── Network background (header) ───────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 type PanelMode = 'list' | 'new' | 'view';
 
 export default function MorphiniquesPage() {
   const qc = useQueryClient();
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const morphModule = MODULES.find(m => m.id === 'morphiniques');
+  const colorFrom = colorOverrides['morphiniques']?.from ?? morphModule?.cardFrom ?? '#7725cc';
+  const colorTo   = colorOverrides['morphiniques']?.to   ?? morphModule?.cardTo   ?? '#5210a0';
 
   const { data: fiches = [], isLoading: loadingFiches } = useQuery({ queryKey: ['suivi_antalgique'], queryFn: fetchFiches });
   const { data: residents = [] } = useQuery({ queryKey: ['residents'], queryFn: fetchResidents });
@@ -627,24 +696,46 @@ export default function MorphiniquesPage() {
         }
       ` }} />
 
-      <div className="min-h-screen flex flex-col" style={{ background: '#f0f4f8' }}>
-        <HomeButton />
+      <div className="min-h-screen flex flex-col relative" style={{ background: '#dde4ee' }}>
+        {/* Dense page background network */}
+        <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+            viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+            {PG_EDGES.map(([i, j], idx) => (
+              <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+                stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+            ))}
+            {PG_NODES.map(([x, y], idx) => (
+              <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+            ))}
+          </svg>
+        </div>
 
-        {/* Header */}
-        <header className="relative z-10 w-full pl-36" style={{ background: 'linear-gradient(135deg, #5210a0 0%, #7725cc 100%)' }}>
-          <div className="max-w-7xl mx-auto px-6 py-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Pill className="h-5 w-5 text-white" />
+        <div className="relative flex flex-col flex-1" style={{ zIndex: 1 }}>
+          {/* ── Gradient Header ── */}
+          <header className="print:hidden relative overflow-hidden flex-shrink-0"
+            style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+            <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+            <div className="relative z-10 max-w-7xl mx-auto px-6 py-5">
+              <div className="flex items-center gap-1.5 text-white/50 text-xs mb-3">
+                <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+                <span>›</span>
+                <span className="text-white/90">Dispensation Morphiniques</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <Pill className="h-6 w-6 text-white" strokeWidth={1.5} />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Dispensation Morphiniques</h1>
+                  <p className="text-white/70 text-sm hidden sm:block">Suivi de pose et d'administration — Durogesic · Oxycodone</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">Dispensation Morphiniques</h1>
-              <p className="text-sm text-white/65 mt-0.5">Suivi de pose et d'administration — Durogesic · Oxycodone</p>
-            </div>
-          </div>
-        </header>
+          </header>
 
         {/* Body */}
-        <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 88px)' }}>
+        <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
 
           {/* ── Left panel ── */}
           <div className="flex flex-col bg-white border-r border-slate-200 overflow-y-auto" style={{ width: '420px', minWidth: '360px', flexShrink: 0 }}>
@@ -755,6 +846,7 @@ export default function MorphiniquesPage() {
             )}
           </div>
         </div>
+        </div>{/* fin z-index: 1 */}
       </div>
 
       {/* ── Delete dialog ── */}

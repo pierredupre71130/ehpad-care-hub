@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import {
   Lock, FolderOpen, Printer, Loader2, ChevronDown, X,
-  AlertTriangle, PhoneCall, Pill,
+  AlertTriangle, PhoneCall, Pill, Moon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -99,6 +101,64 @@ const CONTENTION_ICONS: Record<string, React.ReactNode> = {
   'barrière x2': <ContentionIconSmall label="B2" bg="#fef3c7" border="#d97706" />,
 };
 
+// ── Network background (style page d'accueil) ────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
 // ── Supabase helpers ─────────────────────────────────────────────────────────
 
 async function fetchResidents(): Promise<Resident[]> {
@@ -117,7 +177,7 @@ async function fetchNiveauSoin(): Promise<NiveauSoin[]> {
 
 async function fetchContentions(): Promise<ContentionFiche[]> {
   const sb = createClient();
-  const { data, error } = await sb.from('suivi_antalgique').select('id,nom,traitement,dotation_nominative').eq('type_suivi', 'contention');
+  const { data, error } = await sb.from('contentions').select('id,nom,traitement,dotation_nominative').eq('type_suivi', 'contention');
   if (error) throw new Error(error.message);
   return (data ?? []) as ContentionFiche[];
 }
@@ -280,9 +340,8 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
 
   return (
     <tr>
-      {/* Chambre — layout fixe 2 lignes pour éviter toute variation de hauteur */}
+      {/* Chambre */}
       <td style={{ border: '1px solid #475569', padding: '2px 4px' }} className="text-[9px] font-medium text-slate-700">
-        {/* Ligne 1 : numéro chambre + GIR + cercle niveau soin */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <span>{resident.room}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
@@ -296,7 +355,6 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
             )}
           </div>
         </div>
-        {/* Ligne 2 : 3 emplacements fixes (remplis ou vides) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 1, marginTop: 2 }}>
           <div style={{ width: 11, height: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {resident.traitement_ecrase && <span style={{ fontSize: 9, lineHeight: 1 }}>💊</span>}
@@ -431,7 +489,7 @@ function Legend() {
   } as React.CSSProperties);
 
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+    <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm">
       <h3 className="text-sm font-semibold text-slate-700 mb-2">Légende</h3>
       <div className="flex gap-3 text-sm text-slate-600 flex-wrap items-center">
         <div className="flex items-center gap-1"><Pill className="h-4 w-4" /><span>TTT écrasés</span></div>
@@ -454,15 +512,13 @@ function Legend() {
   );
 }
 
-// Stable empty arrays — used as default values for useQuery so that the
-// useEffect deps don't change on every render while data is still loading.
+// Stable empty arrays
 const EMPTY_CONSIGNES: ConsigneNuit[] = [];
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function ConsignesNuitPage() {
   const queryClient = useQueryClient();
-  const [showInfoModal, setShowInfoModal] = useState(true);
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [notesByFloor, setNotesByFloor] = useState<Record<string, Record<string, string>>>({ RDC: {}, '1ER': {} });
   const [infosByFloor, setInfosByFloor] = useState<Record<string, string>>({ RDC: '', '1ER': '' });
@@ -471,6 +527,16 @@ export default function ConsignesNuitPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showArchives, setShowArchives] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
+
+  // Module color system
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const nuitModule = MODULES.find(m => m.id === 'consignesNuit');
+  const colorFrom = colorOverrides['consignesNuit']?.from ?? nuitModule?.cardFrom ?? '#0f7e8e';
+  const colorTo   = colorOverrides['consignesNuit']?.to   ?? nuitModule?.cardTo   ?? '#074f5c';
 
   // Queries
   const { data: astreinteSettings } = useQuery({ queryKey: ['astreinte_settings'], queryFn: fetchAstreinteSettings });
@@ -482,9 +548,6 @@ export default function ConsignesNuitPage() {
   const { data: saved1ER = EMPTY_CONSIGNES, isLoading: loading1ER, status: erStatus } = useQuery({ queryKey: ['consignes_nuit', date, '1ER'], queryFn: () => fetchConsignesNuit(date, '1ER'), enabled: !!date });
   const { data: archivedDates = [] } = useQuery({ queryKey: ['consignes_nuit_dates'], queryFn: fetchArchivedDates });
 
-  // Populate notes from Supabase when data arrives.
-  // Guard: skip while the query is still loading (rdcStatus !== 'success') so that
-  // the useEffect dep on `savedRDC` never triggers a setState→re-render loop.
   useEffect(() => {
     if (rdcStatus !== 'success') return;
     const notesMap: Record<string, string> = {};
@@ -511,7 +574,7 @@ export default function ConsignesNuitPage() {
     if (saved1ER[0]?.ide_astreinte) setIdeAstreinte(saved1ER[0].ide_astreinte);
   }, [saved1ER, erStatus]);
 
-  // Build contention map: resident.id → [{type, siBesoin}]
+  // Build contention map
   const contentionMap = useMemo(() => {
     const map: Record<string, Array<{ type: string; siBesoin: boolean }>> = {};
     residents.forEach(r => {
@@ -540,9 +603,6 @@ export default function ConsignesNuitPage() {
   const saveFloor = async (floor: string, savedNotes: ConsigneNuit[], notes: Record<string, string>, infos?: string) => {
     if (isAfterLockTime(date)) return;
     const sb = createClient();
-    const existingById: Record<string, ConsigneNuit> = {};
-    savedNotes.forEach(n => { existingById[n.resident_id] = n; });
-
     const ops: Array<() => Promise<unknown>> = [];
 
     for (const [residentId, contenu] of Object.entries(notes)) {
@@ -567,6 +627,7 @@ export default function ConsignesNuitPage() {
     }
 
     await Promise.all(ops.map(fn => fn()));
+    void savedNotes; // suppress unused warning
   };
 
   const handleChangeNote = (id: string, value: string) => {
@@ -620,7 +681,7 @@ export default function ConsignesNuitPage() {
       const byDate: Record<string, typeof allRecords> = {};
       allRecords.forEach((r: ConsigneNuit) => { if (!byDate[r.date]) byDate[r.date] = []; byDate[r.date].push(r); });
       const toDelete: string[] = [];
-      for (const [d, records] of Object.entries(byDate)) {
+      for (const [, records] of Object.entries(byDate)) {
         const residentRecords = records.filter((r: ConsigneNuit) => r.resident_id !== '__infos__');
         if (residentRecords.length > 0 && !residentRecords.some((r: ConsigneNuit) => r.contenu?.trim())) {
           toDelete.push(...records.map((r: ConsigneNuit) => r.id));
@@ -645,7 +706,6 @@ export default function ConsignesNuitPage() {
     const rows = sorted.map(r => {
       const note = notes[r.id] ?? '';
       const age = r.date_naissance ? calcAge(r.date_naissance) : null;
-      // Slots fixes pour les icônes (toujours 3 emplacements de 11×11px)
       const svgAnticoag = `<svg style='width:10px;height:10px;color:#ef4444' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3.05h16.94a2 2 0 0 0 1.71-3.05L13.71 3.86a2 2 0 0 0-3.42 0z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>`;
       const svgPhone = `<svg style='width:10px;height:10px;color:#6366f1' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z'/></svg>`;
       const slotStyle = `display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;flex-shrink:0`;
@@ -759,12 +819,9 @@ export default function ConsignesNuitPage() {
   };
 
   const sendEmail = async () => {
-    // Collecter tous les résidents avec une consigne non vide (RDC + 1ER)
     const allConsignes: Array<{ room: string; nom: string; floor: string; note: string }> = [];
-
     const rdcResidents = residents.filter(r => r.floor === 'RDC');
     const erResidents = residents.filter(r => r.floor === '1ER');
-
     [...rdcResidents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).forEach(r => {
       const note = (notesByFloor['RDC'] ?? {})[r.id] ?? '';
       if (note.trim()) allConsignes.push({ room: r.room ?? '', nom: `${r.last_name} ${r.first_name ?? ''}`.trim(), floor: 'RDC', note });
@@ -782,13 +839,7 @@ export default function ConsignesNuitPage() {
       const res = await fetch('/api/send-consignes-nuit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          ideNom: ideAstreinte || 'Non renseigné',
-          ideEmail,
-          cadreEmail,
-          consignes: allConsignes,
-        }),
+        body: JSON.stringify({ date, ideNom: ideAstreinte || 'Non renseigné', ideEmail, cadreEmail, consignes: allConsignes }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -846,7 +897,6 @@ export default function ConsignesNuitPage() {
         await handleSaveAndLock();
         toast.success('Consignes sauvegardées', { duration: 3000 });
       }
-      // Envoi email en parallèle (non bloquant pour l'impression)
       sendEmail();
       const notes = notesByFloor[activeFloor] ?? {};
       const currentInfos = infosByFloor[activeFloor] ?? '';
@@ -868,7 +918,6 @@ export default function ConsignesNuitPage() {
         <div class="page">${rectoHTML}</div>
         <div class="page">${versoHTML}</div>
       </body></html>`;
-
       const existing = document.getElementById('nuit-print-iframe');
       if (existing) existing.remove();
       const iframe = document.createElement('iframe');
@@ -894,66 +943,135 @@ export default function ConsignesNuitPage() {
   }
 
   return (
-    <>
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Header / Controls */}
-      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-slate-100">
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Consignes de Nuit</h1>
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
+      </div>
+      <div className="relative" style={{ zIndex: 1 }}>
+
+      {/* ── Gradient Header ── */}
+      <div className="print:hidden relative overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+        <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+            <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+            <span>›</span>
+            <span className="text-white/75">Consignes de Nuit</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Title */}
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <Moon className="h-6 w-6 text-white" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight">Consignes de Nuit</h1>
+                <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
+              </div>
+            </div>
+
+            {/* Right side: floor tabs + action buttons */}
             <div className="flex items-center gap-2 flex-wrap">
               <Tabs value={activeFloor} onValueChange={setActiveFloor}>
-                <TabsList className="bg-slate-100">
-                  <TabsTrigger value="RDC">RDC {isLockedRDC && <Lock className="h-3 w-3 ml-1 text-amber-500" />}</TabsTrigger>
-                  <TabsTrigger value="1ER">1er Étage {isLocked1ER && <Lock className="h-3 w-3 ml-1 text-amber-500" />}</TabsTrigger>
+                <TabsList className="bg-white/15 border border-white/25 h-9">
+                  <TabsTrigger
+                    value="RDC"
+                    className="text-white/70 data-[state=active]:bg-white/25 data-[state=active]:text-white text-sm font-medium px-4"
+                  >
+                    RDC {isLockedRDC && <Lock className="h-3 w-3 ml-1 text-amber-300" />}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="1ER"
+                    className="text-white/70 data-[state=active]:bg-white/25 data-[state=active]:text-white text-sm font-medium px-4"
+                  >
+                    1er Étage {isLocked1ER && <Lock className="h-3 w-3 ml-1 text-amber-300" />}
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <Button variant="outline" size="sm" onClick={() => setShowArchives(v => !v)} className="gap-1.5">
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowArchives(v => !v)}
+                className="bg-white/15 hover:bg-white/25 text-white border border-white/25 gap-1.5"
+              >
                 <FolderOpen className="h-4 w-4" /> Archives
               </Button>
-              {areBothLocked && (
-                <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-md font-medium">
-                  <Lock className="h-3.5 w-3.5" /> Verrouillé (jour passé)
-                </span>
-              )}
-              <Button variant="outline" size="sm" onClick={handleQuickPrint} className="gap-1.5 text-slate-500 border-dashed">
-                <Printer className="h-4 w-4" />
-                Imprimer (test)
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleQuickPrint}
+                className="bg-white/10 hover:bg-white/20 text-white/80 border border-white/20 border-dashed gap-1.5"
+              >
+                <Printer className="h-4 w-4" /> Imprimer (test)
               </Button>
-              <Button variant="outline" size="sm" onClick={handlePrint} disabled={isSaving} className="gap-1.5">
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handlePrint}
+                disabled={isSaving}
+                className="bg-white/20 hover:bg-white/30 text-white border border-white/30 gap-1.5 font-semibold"
+              >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                Imprimer & Sauvegarder
+                Imprimer &amp; Sauvegarder
               </Button>
             </div>
           </div>
-          <div className="flex gap-6 flex-wrap">
+
+          {/* Date + IDE astreinte row */}
+          <div className="flex items-end gap-4 mt-5 flex-wrap">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-600 uppercase">Date</label>
-              <input type="date" value={date} onChange={e => { setDate(e.target.value); setShowArchives(false); }} className="px-2 py-1 border border-slate-300 rounded text-sm" />
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => { setDate(e.target.value); setShowArchives(false); }}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white/15 border border-white/25 text-white placeholder-white/40 focus:outline-none focus:border-white/50 focus:bg-white/20"
+              />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-slate-600 uppercase">IDE d'astreinte</label>
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">IDE d&apos;astreinte</label>
               <select
                 value={ideAstreinte}
                 onChange={e => setIdeAstreinte(e.target.value)}
                 disabled={areBothLocked}
-                className="px-2 py-1 border border-slate-300 rounded text-sm disabled:opacity-50 bg-white"
+                className="px-3 py-1.5 rounded-lg text-sm bg-white/15 border border-white/25 text-white focus:outline-none focus:border-white/50 disabled:opacity-50"
+                style={{ colorScheme: 'dark' }}
               >
-                <option value="">— Sélectionner —</option>
+                <option value="" className="bg-slate-800">— Sélectionner —</option>
                 {ides.map(ide => (
-                  <option key={ide.nom} value={ide.nom}>{ide.nom}</option>
+                  <option key={ide.nom} value={ide.nom} className="bg-slate-800">{ide.nom}</option>
                 ))}
-                {/* Si la valeur stockée ne correspond à aucun IDE connu */}
                 {ideAstreinte && !ides.find(i => i.nom === ideAstreinte) && (
-                  <option value={ideAstreinte}>{ideAstreinte}</option>
+                  <option value={ideAstreinte} className="bg-slate-800">{ideAstreinte}</option>
                 )}
               </select>
             </div>
+            {areBothLocked && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-200 bg-amber-900/40 border border-amber-400/30 px-3 py-1.5 rounded-lg font-medium mb-0.5">
+                <Lock className="h-3.5 w-3.5" /> Verrouillé (jour passé)
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Archives */}
+      {/* ── Archives panel ── */}
       {showArchives && (
         <div className="max-w-6xl mx-auto px-4 pt-4">
           <ArchivesPanel
@@ -969,29 +1087,7 @@ export default function ConsignesNuitPage() {
         </div>
       )}
 
-      {/* Info modal */}
-      {showInfoModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="font-bold text-slate-900 mb-3 text-lg">Consignes de Nuit</h3>
-            <div className="text-sm text-slate-600 space-y-3">
-              <p>Pour saisir une consigne, <strong>cliquez sur la cellule</strong> de la colonne « Consignes de nuit » en face du résident, et n'oubliez pas de valider après avoir entré une transmission <strong>(validation nécessaire pour chaque transmission)</strong>.</p>
-              <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2">
-                <button className="px-2 py-0.5 bg-green-600 text-white rounded text-xs font-medium">✓</button>
-                <span>Ce bouton valide et sauvegarde la consigne du résident.</span>
-              </div>
-              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                <span className="text-blue-700 text-xs">ℹ️ <strong>Info :</strong> les consignes sont accessibles par le cadre de santé.</span>
-              </div>
-            </div>
-            <button onClick={() => setShowInfoModal(false)} className="mt-5 w-full px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-medium text-sm">
-              OK, j'ai compris
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Delete confirmation modal */}
+      {/* ── Delete confirmation modal ── */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
@@ -1007,12 +1103,12 @@ export default function ConsignesNuitPage() {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="max-w-6xl mx-auto px-4 py-4">
+      {/* ── Main content ── */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
         {notesLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
         ) : (
-          <div className="flex flex-col gap-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-white/60 p-6 flex flex-col gap-6">
             <Legend />
 
             {mapadResidents.length > 0 && (
@@ -1056,8 +1152,7 @@ export default function ConsignesNuitPage() {
           </div>
         )}
       </div>
+      </div>{/* fin z-index: 1 */}
     </div>
-    <HomeButton />
-    </>
   );
 }

@@ -11,8 +11,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Customized,
 } from 'recharts';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -1321,18 +1323,64 @@ function ResidentsView({ residents, allMesures, allDossiers, allComplements, flo
 
   const filtered = useMemo(() => {
     const base = residents.filter(r => r.floor === floor);
-    const alertScore = (r: Resident) => {
+    if (sort === 'chambre') return [...base].sort((a, b) => parseInt(a.room || '0') - parseInt(b.room || '0'));
+    if (sort === 'nom') return [...base].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+
+    // Tri par alertes en 5 groupes (pertes regroupées, puis gains) :
+    // 1. Alertes dénutrition  (perte + alerte, du plus sévère au moins)
+    // 2. Tendance perte de poids sans alerte (la plus forte en premier)
+    // 3. Alertes surcharge pondérale (gain + alerte, du plus sévère au moins)
+    // 4. Tendance prise de poids sans alerte (la plus forte en premier)
+    // 5. Reste, par numéro de chambre
+    const scoreOf = (r: Resident): { group: number; score: number; room: number } => {
       const mesures = allMesures.filter(m => m.resident_id === r.id);
       const dossier = allDossiers.find(d => d.resident_id === r.id);
       const a = computeAlerts(mesures, dossier, alertSettings);
-      return (a.denutrition ? 2 : 0) + (a.surcharge ? 1 : 0);
+      const cfg = alertSettings ?? DEFAULT_ALERT_SETTINGS;
+      const ms = [...mesures].sort((x, y) => y.date.localeCompare(x.date));
+      const latestKg = ms[0]?.poids_kg ?? 0;
+      const today = todayISO();
+      const room = parseInt(r.room || '0');
+
+      if (a.denutrition) {
+        let maxPct = 0;
+        [cfg.denutrition_jours_court, cfg.denutrition_jours_long].forEach(days => {
+          const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - days);
+          const ref = ms.find(m => new Date(m.date) <= cutoff);
+          if (ref) maxPct = Math.max(maxPct, ((ref.poids_kg - latestKg) / ref.poids_kg) * 100);
+        });
+        return { group: 1, score: maxPct, room };
+      }
+
+      // Tendance entre les 2 dernières pesées
+      const prevKg = ms[1]?.poids_kg;
+      const trendPct = (latestKg && prevKg && prevKg > 0)
+        ? ((latestKg - prevKg) / prevKg) * 100
+        : null;
+
+      if (trendPct !== null && trendPct <= -2) return { group: 2, score: Math.abs(trendPct), room };
+
+      if (a.surcharge) {
+        let maxPct = 0;
+        [cfg.surcharge_jours_court, cfg.surcharge_jours_long].forEach(days => {
+          const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - days);
+          const ref = ms.find(m => new Date(m.date) <= cutoff);
+          if (ref) maxPct = Math.max(maxPct, ((latestKg - ref.poids_kg) / ref.poids_kg) * 100);
+        });
+        return { group: 3, score: maxPct, room };
+      }
+
+      if (trendPct !== null && trendPct >= 2) return { group: 4, score: trendPct, room };
+
+      return { group: 5, score: 0, room };
     };
-    if (sort === 'chambre') return [...base].sort((a, b) => parseInt(a.room || '0') - parseInt(b.room || '0'));
-    if (sort === 'nom') return [...base].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+
     return [...base].sort((a, b) => {
-      const diff = alertScore(b) - alertScore(a);
-      if (diff !== 0) return diff;
-      return parseInt(a.room || '0') - parseInt(b.room || '0');
+      const sa = scoreOf(a);
+      const sb = scoreOf(b);
+      if (sa.group !== sb.group) return sa.group - sb.group;  // groupe le plus critique en premier
+      if (sa.score !== sb.score) return sb.score - sa.score;  // score le plus élevé en premier
+      return sa.room - sb.room;                               // à égalité, chambre croissante
     });
   }, [residents, allMesures, allDossiers, floor, sort, alertSettings]);
 
@@ -1862,16 +1910,83 @@ function ComplementsTab({ residents, allComplements, onSelect }: {
   );
 }
 
+// ── Network background ────────────────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SurveillancePoidsPage() {
   const supabase = createClient();
   const qc = useQueryClient();
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const poidsModule = MODULES.find(m => m.id === 'surveillancePoids');
+  const colorFrom = colorOverrides['surveillancePoids']?.from ?? poidsModule?.cardFrom ?? '#d48010';
+  const colorTo   = colorOverrides['surveillancePoids']?.to   ?? poidsModule?.cardTo   ?? '#a85800';
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [showDenSettings, setShowDenSettings] = useState(false);
   const [showSurSettings, setShowSurSettings] = useState(false);
-  const [showVigilance, setShowVigilance] = useState(true);
+  const [showVigilance, setShowVigilance] = useState(false);
 
   const { data: residents = [] } = useQuery<Resident[]>({
     queryKey: ['residents'],
@@ -1988,18 +2103,43 @@ export default function SurveillancePoidsPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+        {/* Dense page background network */}
+        <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+            viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+            {PG_EDGES.map(([i, j], idx) => (
+              <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+                stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+            ))}
+            {PG_NODES.map(([x, y], idx) => (
+              <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+            ))}
+          </svg>
+        </div>
 
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-800 to-blue-900 text-white py-5 px-8 shadow-lg">
-          <div className="max-w-6xl mx-auto flex items-center gap-3">
-            <Scale className="h-7 w-7 text-blue-200" />
-            <div>
-              <h1 className="text-2xl font-bold">Surveillance du Poids</h1>
-              <p className="text-blue-200 text-sm">Bilan nutritionnel — {residents.length} résidents</p>
+        <div className="relative" style={{ zIndex: 1 }}>
+          {/* ── Gradient Header ── */}
+          <div className="print:hidden relative overflow-hidden"
+            style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+            <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+            <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+              <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+                <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+                <span>›</span>
+                <span className="text-white/90">Surveillance du Poids</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <Scale className="h-6 w-6 text-white" strokeWidth={1.5} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl font-bold text-white">Surveillance du Poids</h1>
+                  <p className="text-white/70 text-sm hidden sm:block">Bilan nutritionnel annuel et suppléments</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
         {/* Alert banners */}
         <div className="max-w-6xl mx-auto px-8 pt-5 grid grid-cols-2 gap-4">
@@ -2144,17 +2284,37 @@ export default function SurveillancePoidsPage() {
         {/* Main content */}
         <div className="max-w-6xl mx-auto px-8 py-6">
           <Tabs defaultValue="pesee">
-            <TabsList className="mb-6">
-              <TabsTrigger value="pesee">Pesée du jour</TabsTrigger>
-              <TabsTrigger value="residents">Résidents</TabsTrigger>
-              <TabsTrigger value="annuelle">Annuelle</TabsTrigger>
-              <TabsTrigger value="complements">
-                Compléments
-                {allComplements.filter(c => c.actif).length > 0 && (
-                  <span className="ml-1.5 bg-amber-500 text-white rounded-full text-xs w-4 h-4 flex items-center justify-center font-bold">
-                    {allComplements.filter(c => c.actif).length}
-                  </span>
-                )}
+            <TabsList className="mb-6 h-auto p-1.5 bg-slate-200 rounded-xl gap-1 flex">
+              <TabsTrigger value="pesee"
+                className="flex-1 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all
+                  data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md
+                  data-[state=inactive]:text-slate-600 data-[state=inactive]:hover:bg-slate-300">
+                Pesée du jour
+              </TabsTrigger>
+              <TabsTrigger value="residents"
+                className="flex-1 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all
+                  data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-md
+                  data-[state=inactive]:text-slate-600 data-[state=inactive]:hover:bg-slate-300">
+                Résidents
+              </TabsTrigger>
+              <TabsTrigger value="annuelle"
+                className="flex-1 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all
+                  data-[state=active]:bg-purple-600 data-[state=active]:text-white data-[state=active]:shadow-md
+                  data-[state=inactive]:text-slate-600 data-[state=inactive]:hover:bg-slate-300">
+                Annuelle
+              </TabsTrigger>
+              <TabsTrigger value="complements"
+                className="flex-1 text-sm font-semibold px-5 py-2.5 rounded-lg transition-all
+                  data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-md
+                  data-[state=inactive]:text-slate-600 data-[state=inactive]:hover:bg-slate-300">
+                <span className="flex items-center justify-center gap-1.5">
+                  Compléments
+                  {allComplements.filter(c => c.actif).length > 0 && (
+                    <span className="bg-white/30 text-inherit rounded-full text-xs w-5 h-5 flex items-center justify-center font-bold border border-white/40">
+                      {allComplements.filter(c => c.actif).length}
+                    </span>
+                  )}
+                </span>
               </TabsTrigger>
             </TabsList>
 
@@ -2173,6 +2333,7 @@ export default function SurveillancePoidsPage() {
           </Tabs>
         </div>
 
+        </div>{/* fin z-index: 1 */}
       </div>
 
       {selectedResident && (
@@ -2185,8 +2346,6 @@ export default function SurveillancePoidsPage() {
           onClose={() => setSelectedResident(null)}
         />
       )}
-
-      <HomeButton />
     </>
   );
 }

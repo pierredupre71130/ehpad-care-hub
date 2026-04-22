@@ -2,11 +2,70 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Printer, X, Camera, Image as ImageIcon, Check } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { HomeButton } from '@/components/ui/home-button';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
+
+// ── Network background (header) ───────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +97,6 @@ async function fetchResidents(): Promise<Resident[]> {
   if (error) throw new Error(error.message);
   const residents = (data ?? []) as Resident[];
 
-  // Générer des URLs signées pour les résidents qui ont une photo (chemin stocké)
   const withPhotos = residents.filter(r => r.photo_url && !r.photo_url.startsWith('http'));
   if (withPhotos.length > 0) {
     const { data: signed } = await sb.storage
@@ -95,23 +153,16 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
         minHeight: withPhoto && resident.photo_url ? 90 : undefined,
       }}
     >
-      {/* Photo (optionnelle) */}
       {withPhoto && resident.photo_url && (
         <img
           src={resident.photo_url}
           alt={name}
           style={{
-            width: 70,
-            height: 70,
-            objectFit: 'cover',
-            borderRadius: 6,
-            flexShrink: 0,
-            border: '1.5px solid #e2e8f0',
+            width: 70, height: 70, objectFit: 'cover',
+            borderRadius: 6, flexShrink: 0, border: '1.5px solid #e2e8f0',
           }}
         />
       )}
-
-      {/* Nom + prénom */}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 32, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {name}
@@ -122,8 +173,6 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
           </div>
         )}
       </div>
-
-      {/* Chambre */}
       <div style={{
         fontSize: 32, fontWeight: 900, color: '#1e293b', letterSpacing: '0.03em', whiteSpace: 'nowrap',
         borderLeft: '2px solid #e2e8f0',
@@ -133,8 +182,6 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
       }}>
         Ch. {resident.room}
       </div>
-
-      {/* Régimes */}
       {diets.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center', justifyContent: 'flex-end' }}>
           {diets.map(d => (
@@ -148,7 +195,6 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
   );
 }
 
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function getKey(floor: string, repas: string) {
@@ -161,7 +207,16 @@ export default function EtiquettesRepasPage() {
   const [activeRepas, setActiveRepas] = useState('midi');
   const [withPhoto, setWithPhoto] = useState(false);
   const saveTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const dbRecordIds = useRef<Record<string, string>>({});
+
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+
+  const etiquettesModule = MODULES.find(m => m.id === 'etiquettesRepas');
+  const colorFrom = colorOverrides['etiquettesRepas']?.from ?? etiquettesModule?.cardFrom ?? '#8b30d4';
+  const colorTo   = colorOverrides['etiquettesRepas']?.to   ?? etiquettesModule?.cardTo   ?? '#6018a8';
 
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
     queryKey: ['residents'],
@@ -173,8 +228,6 @@ export default function EtiquettesRepasPage() {
     queryFn: fetchSelections,
     staleTime: Infinity,
   });
-
-  // ── Selections helpers ────────────────────────────────────────────────────
 
   const currentKey = getKey(activeFloor, activeRepas);
   const selected: string[] = allSelections[currentKey] ?? [];
@@ -202,8 +255,6 @@ export default function EtiquettesRepasPage() {
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  // ── Derived lists ─────────────────────────────────────────────────────────
-
   const floorResidents = residents
     .filter(r => r.floor === activeFloor && r.last_name)
     .sort((a, b) => {
@@ -223,228 +274,273 @@ export default function EtiquettesRepasPage() {
   const isLoading = loadingResidents || loadingSelections;
 
   if (isLoading) return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
+    <div className="flex items-center justify-center min-h-screen">
       <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
 
-      {/* ── Header ── */}
-      <div className="screen-only sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <HomeButton />
-            <h1 className="text-xl font-bold text-slate-800">Étiquettes Repas</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Toggle photo */}
-            <button
-              onClick={() => setWithPhoto(v => !v)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                withPhoto
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <ImageIcon className="h-4 w-4" />
-              Avec photos
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium"
-            >
-              <Printer className="h-4 w-4" /> Imprimer
-            </button>
-          </div>
-        </div>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
       </div>
 
-      {/* ── Corps ── */}
-      <div className="screen-only max-w-5xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
+      <div className="relative" style={{ zIndex: 1 }}>
 
-        {/* Colonne gauche : sélection */}
-        <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="font-semibold text-slate-700">Sélectionner les résidents</h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Tabs value={activeFloor} onValueChange={setActiveFloor}>
-                  <TabsList className="bg-slate-100">
-                    <TabsTrigger value="RDC">RDC</TabsTrigger>
-                    <TabsTrigger value="1ER">1er</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-                <Tabs value={activeRepas} onValueChange={setActiveRepas}>
-                  <TabsList className="bg-amber-50">
-                    <TabsTrigger value="midi" className="data-[state=active]:bg-amber-400 data-[state=active]:text-white">Midi</TabsTrigger>
-                    <TabsTrigger value="soir" className="data-[state=active]:bg-indigo-500 data-[state=active]:text-white">Soir</TabsTrigger>
-                  </TabsList>
-                </Tabs>
+        {/* ── Gradient Header ── */}
+        <div className="print:hidden relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+          <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+          <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+              <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+              <span>›</span>
+              <span className="text-white/90">Étiquettes Repas</span>
+            </div>
+
+            {/* Icon + title + controls */}
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <UtensilsCrossed className="h-6 w-6 text-white" strokeWidth={1.5} />
               </div>
-            </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold text-white">Étiquettes Repas</h1>
+                <p className="text-white/70 text-sm hidden sm:block">Régimes alimentaires et allergies</p>
+              </div>
 
-            <p className="text-xs text-slate-400 mb-3">
-              Cliquer pour sélectionner · les photos se gèrent dans <span className="font-medium text-slate-500">Gestion des résidents</span>
-            </p>
+              {/* Controls */}
+              <div className="flex items-center gap-2 flex-wrap">
 
-            <div className="flex flex-col gap-1">
-              {floorResidents.map(r => {
-                const isSelected = selected.includes(r.id);
-                return (
-                  <div
-                    key={r.id}
-                    onClick={() => toggleSelect(r.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleSelect(r.id); }}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-sm border cursor-pointer select-none ${
-                      isSelected
-                        ? 'bg-blue-50 border-blue-300 text-blue-800 font-semibold'
-                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    {/* Mini photo */}
-                    <div className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200">
-                      {r.photo_url
-                        ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center">
-                            <Camera className="h-3 w-3 text-slate-300" />
-                          </div>
-                      }
-                    </div>
+                {/* Floor tabs */}
+                <div className="flex bg-black/20 rounded-xl p-1 gap-1">
+                  {(['RDC', '1ER'] as const).map(f => (
+                    <button key={f}
+                      onClick={() => setActiveFloor(f)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                        activeFloor === f
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >{f}</button>
+                  ))}
+                </div>
 
-                    <span className="w-10 text-xs text-slate-400 font-mono shrink-0">Ch.{r.room}</span>
-                    <span className="font-semibold flex-1 truncate">
-                      {r.title} {r.last_name?.toUpperCase()} {r.first_name}
-                    </span>
+                {/* Repas tabs */}
+                <div className="flex bg-black/20 rounded-xl p-1 gap-1">
+                  {[{ val: 'midi', label: 'Midi' }, { val: 'soir', label: 'Soir' }].map(r => (
+                    <button key={r.val}
+                      onClick={() => setActiveRepas(r.val)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                        activeRepas === r.val
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >{r.label}</button>
+                  ))}
+                </div>
 
-                    {/* Badge régime */}
-                    {hasDiet(r) && (
-                      <span className="text-[10px] text-orange-600 font-semibold shrink-0">régime</span>
-                    )}
+                {/* Photo toggle */}
+                <button
+                  onClick={() => setWithPhoto(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
+                    withPhoto
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'bg-black/20 text-white/80 hover:text-white hover:bg-white/30'
+                  }`}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Avec photos
+                </button>
 
-                    {isSelected && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
-                  </div>
-                );
-              })}
-              {floorResidents.length === 0 && (
-                <div className="text-slate-400 text-sm text-center py-6">Aucun résident sur cet étage</div>
-              )}
-            </div>
-
-            {/* Tout sélectionner / désélectionner */}
-            <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => setSelected(() => floorResidents.map(r => r.id))}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Tout sélectionner
-              </button>
-              <span className="text-slate-300">·</span>
-              <button
-                onClick={() => setSelected(() => [])}
-                className="text-xs text-red-400 hover:underline"
-              >
-                Tout retirer
-              </button>
+                {/* Print */}
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors"
+                >
+                  <Printer className="h-4 w-4" /> Imprimer
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Colonne droite : résumé */}
-        <div className="w-full lg:w-72 shrink-0">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sticky top-24">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="font-semibold text-slate-700">À imprimer</h2>
-              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
-                {selectedResidents.length} étiquette{selectedResidents.length > 1 ? 's' : ''}
-              </span>
+        {/* ── Corps ── */}
+        <div className="screen-only max-w-5xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
+
+          {/* Colonne gauche : sélection */}
+          <div className="flex-1 min-w-0">
+            <div className="bg-white rounded-2xl shadow-sm border border-white/60 p-4">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h2 className="font-semibold text-slate-700">Sélectionner les résidents</h2>
+                <span className="text-xs text-slate-400">
+                  {activeFloor} · {activeRepas === 'midi' ? 'Midi' : 'Soir'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-400 mb-3">
+                Cliquer pour sélectionner · les photos se gèrent dans{' '}
+                <span className="font-medium text-slate-500">Gestion des résidents</span>
+              </p>
+
+              <div className="flex flex-col gap-1">
+                {floorResidents.map(r => {
+                  const isSelected = selected.includes(r.id);
+                  return (
+                    <div
+                      key={r.id}
+                      onClick={() => toggleSelect(r.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleSelect(r.id); }}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-sm border cursor-pointer select-none ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-300 text-blue-800 font-semibold'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200">
+                        {r.photo_url
+                          ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center">
+                              <Camera className="h-3 w-3 text-slate-300" />
+                            </div>
+                        }
+                      </div>
+                      <span className="w-10 text-xs text-slate-400 font-mono shrink-0">Ch.{r.room}</span>
+                      <span className="font-semibold flex-1 truncate">
+                        {r.title} {r.last_name?.toUpperCase()} {r.first_name}
+                      </span>
+                      {hasDiet(r) && (
+                        <span className="text-[10px] text-orange-600 font-semibold shrink-0">régime</span>
+                      )}
+                      {isSelected && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
+                    </div>
+                  );
+                })}
+                {floorResidents.length === 0 && (
+                  <div className="text-slate-400 text-sm text-center py-6">Aucun résident sur cet étage</div>
+                )}
+              </div>
+
+              <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                <button
+                  onClick={() => setSelected(() => floorResidents.map(r => r.id))}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Tout sélectionner
+                </button>
+                <span className="text-slate-300">·</span>
+                <button
+                  onClick={() => setSelected(() => [])}
+                  className="text-xs text-red-400 hover:underline"
+                >
+                  Tout retirer
+                </button>
+              </div>
             </div>
-            <div className="flex gap-1 mb-3">
-              {[
-                { val: activeFloor,  label: activeFloor,  active: true,  bg: 'bg-slate-800' },
-                { val: activeRepas,  label: activeRepas === 'midi' ? 'Midi' : 'Soir', active: true,
-                  bg: activeRepas === 'midi' ? 'bg-amber-400' : 'bg-indigo-500' },
-              ].map(b => (
-                <span key={b.val} className={`text-xs px-2 py-0.5 rounded-full font-semibold text-white ${b.bg}`}>
-                  {b.label}
+          </div>
+
+          {/* Colonne droite : résumé */}
+          <div className="w-full lg:w-72 shrink-0">
+            <div className="bg-white rounded-2xl shadow-sm border border-white/60 p-4 sticky top-6">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="font-semibold text-slate-700">À imprimer</h2>
+                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                  {selectedResidents.length} étiquette{selectedResidents.length > 1 ? 's' : ''}
                 </span>
-              ))}
-              {withPhoto && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-500 text-white flex items-center gap-1">
-                  <ImageIcon className="h-2.5 w-2.5" /> Photos
+              </div>
+              <div className="flex gap-1 mb-3">
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white bg-slate-800">{activeFloor}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold text-white ${activeRepas === 'midi' ? 'bg-amber-400' : 'bg-indigo-500'}`}>
+                  {activeRepas === 'midi' ? 'Midi' : 'Soir'}
                 </span>
+                {withPhoto && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-500 text-white flex items-center gap-1">
+                    <ImageIcon className="h-2.5 w-2.5" /> Photos
+                  </span>
+                )}
+              </div>
+
+              {selectedResidents.length === 0 ? (
+                <div className="text-slate-400 text-sm text-center py-6">Aucun résident sélectionné</div>
+              ) : (
+                <div className="flex flex-col gap-1 max-h-80 overflow-y-auto">
+                  {selectedResidents.map(r => (
+                    <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
+                      <div className="w-6 h-6 rounded-full flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200">
+                        {r.photo_url
+                          ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center">
+                              <Camera className="h-2.5 w-2.5 text-slate-300" />
+                            </div>
+                        }
+                      </div>
+                      <span className="text-xs text-slate-400 font-mono w-8 shrink-0">Ch.{r.room}</span>
+                      <span className="font-semibold text-blue-800 text-xs flex-1 truncate">
+                        {r.title} {r.last_name?.toUpperCase()} {r.first_name}
+                      </span>
+                      <button
+                        onClick={() => toggleSelect(r.id)}
+                        className="text-red-400 hover:text-red-600 shrink-0"
+                        title="Retirer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
+          </div>
+        </div>
 
-            {selectedResidents.length === 0 ? (
-              <div className="text-slate-400 text-sm text-center py-6">Aucun résident sélectionné</div>
-            ) : (
-              <div className="flex flex-col gap-1 max-h-80 overflow-y-auto">
+        {/* ── Aperçu + Zone d'impression ── */}
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .screen-only { display: none !important; }
+            .print-zone { display: block !important; padding: 0 !important; max-width: 100% !important; }
+            .print-zone-inner { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
+            .print-zone-header { display: none !important; }
+            .etiquette-item { width: 100% !important; box-sizing: border-box; }
+            img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          }
+        `}</style>
+
+        {selectedResidents.length > 0 && (
+          <div className="print-zone max-w-5xl mx-auto px-4 pb-10">
+            <div className="print-zone-inner bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+              <div className="print-zone-header flex items-center gap-2 mb-4 screen-only">
+                <h2 className="font-semibold text-slate-700">Aperçu des étiquettes</h2>
+                <span className="text-xs text-slate-400">({selectedResidents.length})</span>
+                {withPhoto && (
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">avec photos</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
                 {selectedResidents.map(r => (
-                  <div key={r.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
-                    {/* Mini photo */}
-                    <div className="w-6 h-6 rounded-full flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200">
-                      {r.photo_url
-                        ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
-                        : <div className="w-full h-full flex items-center justify-center">
-                            <Camera className="h-2.5 w-2.5 text-slate-300" />
-                          </div>
-                      }
-                    </div>
-                    <span className="text-xs text-slate-400 font-mono w-8 shrink-0">Ch.{r.room}</span>
-                    <span className="font-semibold text-blue-800 text-xs flex-1 truncate">
-                      {r.title} {r.last_name?.toUpperCase()} {r.first_name}
-                    </span>
-                    <button
-                      onClick={() => toggleSelect(r.id)}
-                      className="text-red-400 hover:text-red-600 shrink-0"
-                      title="Retirer"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <Etiquette key={r.id} resident={r} withPhoto={withPhoto} />
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Aperçu + Zone d'impression (même DOM, images toujours chargées) ── */}
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 10mm; }
-          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .screen-only { display: none !important; }
-          .print-zone { display: block !important; padding: 0 !important; max-width: 100% !important; }
-          .print-zone-inner { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
-          .print-zone-header { display: none !important; }
-          .etiquette-item { width: 100% !important; box-sizing: border-box; }
-          img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
-
-      {selectedResidents.length > 0 && (
-        <div className="print-zone max-w-5xl mx-auto px-4 pb-10">
-          <div className="print-zone-inner bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="print-zone-header flex items-center gap-2 mb-4 screen-only">
-              <h2 className="font-semibold text-slate-700">Aperçu des étiquettes</h2>
-              <span className="text-xs text-slate-400">({selectedResidents.length})</span>
-              {withPhoto && (
-                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">avec photos</span>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              {selectedResidents.map(r => (
-                <Etiquette key={r.id} resident={r} withPhoto={withPhoto} />
-              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+      </div>{/* fin z-index: 1 */}
     </div>
   );
 }

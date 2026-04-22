@@ -4,13 +4,73 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Save, X, Check, AlertCircle, Trash2, Eye, UserPen,
-  Users, CalendarClock, History, Loader2, Printer, Search, ChevronLeft,
+  Users, CalendarClock, History, Loader2, Printer, Search, Heart,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
+import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
-import { HomeButton } from '@/components/ui/home-button';
 import PAPView from '@/components/pap/PAPView';
 import PrintReferentsTable from '@/components/pap/PrintReferentsTable';
+
+// ── Network background ────────────────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+// ── Dense page background network ────────────────────────────────────────────
+const PG_NODES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  const cols = 16, rows = 11;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round((c / (cols - 1)) * 1500);
+      const y = Math.round((r / (rows - 1)) * 1000);
+      const ox = ((c * 7 + r * 13) % 50) - 25;
+      const oy = ((r * 11 + c * 17) % 50) - 25;
+      pts.push([Math.max(0, Math.min(1500, x + ox)), Math.max(0, Math.min(1000, y + oy))]);
+    }
+  }
+  return pts;
+})();
+const PG_EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < PG_NODES.length; i++)
+    for (let j = i + 1; j < PG_NODES.length; j++) {
+      const dx = PG_NODES[i][0] - PG_NODES[j][0], dy = PG_NODES[i][1] - PG_NODES[j][1];
+      if (dx * dx + dy * dy < 160 * 160) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -309,6 +369,16 @@ export default function PAPPage() {
   const supabase = createClient();
   const qc = useQueryClient();
 
+  // Module color system
+  const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
+    queryKey: ['settings', 'module_colors'],
+    queryFn: fetchColorOverrides,
+    staleTime: 30000,
+  });
+  const papModule = MODULES.find(m => m.id === 'pap');
+  const colorFrom = colorOverrides['pap']?.from ?? papModule?.cardFrom ?? '#d63052';
+  const colorTo   = colorOverrides['pap']?.to   ?? papModule?.cardTo   ?? '#a81535';
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [historyResidentId, setHistoryResidentId] = useState<string | null>(null);
@@ -492,19 +562,47 @@ export default function PAPPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <a href="/" className="flex items-center gap-1 text-slate-500 hover:text-slate-700 text-sm transition-colors">
-            <ChevronLeft className="h-4 w-4" /> Accueil
-          </a>
-          <span className="text-slate-300">·</span>
-          <h1 className="text-lg font-bold text-slate-800">PAP — Projets d'Accompagnement Personnalisé</h1>
+    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+      {/* Dense page background network */}
+      <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
+          viewBox="0 0 1500 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          {PG_EDGES.map(([i, j], idx) => (
+            <line key={idx} x1={PG_NODES[i][0]} y1={PG_NODES[i][1]} x2={PG_NODES[j][0]} y2={PG_NODES[j][1]}
+              stroke={darkenHex(colorFrom, 30)} strokeWidth="0.8" />
+          ))}
+          {PG_NODES.map(([x, y], idx) => (
+            <circle key={idx} cx={x} cy={y} r="3" fill={darkenHex(colorFrom, 20)} />
+          ))}
+        </svg>
+      </div>
+      <div className="relative" style={{ zIndex: 1 }}>
+
+      {/* ── Gradient Header ── */}
+      <div className="print:hidden relative overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
+        <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+            <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+            <span>›</span>
+            <span className="text-white/75">PAP</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <Heart className="h-6 w-6 text-white" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-white tracking-tight">PAP</h1>
+              <p className="text-sm text-white/60 mt-0.5">Projets d&apos;Accompagnement Personnalisé</p>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-white/60 p-6">
 
         {/* Prochaines réévaluations */}
         {prochaines4.length > 0 && (
@@ -705,6 +803,7 @@ export default function PAPPage() {
             })}
           </div>
         )}
+        </div>{/* end white card */}
       </div>
 
       {/* ── Modals ─────────────────────────────────────────────── */}
@@ -968,7 +1067,7 @@ export default function PAPPage() {
         </div>
       )}
 
-      <HomeButton />
+      </div>{/* fin z-index: 1 */}
     </div>
   );
 }
