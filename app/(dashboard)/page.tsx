@@ -203,7 +203,9 @@ export default function DashboardPage() {
     let mods = MODULES;
     if (currentRole !== 'all' && !isAdminMode && rolePermissions) {
       const allowed = rolePermissions[currentRole];
-      if (allowed) mods = mods.filter(m => allowed.includes(m.id));
+      // null / undefined / [] → aucun module autorisé (ne pas bypasser le filtre)
+      const allowedList = Array.isArray(allowed) ? allowed : [];
+      mods = mods.filter(m => allowedList.includes(m.id));
     }
     return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
   }, [currentRole, isAdminMode, rolePermissions]);
@@ -212,7 +214,8 @@ export default function DashboardPage() {
   const fichesDePosteVisible = useMemo(() => {
     if (isAdmin || isAdminMode || !rolePermissions) return true;
     const allowed = rolePermissions[currentRole];
-    return !allowed || allowed.includes('fichesDePoste');
+    const allowedList = Array.isArray(allowed) ? allowed : [];
+    return allowedList.includes('fichesDePoste');
   }, [isAdmin, currentRole, isAdminMode, rolePermissions]);
 
   // Visibilité bottom nav selon permissions du rôle réel
@@ -221,14 +224,16 @@ export default function DashboardPage() {
     if (isAdmin) return true;
     if (!rolePermissions) return false;
     const allowed = rolePermissions[realRole];
-    return !allowed || allowed.includes('residents');
+    const allowedList = Array.isArray(allowed) ? allowed : [];
+    return allowedList.includes('residents');
   }, [isAdmin, realRole, rolePermissions]);
 
   const girVisible = useMemo(() => {
     if (isAdmin) return true;
     if (!rolePermissions) return false;
     const allowed = rolePermissions[realRole];
-    return !allowed || allowed.includes('girNiveauSoin');
+    const allowedList = Array.isArray(allowed) ? allowed : [];
+    return allowedList.includes('girNiveauSoin');
   }, [isAdmin, realRole, rolePermissions]);
 
   if (isLoading || !isAuthenticated) {
