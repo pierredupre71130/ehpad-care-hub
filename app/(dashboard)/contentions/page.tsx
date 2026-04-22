@@ -181,7 +181,7 @@ export default function ContentionsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImportImageModal, setShowImportImageModal] = useState(false);
 
-  const { data: fiches = [], isLoading: isLoadingFiches } = useQuery({
+  const { data: fiches = [], isLoading: isLoadingFiches, error: fichesError } = useQuery({
     queryKey: ['contentions'],
     queryFn: fetchContentions,
   });
@@ -213,6 +213,9 @@ export default function ContentionsPage() {
       setForm(EMPTY_FORM);
       setActiveId(null);
     },
+    onError: (err: Error) => {
+      alert(`Erreur lors de l'enregistrement : ${err.message}`);
+    },
   });
 
   const updateMutation = useMutation({
@@ -227,6 +230,9 @@ export default function ContentionsPage() {
       setForm(EMPTY_FORM);
       setActiveId(null);
     },
+    onError: (err: Error) => {
+      alert(`Erreur lors de la mise à jour : ${err.message}`);
+    },
   });
 
   const deleteMutation = useMutation({
@@ -240,6 +246,9 @@ export default function ContentionsPage() {
       setShowModal(false);
       setForm(EMPTY_FORM);
       setActiveId(null);
+    },
+    onError: (err: Error) => {
+      alert(`Erreur lors de la suppression : ${err.message}`);
     },
   });
 
@@ -389,6 +398,18 @@ export default function ContentionsPage() {
 
   const isLoading = isLoadingFiches || isLoadingResidents;
   const isSaving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+
+  if (fichesError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 gap-4 p-8">
+        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6 max-w-lg w-full">
+          <h2 className="font-bold text-red-800 text-lg mb-2">Erreur de chargement</h2>
+          <p className="text-red-700 text-sm font-mono">{(fichesError as Error).message}</p>
+          <p className="text-red-600 text-xs mt-3">Vérifiez que la table <code className="bg-red-100 px-1 rounded">contentions</code> existe dans Supabase et que les RLS sont désactivées.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

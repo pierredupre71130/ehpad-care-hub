@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Scale, TrendingDown, TrendingUp, Plus, X, Loader2,
-  Check, Pencil, Save, Activity, User, Pill, ChevronRight,
+  Check, Pencil, Save, Activity, User, Pill, ChevronRight, ChevronDown,
   AlertTriangle, Trash2, Calendar, Settings, ArrowDown, ArrowUp, ArrowRight, Printer,
 } from 'lucide-react';
 import {
@@ -77,6 +77,16 @@ interface AlertInfo {
   surcharge: boolean;
   detail: string;
   imc?: number;
+}
+
+interface ApproachingAlertInfo {
+  type: 'denutrition' | 'surcharge';
+  currentPct: number;
+  thresholdPct: number;
+  periodJours: number;
+  proximity: number; // 0–100 : % du seuil atteint
+  refWeight: number;
+  currentWeight: number;
 }
 
 interface AlertSettings {
@@ -173,6 +183,49 @@ function computeAlerts(mesures: PoidsMesure[], dossier?: DossierNutritionnel, se
   }
 
   return { denutrition, surcharge, detail: details.join(' • '), imc };
+}
+
+// Retourne les tendances "en approche" (pas encore en alerte, mais >50% du seuil)
+function computeApproachingAlerts(
+  mesures: PoidsMesure[],
+  settings: AlertSettings,
+): ApproachingAlertInfo[] {
+  const sorted = [...mesures].sort((a, b) => b.date.localeCompare(a.date));
+  if (sorted.length < 2) return [];
+  const latest = sorted[0].poids_kg;
+  const today = todayISO();
+  const candidates: ApproachingAlertInfo[] = [];
+
+  const check = (
+    type: 'denutrition' | 'surcharge',
+    periodJours: number,
+    thresholdPct: number,
+  ) => {
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() - periodJours);
+    const ref = sorted.find(m => new Date(m.date) <= cutoff);
+    if (!ref) return;
+    const rawPct = type === 'denutrition'
+      ? ((ref.poids_kg - latest) / ref.poids_kg) * 100
+      : ((latest - ref.poids_kg) / ref.poids_kg) * 100;
+    if (rawPct <= 0 || rawPct >= thresholdPct) return; // négatif ou déjà en alerte
+    const proximity = (rawPct / thresholdPct) * 100;
+    if (proximity < 50) return; // moins de 50% du seuil, pas significatif
+    candidates.push({ type, currentPct: rawPct, thresholdPct, periodJours, proximity, refWeight: ref.poids_kg, currentWeight: latest });
+  };
+
+  check('denutrition', settings.denutrition_jours_court, settings.denutrition_pct_court);
+  check('denutrition', settings.denutrition_jours_long,  settings.denutrition_pct_long);
+  check('surcharge',   settings.surcharge_jours_court,   settings.surcharge_pct_court);
+  check('surcharge',   settings.surcharge_jours_long,    settings.surcharge_pct_long);
+
+  // Garder le pire par type (proximité max)
+  const best: ApproachingAlertInfo[] = [];
+  (['denutrition', 'surcharge'] as const).forEach(t => {
+    const top = candidates.filter(c => c.type === t).sort((a, b) => b.proximity - a.proximity)[0];
+    if (top) best.push(top);
+  });
+  return best;
 }
 
 // ─── Alert Settings Panels ────────────────────────────────────────────────────
@@ -1818,6 +1871,7 @@ export default function SurveillancePoidsPage() {
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [showDenSettings, setShowDenSettings] = useState(false);
   const [showSurSettings, setShowSurSettings] = useState(false);
+  const [showVigilance, setShowVigilance] = useState(true);
 
   const { data: residents = [] } = useQuery<Resident[]>({
     queryKey: ['residents'],
@@ -1915,6 +1969,22 @@ export default function SurveillancePoidsPage() {
 
   const denutritionList = residents.filter(r => alertsByResident[r.id]?.denutrition);
   const surchargeList = residents.filter(r => alertsByResident[r.id]?.surcharge);
+
+  // Résidents en approche d'alerte (pas encore en alerte, ≥50% du seuil)
+  const approachingList = useMemo(() => {
+    const result: Array<{ resident: Resident; alerts: ApproachingAlertInfo[] }> = [];
+    residents.forEach(r => {
+      if (alertsByResident[r.id]?.denutrition || alertsByResident[r.id]?.surcharge) return;
+      const mesures = allMesures.filter(m => m.resident_id === r.id);
+      const alerts = computeApproachingAlerts(mesures, alertSettings);
+      if (alerts.length > 0) result.push({ resident: r, alerts });
+    });
+    return result.sort((a, b) => {
+      const maxA = Math.max(...a.alerts.map(al => al.proximity));
+      const maxB = Math.max(...b.alerts.map(al => al.proximity));
+      return maxB - maxA;
+    });
+  }, [residents, allMesures, alertSettings, alertsByResident]);
 
   return (
     <>
@@ -2020,6 +2090,56 @@ export default function SurveillancePoidsPage() {
               )}
           </div>
         </div>
+
+        {/* Vigilance préventive */}
+        {approachingList.length > 0 && (
+          <div className="max-w-6xl mx-auto px-8 pt-3">
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+              <button
+                onClick={() => setShowVigilance(v => !v)}
+                className="flex items-center gap-2 w-full text-left mb-0"
+              >
+                <Activity className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                <h3 className="font-bold text-amber-800">Vigilance préventive</h3>
+                <span className="bg-amber-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0">{approachingList.length}</span>
+                {!showVigilance && <span className="text-xs text-amber-600 ml-1">— résidents approchant un seuil</span>}
+                <ChevronDown className={`h-4 w-4 text-amber-500 ml-auto flex-shrink-0 transition-transform duration-200 ${showVigilance ? 'rotate-180' : ''}`} />
+              </button>
+              {showVigilance && <>
+                <p className="text-xs text-amber-700 mt-1 mb-3">Résidents ayant atteint ≥&nbsp;50&nbsp;% du seuil d'alerte — cliquez pour ouvrir le dossier</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {approachingList.map(({ resident, alerts }) => (
+                  <button
+                    key={resident.id}
+                    onClick={() => setSelectedResident(resident)}
+                    className="flex flex-col gap-1.5 p-2.5 bg-white border border-amber-200 rounded-lg hover:border-amber-400 hover:bg-amber-50 transition-colors text-left w-full"
+                  >
+                    <div className="font-semibold text-slate-800 text-xs truncate">
+                      {resident.last_name} <span className="text-slate-500 font-normal">Ch.{resident.room}</span>
+                    </div>
+                    {alerts.map((a, i) => (
+                      <div key={i} className="w-full">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className={`text-xs font-medium ${a.type === 'denutrition' ? 'text-red-500' : 'text-orange-500'}`}>
+                            {a.type === 'denutrition' ? '↘ Dénut.' : '↗ Surcharge'} {a.periodJours}j
+                          </span>
+                          <span className="text-xs text-slate-400">{a.currentPct.toFixed(1)}&nbsp;/&nbsp;{a.thresholdPct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                          <div
+                            className={`h-full rounded-full ${a.proximity >= 85 ? 'bg-red-400' : a.proximity >= 70 ? 'bg-amber-400' : 'bg-yellow-300'}`}
+                            style={{ width: `${Math.min(a.proximity, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </button>
+                ))}
+              </div>
+              </>}
+            </div>
+          </div>
+        )}
 
         {/* Main content */}
         <div className="max-w-6xl mx-auto px-8 py-6">

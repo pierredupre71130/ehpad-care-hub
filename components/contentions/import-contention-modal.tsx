@@ -97,7 +97,7 @@ export function ImportContentionModal({ open, onOpenChange, residents, keywords,
     setLoading(true);
     const sb = createClient();
     try {
-      const { data: allExisting } = await sb.from('suivi_antalgique').select('*').eq('type_suivi', 'contention');
+      const { data: allExisting } = await sb.from('contentions').select('*').eq('type_suivi', 'contention');
       for (const group of toProcess) {
         const resident = residents.find(r => r.id === group.resident_id);
         if (!resident) continue;
@@ -108,9 +108,9 @@ export function ImportContentionModal({ open, onOpenChange, residents, keywords,
           );
           if (existing) {
             if (!!existing.dotation_nominative === !!c.si_besoin) continue;
-            await sb.from('suivi_antalgique').update({ dotation_nominative: c.si_besoin || false, date_debut: c.date_prescription || existing.date_debut || '', updated_at: new Date().toISOString() }).eq('id', existing.id);
+            await sb.from('contentions').update({ dotation_nominative: c.si_besoin || false, date_debut: c.date_prescription || existing.date_debut || '', updated_at: new Date().toISOString() }).eq('id', existing.id);
           } else {
-            await sb.from('suivi_antalgique').insert({
+            await sb.from('contentions').insert({
               nom: residentName, chambre: resident.room || '', traitement: c.type, type_suivi: 'contention',
               date_debut: c.date_prescription || '', date_fin: '', pas_de_fin: true,
               dotation_nominative: c.si_besoin || false, poso_matin: false, poso_midi: false, poso_soir: false, prescripteur: '',
