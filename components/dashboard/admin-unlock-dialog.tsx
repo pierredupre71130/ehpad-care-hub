@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { PhoneCall } from 'lucide-react';
+import { PhoneCall, ShieldCheck, UserCog } from 'lucide-react';
 
 interface AdminUnlockDialogProps {
   open: boolean;
@@ -56,6 +56,32 @@ export function AdminUnlockDialog({
             <div>
               <div>Astreintes & Emails</div>
               <div className="text-xs text-slate-400 font-normal">IDEs, email cadre, Resend</div>
+            </div>
+          </Link>
+          <Link
+            href="/admin-permissions"
+            onClick={() => onOpenChange(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700 font-medium"
+          >
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <ShieldCheck className="h-4 w-4 text-blue-600" />
+            </div>
+            <div>
+              <div>Gestion des Accès</div>
+              <div className="text-xs text-slate-400 font-normal">Modules visibles par rôle</div>
+            </div>
+          </Link>
+          <Link
+            href="/admin-users"
+            onClick={() => onOpenChange(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700 font-medium"
+          >
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+              <UserCog className="h-4 w-4 text-emerald-600" />
+            </div>
+            <div>
+              <div>Gestion des Utilisateurs</div>
+              <div className="text-xs text-slate-400 font-normal">Comptes, rôles, mots de passe</div>
             </div>
           </Link>
         </div>

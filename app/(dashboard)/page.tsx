@@ -6,9 +6,10 @@ import { useQuery } from '@tanstack/react-query';
 import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
-import { MODULES, ROLE_MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
+import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { fetchRolePermissions } from '@/lib/role-permissions';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -167,24 +168,66 @@ export default function DashboardPage() {
     if (!isLoading && !isAuthenticated) router.replace('/login');
   }, [isAuthenticated, isLoading, router]);
 
-  // Rôle persisté dans Supabase
-  const { data: savedRole } = useQuery({ queryKey: ['settings', 'dashboard_role'], queryFn: fetchRole });
-  useEffect(() => { if (savedRole) setCurrentRole(savedRole); }, [savedRole]);
+  // Rôle : pour les non-admins, toujours utiliser leur rôle réel (pas le rôle global sauvegardé)
+  const isAdmin = profile?.role === 'admin';
+  const { data: savedRole } = useQuery({
+    queryKey: ['settings', 'dashboard_role'],
+    queryFn: fetchRole,
+    enabled: isAdmin, // inutile de fetch pour les non-admins
+  });
+  useEffect(() => {
+    if (isAdmin) {
+      // Admin : restaure le dernier rôle simulé
+      if (savedRole) setCurrentRole(savedRole);
+    } else if (profile?.role) {
+      // Non-admin : toujours forcer leur propre rôle
+      setCurrentRole(profile.role);
+    }
+  }, [savedRole, isAdmin, profile?.role]);
+
+  // Permissions dynamiques (configurées par l'admin)
+  const { data: rolePermissions } = useQuery({
+    queryKey: ['settings', 'role_permissions'],
+    queryFn: fetchRolePermissions,
+  });
 
   const handleRoleChange = (role: string) => {
     setCurrentRole(role);
     saveRole(role);
   };
 
-  // Modules filtrés (hors bottom-nav)
+  // Modules filtrés selon permissions dynamiques (hors bottom-nav)
   const visibleModules = useMemo(() => {
     let mods = MODULES;
-    if (currentRole !== 'all' && !isAdminMode) {
-      const allowed = ROLE_MODULES[currentRole];
+    if (currentRole !== 'all' && !isAdminMode && rolePermissions) {
+      const allowed = rolePermissions[currentRole];
       if (allowed) mods = mods.filter(m => allowed.includes(m.id));
     }
     return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
-  }, [currentRole, isAdminMode]);
+  }, [currentRole, isAdminMode, rolePermissions]);
+
+  // Fiches de poste visible selon permissions
+  const fichesDePosteVisible = useMemo(() => {
+    if (isAdmin || isAdminMode || !rolePermissions) return true;
+    const allowed = rolePermissions[currentRole];
+    return !allowed || allowed.includes('fichesDePoste');
+  }, [isAdmin, currentRole, isAdminMode, rolePermissions]);
+
+  // Visibilité bottom nav selon permissions du rôle réel
+  const realRole = profile?.role ?? 'ide';
+  const residentsVisible = useMemo(() => {
+    if (isAdmin) return true;
+    if (!rolePermissions) return false;
+    const allowed = rolePermissions[realRole];
+    return !allowed || allowed.includes('residents');
+  }, [isAdmin, realRole, rolePermissions]);
+
+  const girVisible = useMemo(() => {
+    if (isAdmin) return true;
+    if (!rolePermissions) return false;
+    const allowed = rolePermissions[realRole];
+    return !allowed || allowed.includes('girNiveauSoin');
+  }, [isAdmin, realRole, rolePermissions]);
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -222,18 +265,22 @@ export default function DashboardPage() {
                 Résidence La Fourrier
               </p>
             </div>
-            <Link
-              href="/fiches-de-poste"
-              className="ml-2 hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/85 hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-white/15 transition-colors"
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-              Fiches de Poste
-            </Link>
+            {fichesDePosteVisible && (
+              <Link
+                href="/fiches-de-poste"
+                className="ml-2 hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/85 hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-white/15 transition-colors"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                Fiches de Poste
+              </Link>
+            )}
           </div>
 
           {/* Droite : salutation + rôle */}
           <div className="flex items-center gap-4">
-            <RoleDropdown currentRole={currentRole} onChange={handleRoleChange} />
+            {profile?.role === 'admin' && (
+              <RoleDropdown currentRole={currentRole} onChange={handleRoleChange} />
+            )}
             <div className="text-right hidden sm:block">
               <p className="text-lg font-bold text-white leading-none">
                 {getGreeting()}, {displayName}
@@ -266,35 +313,41 @@ export default function DashboardPage() {
       >
         <div className="max-w-7xl mx-auto px-4 flex items-stretch justify-around">
 
-          <Link href="/residents" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-              <Users className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] font-medium">Résidents</span>
-          </Link>
+          {residentsVisible && (
+            <Link href="/residents" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                <Users className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">Résidents</span>
+            </Link>
+          )}
 
-          <Link href="/gir-niveau-soin" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-              <Stethoscope className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] font-medium">GIR & Soins</span>
-          </Link>
+          {girVisible && (
+            <Link href="/gir-niveau-soin" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                <Stethoscope className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">GIR & Soins</span>
+            </Link>
+          )}
 
-          <button
-            onClick={() => setShowAdminDialog(true)}
-            className={cn(
-              'flex flex-col items-center gap-1 px-4 py-3 transition-colors group',
-              isAdminMode ? 'text-amber-400' : 'text-white/70 hover:text-white'
-            )}
-          >
-            <div className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center transition-colors',
-              isAdminMode ? 'bg-amber-500/30' : 'bg-white/10 group-hover:bg-white/20'
-            )}>
-              <Settings className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] font-medium">Admin</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAdminDialog(true)}
+              className={cn(
+                'flex flex-col items-center gap-1 px-4 py-3 transition-colors group',
+                isAdminMode ? 'text-amber-400' : 'text-white/70 hover:text-white'
+              )}
+            >
+              <div className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center transition-colors',
+                isAdminMode ? 'bg-amber-500/30' : 'bg-white/10 group-hover:bg-white/20'
+              )}>
+                <Settings className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">Admin</span>
+            </button>
+          )}
 
           <button
             onClick={signOut}
