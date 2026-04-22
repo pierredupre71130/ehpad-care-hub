@@ -801,6 +801,41 @@ export default function ConsignesNuitPage() {
     }
   };
 
+  const handleQuickPrint = () => {
+    try {
+      const notes = notesByFloor[activeFloor] ?? {};
+      const currentInfos = infosByFloor[activeFloor] ?? '';
+      const pageContentH = 1083;
+      const rectoH = measureNaturalHeight('Mapad', mapadResidents, notes);
+      const versoH = measureNaturalHeight('Long Séjour', longSejourResidents, notes);
+      const rectoZoom = rectoH > pageContentH ? pageContentH / rectoH : 1;
+      const versoZoom = versoH > pageContentH ? pageContentH / versoH : 1;
+      const rectoHTML = buildPageHTML('Mapad', mapadResidents, notes, rectoZoom, currentInfos);
+      const versoHTML = buildPageHTML('Long Séjour', longSejourResidents, notes, versoZoom, currentInfos);
+      const html = `<!DOCTYPE html><html><head><meta charset='utf-8'/>
+        <style>
+          @page { size: A4 portrait; margin: 0; }
+          html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .page { width: 794px; height: 1123px; overflow: hidden; box-sizing: border-box; padding: 20px 24px; page-break-after: always; break-after: page; }
+          .page:last-child { page-break-after: avoid; break-after: avoid; }
+        </style>
+      </head><body>
+        <div class="page">${rectoHTML}</div>
+        <div class="page">${versoHTML}</div>
+      </body></html>`;
+      const existing = document.getElementById('nuit-print-iframe');
+      if (existing) existing.remove();
+      const iframe = document.createElement('iframe');
+      iframe.id = 'nuit-print-iframe';
+      iframe.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;opacity:0;border:none;z-index:-1;';
+      iframe.srcdoc = html;
+      document.body.appendChild(iframe);
+      iframe.onload = () => setTimeout(() => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); }, 300);
+    } catch (err: unknown) {
+      toast.error('Erreur : ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   const handlePrint = async () => {
     if (!ideAstreinte) {
       toast.error('Veuillez choisir une IDE d\'astreinte avant d\'imprimer');
@@ -881,6 +916,10 @@ export default function ConsignesNuitPage() {
                   <Lock className="h-3.5 w-3.5" /> Verrouillé (jour passé)
                 </span>
               )}
+              <Button variant="outline" size="sm" onClick={handleQuickPrint} className="gap-1.5 text-slate-500 border-dashed">
+                <Printer className="h-4 w-4" />
+                Imprimer (test)
+              </Button>
               <Button variant="outline" size="sm" onClick={handlePrint} disabled={isSaving} className="gap-1.5">
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                 Imprimer & Sauvegarder
