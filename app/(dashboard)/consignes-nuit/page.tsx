@@ -841,6 +841,32 @@ export default function ConsignesNuitPage() {
     const effectiveSendCadre = !isAdmin || sendCadre;
     const cadreEmail = effectiveSendCadre ? (astreinteSettings?.cadreEmail ?? '') : '';
 
+    // Vérification avant envoi : au moins un destinataire doit avoir un email
+    const hasIdeEmail = ideEmail.trim().length > 0;
+    const hasCadreEmail = cadreEmail.trim().length > 0;
+    if (!hasIdeEmail && !hasCadreEmail) {
+      const lignes: string[] = [];
+      if (!hasIdeEmail) lignes.push(`• IDE "${ideAstreinte}" : aucun email configuré`);
+      if (effectiveSendCadre && !hasCadreEmail) lignes.push('• Cadre de nuit : aucun email configuré');
+      toast.warning(
+        `⚠️ Email non envoyé — aucun destinataire :\n${lignes.join('\n')}\n\nRenseignez les emails dans Paramètres Astreintes.`,
+        {
+          duration: 12000,
+          style: { whiteSpace: 'pre-line', fontSize: '13px', lineHeight: '1.6' },
+        }
+      );
+      return false;
+    }
+    if (!hasIdeEmail) {
+      toast.warning(
+        `⚠️ Pas d'email pour l'IDE "${ideAstreinte}" — email envoyé au cadre uniquement.\n\nRenseignez l'email IDE dans Paramètres Astreintes.`,
+        {
+          duration: 10000,
+          style: { whiteSpace: 'pre-line', fontSize: '13px', lineHeight: '1.6' },
+        }
+      );
+    }
+
     try {
       const res = await fetch('/api/send-consignes-nuit', {
         method: 'POST',
