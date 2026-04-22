@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Loader2, BriefcaseMedical } from 'lucide-react';
+import { Plus, Printer, Loader2, BriefcaseMedical } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { HomeButton } from '@/components/ui/home-button';
 import { toast } from 'sonner';
@@ -251,7 +251,6 @@ export default function PrisesEnChargePage() {
   const [activeFloor, setActiveFloor] = useState<Floor>('RDC');
   const [activeColor, setActiveColor] = useState<TableColor>('jaune');
   const [seeding, setSeeding] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nom: string } | null>(null);
   const seedingStarted = useRef(false);
   const syncedFloors = useRef<Set<string>>(new Set());
 
@@ -290,7 +289,7 @@ export default function PrisesEnChargePage() {
 
   // ── Helpers résidents ─────────────────────────────────────────────────────
   const floorResidents = residents
-    .filter(r => (r.floor ?? '').toUpperCase() === activeFloor)
+    .filter(r => (r.floor ?? '').toUpperCase() === activeFloor && !r.archived)
     .sort((a, b) =>
       (a.room ?? '').localeCompare(b.room ?? '', undefined, { numeric: true, sensitivity: 'base' })
     );
@@ -375,14 +374,74 @@ export default function PrisesEnChargePage() {
     qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) => [...prev, data as PecRow]);
   };
 
-  // ── Supprimer une ligne ───────────────────────────────────────────────────
-  const deleteRow = async (id: string) => {
-    const sb = createClient();
-    const { error } = await sb.from('prise_en_charge').delete().eq('id', id);
-    if (error) { toast.error(error.message); return; }
-    qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) =>
-      prev.filter(r => r.id !== id)
-    );
+  // ── Imprimer le tableau sélectionné ─────────────────────────────────────
+  const handlePrint = () => {
+    const tableConfig = FLOOR_TABLES[activeFloor].find(t => t.table_color === activeColor);
+    if (!tableConfig) return;
+    const { table_index, table_color } = tableConfig;
+    const tableRows = rows
+      .filter(r => r.table_index === table_index)
+      .sort((a, b) => a.row_order - b.row_order);
+
+    const colorLabel =
+      table_color === 'jaune' ? 'JAUNE' :
+      table_color === 'vert-cercle' ? 'VERT (cercle)' :
+      table_color === 'vert' ? 'VERT' :
+      table_color === 'bleu' ? 'BLEU' :
+      table_color === 'rose-triangle' ? 'ROSE (triangle)' : 'ROSE';
+
+    const trRows = tableRows.map(row => `
+      <tr>
+        <td>${row.chambre || '—'}</td>
+        <td>${row.nom || '—'}</td>
+        <td>${(row.matin || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
+        <td>${(row.apres_midi || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
+        <td>${(row.protection || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
+      </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <style>
+    body { margin: 0; padding: 8mm; font-family: Arial, sans-serif; font-size: 10px; }
+    h1 { font-size: 13px; margin: 0 0 2px; color: #1e293b; }
+    .sub { margin: 0 0 8px; color: #64748b; font-size: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f1f5f9; padding: 5px 7px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid #cbd5e1; color: #475569; }
+    td { padding: 4px 7px; border: 1px solid #e2e8f0; vertical-align: top; font-size: 10px; line-height: 1.45; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    @page { size: A4 landscape; margin: 8mm; }
+  </style>
+</head>
+<body>
+  <h1>Prises en Charge — ${activeFloor} — Tableau ${colorLabel}</h1>
+  <p class="sub">Résidence La Fourrier — ${tableRows.length} résident${tableRows.length > 1 ? 's' : ''}</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:55px">Chambre</th>
+        <th style="width:110px">Nom</th>
+        <th>Matin</th>
+        <th>Après-midi / Soir</th>
+        <th style="width:130px">Protection</th>
+      </tr>
+    </thead>
+    <tbody>${trRows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument!;
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+    }, 300);
   };
 
   // ── Rendu ─────────────────────────────────────────────────────────────────
@@ -453,6 +512,16 @@ export default function PrisesEnChargePage() {
                 </button>
               ))}
             </div>
+
+            {/* Imprimer */}
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 text-xs font-medium transition-colors shadow-sm"
+              title="Imprimer le tableau sélectionné"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Imprimer
+            </button>
           </div>
         </div>
       </div>
@@ -468,13 +537,9 @@ export default function PrisesEnChargePage() {
           const tableConfig = FLOOR_TABLES[activeFloor].find(t => t.table_color === activeColor);
           if (!tableConfig) return null;
           const { table_index, table_color } = tableConfig;
-          const archivedRooms = new Set(
-            residents.filter(r => r.archived).map(r => r.room ?? '')
-          );
 
           const tableRows = rows
             .filter(r => r.table_index === table_index)
-            .filter(r => !r.chambre || !archivedRooms.has(r.chambre))
             .sort((a, b) => a.row_order - b.row_order);
 
           return (
@@ -497,7 +562,6 @@ export default function PrisesEnChargePage() {
                       <th className="border border-slate-200 px-3 py-2 text-left">Matin</th>
                       <th className="border border-slate-200 px-3 py-2 text-left">Après-midi / Soir</th>
                       <th className="border border-slate-200 px-3 py-2 text-left w-36">Protection</th>
-                      <th className="border border-slate-200 px-2 py-2 w-8 print:hidden" />
                     </tr>
                   </thead>
                   <tbody>
@@ -553,16 +617,6 @@ export default function PrisesEnChargePage() {
                           />
                         </td>
 
-                        {/* Supprimer */}
-                        <td className="border border-slate-200 px-1 py-1.5 align-middle text-center print:hidden">
-                          <button
-                            onClick={() => setDeleteConfirm({ id: row.id, nom: row.nom || `Ch. ${row.chambre}` })}
-                            className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"
-                            title="Supprimer"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -584,39 +638,6 @@ export default function PrisesEnChargePage() {
         })()}
       </div>
 
-      {/* Modale de confirmation suppression */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                <Trash2 className="h-5 w-5 text-red-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-800">Supprimer ce résident ?</h3>
-                <p className="text-sm text-slate-500 mt-0.5">{deleteConfirm.nom}</p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-500 mb-6">
-              Cette action est irréversible. La ligne sera définitivement supprimée du tableau.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={() => { deleteRow(deleteConfirm.id); setDeleteConfirm(null); }}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
-              >
-                Supprimer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -908,6 +908,15 @@ export default function ResidentsPage() {
   const archiveMutation = useMutation({
     mutationFn: async ({ id, dateSortie }: { id: string; dateSortie: string }) => {
       const sb = createClient();
+      // Récupérer la chambre avant de l'effacer
+      const { data: res } = await sb.from('residents').select('room').eq('id', id).single();
+      const room = res?.room ?? '';
+      // Vider la ligne prise_en_charge correspondante (nom/matin/apres_midi/protection)
+      if (room) {
+        await sb.from('prise_en_charge')
+          .update({ nom: '', matin: '', apres_midi: '', protection: '', updated_at: new Date().toISOString() })
+          .eq('chambre', room);
+      }
       // Archiver le résident et libérer la chambre (room → '')
       const { error: rErr } = await sb.from('residents')
         .update({ archived: true, date_sortie: dateSortie, room: '' })
