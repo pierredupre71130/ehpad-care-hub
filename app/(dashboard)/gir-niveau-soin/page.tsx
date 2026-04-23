@@ -2,10 +2,57 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X, Printer, HeartPulse, Home } from 'lucide-react';
+import { Loader2, X, Printer } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+
+// ─────────────────────────────────────────────────────────────
+// HEADER COMPONENTS
+// ─────────────────────────────────────────────────────────────
+
+const NODES: [number, number][] = [
+  [60,80],[180,30],[320,110],[480,55],[630,130],[790,40],[940,105],[1100,25],[1260,90],[1420,50],
+  [100,220],[250,175],[410,240],[570,195],[720,260],[880,185],[1030,245],[1190,170],[1350,230],[1470,195],
+  [40,380],[200,340],[360,410],[530,360],[680,420],[840,355],[1000,395],[1160,330],[1320,400],[1460,360],
+  [120,540],[280,500],[440,565],[600,510],[760,570],[920,505],[1080,555],[1240,490],[1390,545],[1490,510],
+];
+const EDGES: [number, number][] = (() => {
+  const e: [number, number][] = [];
+  for (let i = 0; i < NODES.length; i++)
+    for (let j = i + 1; j < NODES.length; j++) {
+      const dx = NODES[i][0] - NODES[j][0], dy = NODES[i][1] - NODES[j][1];
+      if (dx * dx + dy * dy < 220 * 220) e.push([i, j]);
+    }
+  return e;
+})();
+
+function NetworkBackground() {
+  return (
+    <svg className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox="0 0 1500 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {EDGES.map(([i, j], idx) => (
+        <line key={idx} x1={NODES[i][0]} y1={NODES[i][1]} x2={NODES[j][0]} y2={NODES[j][1]}
+          stroke="#8aabcc" strokeWidth="0.7" strokeOpacity="0.3" />
+      ))}
+      {NODES.map(([x, y], idx) => (
+        <circle key={idx} cx={x} cy={y} r="3" fill="#8aabcc" fillOpacity="0.4" />
+      ))}
+    </svg>
+  );
+}
+
+function CaduceusIcon() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="19" cy="19" r="18" fill="white" fillOpacity="0.15" />
+      <line x1="19" y1="5" x2="19" y2="33" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M13 9.5 Q10 5 14 4 Q17 3 19 6 Q21 3 24 4 Q28 5 25 9.5" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      <path d="M19 10 Q13 13.5 15 17 Q17 20 19 19 Q21 18 23 21 Q25 24.5 19 28" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      <path d="M19 10 Q25 13.5 23 17 Q21 20 19 19 Q17 18 15 21 Q13 24.5 19 28" stroke="white" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+    </svg>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -344,22 +391,34 @@ export default function GIRNiveauSoinPage() {
     <div className="min-h-screen" style={{ background: '#dde4ee' }}>
 
       {/* ══ HEADER ══════════════════════════════════════════════ */}
-      <header
-        className="print:hidden w-full px-4 sm:px-6 py-4 flex items-center gap-4"
-        style={{ background: 'linear-gradient(135deg, #1a3560 0%, #0e6e80 100%)' }}
-      >
-        <Link href="/" className="text-white/70 hover:text-white transition-colors flex-shrink-0">
-          <Home className="h-5 w-5" />
-        </Link>
-        <div className="h-5 w-px bg-white/20 flex-shrink-0" />
-        <HeartPulse className="h-5 w-5 text-white/80 flex-shrink-0" />
-        <h1 className="text-lg font-bold text-white flex-1">GIR / Niveau de soin / Appel Nuit</h1>
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors flex-shrink-0"
-        >
-          <Printer className="h-4 w-4" /> Imprimer
-        </button>
+      <header className="print:hidden relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1a3560 0%, #0e6e80 100%)' }}>
+        <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
+        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
+            <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
+            <span>›</span>
+            <span className="text-white/75">GIR / Niveau de soin / Appel Nuit</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <CaduceusIcon />
+              <div>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">
+                  GIR / Niveau de soin / Appel Nuit
+                </h1>
+                <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors"
+            >
+              <Printer className="h-4 w-4" /> Imprimer
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* ══ VERSION IMPRESSION ══════════════════════════════════ */}
