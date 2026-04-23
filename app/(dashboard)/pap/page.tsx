@@ -82,6 +82,7 @@ interface Resident {
 
 interface Pap {
   id: string; resident_id: string; resident_name: string;
+  date_redaction: string;
   date_naissance: string; service_chambre: string;
   date_reunion: string; date_reevaluation: string;
   presents: string; capacite: string;
@@ -107,6 +108,7 @@ type PapForm = Omit<Pap, 'id' | 'resident_id' | 'resident_name' | 'created_at'>;
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const emptyForm: PapForm = {
+  date_redaction: new Date().toISOString().split('T')[0],
   date_naissance: '', service_chambre: '', date_reunion: '', date_reevaluation: '',
   presents: '', capacite: '', souhait_projet: '', souhait_participation: '', souhait_entourage: '',
   donnees_identite: '', souhait_denomination: '', contexte_entree: '', souhaits_fin_vie: '',
@@ -121,7 +123,7 @@ const emptyForm: PapForm = {
 };
 
 const TEXT_FIELDS: (keyof PapForm)[] = [
-  'date_naissance', 'service_chambre', 'date_reunion', 'date_reevaluation', 'presents', 'capacite',
+  'date_redaction', 'date_naissance', 'service_chambre', 'date_reunion', 'date_reevaluation', 'presents', 'capacite',
   'souhait_projet', 'souhait_participation', 'souhait_entourage', 'donnees_identite',
   'souhait_denomination', 'contexte_entree', 'souhaits_fin_vie', 'entourage', 'droit_image',
   'situation_familiale', 'vie_professionnelle', 'episodes_importants', 'besoin_boire_manger',
@@ -219,6 +221,24 @@ function PAPFormComp({
       </div>
 
       <div className="space-y-6 p-6">
+
+        {/* ── Date de rédaction ── */}
+        <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <CalendarClock className="h-4 w-4 text-indigo-600" />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs font-semibold text-indigo-700 mb-1">Date de rédaction du PAP <span className="text-red-400">*</span></label>
+            <input
+              type="date"
+              value={form.date_redaction || ''}
+              onChange={e => handleChange('date_redaction', e.target.value)}
+              className="px-3 py-1.5 border border-indigo-200 rounded-lg text-sm outline-none focus:border-indigo-400 bg-white"
+            />
+          </div>
+          <p className="text-xs text-indigo-500 hidden sm:block">Cette date est utilisée pour suivre les PAP récents dans le tableau de bord</p>
+        </div>
+
         {section('Informations générales',
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {field('Date de naissance', inp('date_naissance', 'date'))}

@@ -121,6 +121,12 @@ export default function PAPView({
 
         <div className="px-6 py-5">
           <Section title="Informations générales">
+            {pap.date_redaction && (
+              <div className="mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <span className="text-xs font-semibold text-indigo-600">Date de rédaction : </span>
+                <span className="text-sm font-bold text-indigo-800">{fmtDate(pap.date_redaction)}</span>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-x-4">
               <Field label="Date de naissance" value={fmtDate(pap.date_naissance)} />
               <Field label="Service - Chambre" value={pap.service_chambre} />

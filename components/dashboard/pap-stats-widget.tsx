@@ -12,8 +12,7 @@ async function fetchPapStats() {
   const [{ data: paps }, { count: totalResidents }] = await Promise.all([
     sb
       .from('pap')
-      .select('id, resident_id, resident_name, date_reunion, created_at')
-      .order('date_reunion', { ascending: false, nullsFirst: false }),
+      .select('id, resident_id, resident_name, date_redaction, date_reunion, created_at'),
     sb
       .from('residents')
       .select('id', { count: 'exact', head: true })
@@ -26,15 +25,26 @@ async function fetchPapStats() {
   // Résidents distincts avec au moins un PAP
   const distinctResidents = new Set(list.map(p => p.resident_id)).size;
 
-  // PAP le plus récent (par date_reunion)
-  const mostRecent = list.find(p => p.date_reunion) ?? list[0] ?? null;
+  // Trier par date_redaction en priorité, sinon date_reunion, sinon created_at
+  const getDate = (p: typeof list[0]): Date | null => {
+    if (p.date_redaction) return new Date(p.date_redaction);
+    if (p.date_reunion)   return new Date(p.date_reunion);
+    if (p.created_at)     return new Date(p.created_at);
+    return null;
+  };
+  const sorted = [...list].sort((a, b) => {
+    const da = getDate(a), db = getDate(b);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return db.getTime() - da.getTime();
+  });
+
+  // PAP le plus récent
+  const mostRecent = sorted[0] ?? null;
 
   // Date du plus récent
-  const mostRecentDate = mostRecent?.date_reunion
-    ? new Date(mostRecent.date_reunion)
-    : mostRecent?.created_at
-    ? new Date(mostRecent.created_at)
-    : null;
+  const mostRecentDate = mostRecent ? getDate(mostRecent) : null;
 
   const now = new Date();
   const daysSince = mostRecentDate
