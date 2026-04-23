@@ -12,6 +12,7 @@ import {
   TestTube2,
   Users,
   BriefcaseMedical,
+  NotebookPen,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -97,7 +98,7 @@ export const MODULES: ModuleConfig[] = [
     label: 'PAP',
     description: "Projets d'Accompagnement Personnalisé",
     href: '/pap',
-    icon: Heart,
+    icon: NotebookPen,
     cardFrom: '#d63052',
     cardTo: '#a81535',
     colorClass: 'border-rose-100 hover:border-rose-300 hover:bg-rose-50/60',
