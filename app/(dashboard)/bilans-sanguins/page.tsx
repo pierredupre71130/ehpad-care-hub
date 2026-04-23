@@ -763,7 +763,7 @@ export default function BilansSanguinsPage() {
   const { data: residents = [] } = useQuery<Resident[]>({
     queryKey: ['residents'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('residents').select('*').order('room');
+      const { data, error } = await supabase.from('residents').select('*').eq('archived', false).order('room');
       if (error) throw new Error(error.message);
       return data as Resident[];
     },

@@ -172,7 +172,7 @@ function measureTextWidth(text: string, fontSize: number, fontWeight = 'normal')
 
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
-  const { data, error } = await sb.from('residents').select('*').order('sort_order', { ascending: true });
+  const { data, error } = await sb.from('residents').select('*').eq('archived', false).order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Resident[];
 }

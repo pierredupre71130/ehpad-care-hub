@@ -164,7 +164,7 @@ function NetworkBackground() {
 
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
-  const { data, error } = await sb.from('residents').select('*').order('last_name');
+  const { data, error } = await sb.from('residents').select('*').eq('archived', false).order('last_name');
   if (error) throw new Error(error.message);
   return (data ?? []) as Resident[];
 }

@@ -427,7 +427,7 @@ function PAPPageInner() {
   const { data: residents = [], isLoading: residentsLoading } = useQuery({
     queryKey: ['residents'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('residents').select('*').order('sort_order');
+      const { data, error } = await supabase.from('residents').select('*').eq('archived', false).order('sort_order');
       if (error) throw error;
       return data as Resident[];
     },
