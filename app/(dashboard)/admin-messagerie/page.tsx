@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -116,7 +116,7 @@ function NetworkBackground() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function AdminMessagingPage() {
+function AdminMessagingPageInner() {
   const { profile, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -447,5 +447,13 @@ export default function AdminMessagingPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminMessagingPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminMessagingPageInner />
+    </Suspense>
   );
 }
