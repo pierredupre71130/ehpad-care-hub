@@ -6,7 +6,7 @@
  * Prérequis shadcn : npx shadcn@latest add checkbox textarea select
  */
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
@@ -1095,6 +1095,15 @@ export default function ResidentsPage() {
     setEditForm({});
     setRoomUnlocked(false);
   }
+
+  // Fermer avec Échap
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && editingId !== null) cancelEdit();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function patch(updates: Partial<Resident>) {
     setEditForm(prev => {
