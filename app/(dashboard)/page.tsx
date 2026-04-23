@@ -205,12 +205,12 @@ export default function DashboardPage() {
 
   // Modules filtrés selon permissions dynamiques (hors bottom-nav)
   const visibleModules = useMemo(() => {
-    // Tant que le profil non-admin n'est pas chargé → rien n'afficher
-    if (!isAdmin && !profile?.role) return [];
+    // Non-admin : attendre que PROFIL et PERMISSIONS soient tous les deux chargés
+    // Si l'un manque → 0 modules (sécurité par défaut, évite le flash "tout visible")
+    if (!isAdmin && (!profile?.role || !rolePermissions)) return [];
     let mods = MODULES;
-    if (effectiveRole !== 'all' && effectiveRole !== null && !isAdminMode && rolePermissions) {
-      const allowed = rolePermissions[effectiveRole];
-      // null / undefined / [] → aucun module autorisé
+    if (effectiveRole && effectiveRole !== 'all' && !isAdminMode) {
+      const allowed = rolePermissions?.[effectiveRole];
       const allowedList = Array.isArray(allowed) ? allowed : [];
       mods = mods.filter(m => allowedList.includes(m.id));
     }
@@ -219,8 +219,8 @@ export default function DashboardPage() {
 
   // Fiches de poste visible selon permissions
   const fichesDePosteVisible = useMemo(() => {
-    if (isAdmin || isAdminMode || !rolePermissions) return true;
-    if (!effectiveRole) return false;
+    if (isAdmin || isAdminMode) return true;
+    if (!rolePermissions || !effectiveRole) return false; // attendre le chargement
     const allowed = rolePermissions[effectiveRole];
     const allowedList = Array.isArray(allowed) ? allowed : [];
     return allowedList.includes('fichesDePoste');
