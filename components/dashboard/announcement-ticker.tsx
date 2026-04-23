@@ -104,7 +104,7 @@ export function AnnouncementTicker() {
       <div
         className="fixed left-0 right-0 z-[25] flex items-center gap-0 select-none"
         style={{
-          bottom: 68,
+          bottom: 74,
           height: 40,
           background: '#111827',
           borderTop: '1px solid rgba(255,255,255,0.08)',
