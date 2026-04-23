@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import {
   Save, X, Check, AlertCircle, Trash2, Eye, UserPen,
-  Users, CalendarClock, History, Loader2, Printer, Search, Heart,
+  Users, CalendarClock, History, Loader2, Printer, Search, NotebookPen,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -616,7 +616,7 @@ function PAPPageInner() {
           </div>
           <div className="flex items-center gap-4">
             <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-              <Heart className="h-6 w-6 text-white" strokeWidth={1.5} />
+              <NotebookPen className="h-6 w-6 text-white" strokeWidth={1.5} />
             </div>
             <div>
               <h1 className="text-2xl font-extrabold text-white tracking-tight">PAP</h1>

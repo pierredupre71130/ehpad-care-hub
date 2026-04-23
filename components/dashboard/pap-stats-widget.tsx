@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
-import { Heart, CalendarCheck, AlertTriangle, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
+import { NotebookPen, CalendarCheck, AlertTriangle, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ export function PapStatsWidget() {
       >
         <div className="flex items-start justify-between mb-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <Heart className="h-5 w-5 text-indigo-600" />
+            <NotebookPen className="h-5 w-5 text-indigo-600" />
           </div>
           <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-400 transition-colors mt-1" />
         </div>
