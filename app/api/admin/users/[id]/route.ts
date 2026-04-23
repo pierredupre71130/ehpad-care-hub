@@ -26,12 +26,33 @@ export async function PATCH(
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const upsertData: Record<string, string> = { id };
-  if (role) upsertData.role = role;
-  if (display_name !== undefined) upsertData.display_name = display_name;
+  const updateData: Record<string, string | null> = {};
+  if (role) updateData.role = role;
+  if (display_name !== undefined) updateData.display_name = display_name ?? null;
 
-  if (Object.keys(upsertData).length > 1) {
-    await admin.from('profiles').upsert(upsertData, { onConflict: 'id' });
+  if (Object.keys(updateData).length > 0) {
+    // Tente d'abord un UPDATE sur la ligne existante
+    const { data: updated, error: updateErr } = await admin
+      .from('profiles')
+      .update(updateData)
+      .eq('id', id)
+      .select('id');
+
+    if (updateErr) {
+      console.error('[PATCH user] update error:', updateErr.message);
+      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+
+    // Si aucune ligne mise à jour → le profil n'existe pas encore, on le crée
+    if (!updated || updated.length === 0) {
+      const { error: insertErr } = await admin
+        .from('profiles')
+        .insert({ id, ...updateData });
+      if (insertErr) {
+        console.error('[PATCH user] insert error:', insertErr.message);
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
+    }
   }
 
   // Audit
