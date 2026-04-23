@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
+import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
@@ -393,6 +394,9 @@ export default function DashboardPage() {
 
         </div>
       </nav>
+
+      {/* ── Bandeau annonces ── */}
+      <AnnouncementTicker />
 
       {/* ── Dialog admin ── */}
       <AdminUnlockDialog
