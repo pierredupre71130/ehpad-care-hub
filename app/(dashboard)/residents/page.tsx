@@ -487,6 +487,7 @@ function EditForm({
   onSave, onCancel,
   saving, isNew,
   onArchive,
+  onDelete,
 }: {
   form: Partial<Resident>;
   patch: (u: Partial<Resident>) => void;
@@ -497,6 +498,7 @@ function EditForm({
   saving: boolean;
   isNew: boolean;
   onArchive?: (dateSortie: string) => void;
+  onDelete?: () => void;
 }) {
   const headerTitle = isNew
     ? 'Nouveau résident'
@@ -778,6 +780,22 @@ function EditForm({
             disabled={saving}
           />
         )}
+
+        {/* Suppression définitive — admin uniquement */}
+        {!isNew && onDelete && (
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              onClick={() => {
+                if (confirm('Supprimer définitivement ce résident ? Cette action est irréversible.')) {
+                  onDelete();
+                }
+              }}
+              className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors"
+            >
+              🗑 Supprimer définitivement ce résident
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -979,6 +997,22 @@ export default function ResidentsPage() {
       toast.success('Résident archivé — données conservées dans l\'historique');
       setEditingId(null);
       setEditForm({});
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Mutation suppression définitive (admin uniquement) ── */
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('residents').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      setEditingId(null);
+      setEditForm({});
+      toast.success('Résident supprimé définitivement');
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -1306,6 +1340,7 @@ export default function ResidentsPage() {
                         onSave={handleSave} onCancel={cancelEdit}
                         saving={isSaving}   isNew={false}
                         onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie })}
+                        onDelete={() => deleteMutation.mutate(r.id)}
                       />
                     </div>
                   ) : (
