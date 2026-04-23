@@ -209,13 +209,18 @@ export function UserMessagingWidget() {
 
             {/* Input area */}
             <div className="flex-shrink-0 border-t border-slate-100 px-4 py-3 space-y-2 bg-white">
-              <input
-                type="text"
-                value={senderName}
-                onChange={e => setSenderName(e.target.value)}
-                placeholder="Votre nom (optionnel)"
-                className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 text-slate-700 placeholder:text-slate-300"
-              />
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                  Votre nom <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={senderName}
+                  onChange={e => setSenderName(e.target.value)}
+                  placeholder="Ex : Marie Dupont"
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 text-slate-700 placeholder:text-slate-400"
+                />
+              </div>
               <div className="flex gap-2">
                 <textarea
                   value={content}

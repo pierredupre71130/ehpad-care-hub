@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { MessageSquare, Home, Send, ArrowLeft, Loader2 } from 'lucide-react';
+import { MessageSquare, Home, Send, ArrowLeft, Loader2, Trash2, CheckSquare, Square, X as XIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
 
@@ -129,6 +129,8 @@ function AdminMessagingPageInner() {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(initialConv);
   const [replyContent, setReplyContent] = useState('');
   const [mobileView, setMobileView] = useState<'list' | 'chat'>(initialConv ? 'chat' : 'list');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
 
   // Redirect non-admins
   useEffect(() => {
@@ -192,9 +194,38 @@ function AdminMessagingPageInner() {
     }
   };
 
+  const deleteMut = useMutation({
+    mutationFn: (messageIds: string[]) =>
+      fetch(`/api/admin/messages/${selectedConvId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-messages-conv', selectedConvId] });
+      qc.invalidateQueries({ queryKey: ['admin-messages-summary'] });
+      setSelectedMsgIds(new Set());
+      setSelectionMode(false);
+    },
+  });
+
+  const toggleMsgSelection = (id: string) => {
+    setSelectedMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedMsgIds(new Set());
+  };
+
   const selectConv = (id: string) => {
     setSelectedConvId(id);
     setMobileView('chat');
+    exitSelectionMode();
     qc.invalidateQueries({ queryKey: ['admin-messages-conv', id] });
   };
 
@@ -365,7 +396,47 @@ function AdminMessagingPageInner() {
                       </p>
                     )}
                   </div>
+
+                  {/* Bouton sélection */}
+                  {!selectionMode ? (
+                    <button
+                      onClick={() => setSelectionMode(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 transition-colors flex-shrink-0"
+                    >
+                      <CheckSquare className="h-3.5 w-3.5" />
+                      Sélectionner
+                    </button>
+                  ) : (
+                    <button
+                      onClick={exitSelectionMode}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs hover:bg-slate-200 transition-colors flex-shrink-0"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                      Annuler
+                    </button>
+                  )}
                 </div>
+
+                {/* Barre de suppression */}
+                {selectionMode && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-red-50 border-b border-red-100 flex-shrink-0">
+                    <span className="text-xs text-red-700 font-medium">
+                      {selectedMsgIds.size === 0
+                        ? 'Cliquez sur les messages à supprimer'
+                        : `${selectedMsgIds.size} message${selectedMsgIds.size > 1 ? 's' : ''} sélectionné${selectedMsgIds.size > 1 ? 's' : ''}`}
+                    </span>
+                    <button
+                      onClick={() => deleteMut.mutate([...selectedMsgIds])}
+                      disabled={selectedMsgIds.size === 0 || deleteMut.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-40 transition-colors"
+                    >
+                      {deleteMut.isPending
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Trash2 className="h-3.5 w-3.5" />}
+                      Supprimer
+                    </button>
+                  </div>
+                )}
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
@@ -375,9 +446,10 @@ function AdminMessagingPageInner() {
                     </div>
                   ) : (
                     messages.map((msg, idx) => {
-                      const isAdmin = msg.sender_type === 'admin';
+                      const isAdminMsg = msg.sender_type === 'admin';
                       const prevMsg = idx > 0 ? messages[idx - 1] : null;
                       const showDay = !prevMsg || formatDay(prevMsg.created_at) !== formatDay(msg.created_at);
+                      const isSelected = selectedMsgIds.has(msg.id);
                       return (
                         <div key={msg.id}>
                           {showDay && (
@@ -387,16 +459,31 @@ function AdminMessagingPageInner() {
                               <div className="flex-1 h-px bg-slate-100" />
                             </div>
                           )}
-                          <div className={cn('flex', isAdmin ? 'justify-end' : 'justify-start')}>
+                          <div
+                            className={cn(
+                              'flex items-end gap-2 rounded-xl transition-colors px-1 py-0.5',
+                              isAdminMsg ? 'justify-end' : 'justify-start',
+                              selectionMode && 'cursor-pointer',
+                              isSelected && 'bg-red-50'
+                            )}
+                            onClick={() => selectionMode && toggleMsgSelection(msg.id)}
+                          >
+                            {/* Checkbox (mode sélection, gauche pour user, droite pour admin) */}
+                            {selectionMode && !isAdminMsg && (
+                              <div className="flex-shrink-0 text-red-400">
+                                {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4 text-slate-300" />}
+                              </div>
+                            )}
                             <div
                               className={cn(
                                 'max-w-[70%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
-                                isAdmin
+                                isAdminMsg
                                   ? 'bg-indigo-600 text-white rounded-br-sm'
-                                  : 'bg-slate-100 text-slate-800 rounded-bl-sm'
+                                  : 'bg-slate-100 text-slate-800 rounded-bl-sm',
+                                isSelected && 'ring-2 ring-red-400'
                               )}
                             >
-                              {!isAdmin && (
+                              {!isAdminMsg && (
                                 <p className="text-[10px] font-semibold text-slate-500 mb-0.5">
                                   {msg.sender_name ?? selectedConv?.display_name ?? 'Utilisateur'}
                                 </p>
@@ -404,11 +491,17 @@ function AdminMessagingPageInner() {
                               <p>{msg.content}</p>
                               <p className={cn(
                                 'text-[10px] mt-1 text-right',
-                                isAdmin ? 'text-white/60' : 'text-slate-400'
+                                isAdminMsg ? 'text-white/60' : 'text-slate-400'
                               )}>
                                 {formatTime(msg.created_at)}
                               </p>
                             </div>
+                            {/* Checkbox côté droit pour les messages admin */}
+                            {selectionMode && isAdminMsg && (
+                              <div className="flex-shrink-0 text-red-400">
+                                {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4 text-slate-300" />}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

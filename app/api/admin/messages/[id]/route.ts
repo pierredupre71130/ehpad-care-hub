@@ -53,3 +53,24 @@ export async function POST(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
+
+// DELETE — supprime une liste de messages par leurs IDs
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const admin = await checkAdmin();
+  if (!admin) return NextResponse.json({ error: 'Interdit' }, { status: 403 });
+  const { id } = await params;
+  const { messageIds } = await req.json() as { messageIds: string[] };
+  if (!Array.isArray(messageIds) || messageIds.length === 0) {
+    return NextResponse.json({ error: 'Aucun message sélectionné' }, { status: 400 });
+  }
+  const { error } = await admin
+    .from('messages')
+    .delete()
+    .eq('conversation_id', id)
+    .in('id', messageIds);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ deleted: messageIds.length });
+}
