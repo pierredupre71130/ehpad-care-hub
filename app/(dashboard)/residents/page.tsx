@@ -13,7 +13,6 @@ import {
   Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -930,7 +929,6 @@ function AccessCodesEditDialog({
 
 export default function ResidentsPage() {
   const queryClient = useQueryClient();
-  const router = useRouter();
 
   const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
   const [search, setSearch]             = useState('');
@@ -960,12 +958,8 @@ export default function ResidentsPage() {
   const saveMutation = useMutation({
     mutationFn: saveResident,
     onSuccess: () => {
+      // Uniquement invalidation des données — la fermeture du form est gérée dans mutate()
       queryClient.invalidateQueries({ queryKey: ['residents'] });
-      toast.success(editingId === 'NEW' ? 'Résident créé ✓' : 'Modifications sauvegardées ✓');
-      setEditingId(null);
-      setEditForm({});
-      setRoomUnlocked(false);
-      router.refresh();
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -1130,7 +1124,6 @@ export default function ResidentsPage() {
     setEditingId(null);
     setEditForm({});
     setRoomUnlocked(false);
-    router.refresh();
   }
 
   // Fermer avec Échap
@@ -1152,14 +1145,24 @@ export default function ResidentsPage() {
 
   function handleSave() {
     if (!editForm.room?.trim()) { toast.error('Le numéro de chambre est obligatoire'); return; }
+    const isNew = editingId === 'NEW';
     // Convertir les dates vides en null pour éviter l'erreur Supabase "invalid input syntax for type date"
     const payload = {
-      ...(editingId === 'NEW' ? editForm : { ...editForm, id: editingId! }),
+      ...(isNew ? editForm : { ...editForm, id: editingId! }),
       date_naissance: editForm.date_naissance?.trim() || null,
       date_entree:    editForm.date_entree?.trim()    || null,
       date_sortie:    editForm.date_sortie?.trim()    || null,
     };
-    saveMutation.mutate(payload);
+    // Pattern React Query v5 : les mises à jour UI dans le callback de mutate()
+    // garantissent l'exécution dans le bon contexte React, contrairement à onSuccess de useMutation
+    saveMutation.mutate(payload, {
+      onSuccess: () => {
+        toast.success(isNew ? 'Résident créé ✓' : 'Modifications sauvegardées ✓');
+        setEditingId(null);
+        setEditForm({});
+        setRoomUnlocked(false);
+      },
+    });
   }
 
   const isSaving = saveMutation.isPending;
