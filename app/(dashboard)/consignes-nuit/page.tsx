@@ -1051,6 +1051,15 @@ export default function ConsignesNuitPage() {
 
             {/* Body */}
             <div className="px-6 pb-6 space-y-3">
+              {/* Bloc 0 : valider avec ✓ */}
+              <div className="flex gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full bg-green-600 flex items-center justify-center text-white text-[11px] font-bold">✓</span>
+                <p className="text-sm text-slate-700 leading-snug">
+                  Après avoir saisi une consigne, validez-la avec le <span className="font-semibold text-green-700">bouton ✓</span> en fin de ligne.
+                  La consigne est alors <span className="font-semibold">sauvegardée automatiquement</span> — vous la retrouverez même sans cliquer sur Imprimer &amp; Sauvegarder.
+                </p>
+              </div>
+
               {/* Bloc 1 : deux étages */}
               <div className="flex gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                 <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
