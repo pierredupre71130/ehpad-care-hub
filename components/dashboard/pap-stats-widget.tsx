@@ -123,7 +123,7 @@ export function PapStatsWidget() {
       </Link>
 
       {/* ── Carte 2 : PAP récent ── */}
-      <Link href="/pap"
+      <Link href={mostRecent ? `/pap?view=${mostRecent.resident_id}` : '/pap'}
         className="group bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md hover:border-indigo-200 transition-all"
       >
         <div className="flex items-start justify-between mb-3">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import {
   Save, X, Check, AlertCircle, Trash2, Eye, UserPen,
   Users, CalendarClock, History, Loader2, Printer, Search, Heart,
@@ -368,6 +369,7 @@ function PAPFormComp({
 export default function PAPPage() {
   const supabase = createClient();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -380,7 +382,8 @@ export default function PAPPage() {
   const colorTo   = colorOverrides['pap']?.to   ?? papModule?.cardTo   ?? '#a81535';
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [viewingId, setViewingId] = useState<string | null>(null);
+  // Ouvre directement la vue si ?view=RESIDENT_ID est dans l'URL (vient du widget dashboard)
+  const [viewingId, setViewingId] = useState<string | null>(searchParams.get('view'));
   const [historyResidentId, setHistoryResidentId] = useState<string | null>(null);
   const [viewingVersion, setViewingVersion] = useState<{ pap: Pap; res: Resident; date: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ papId: string; residentName: string } | null>(null);
