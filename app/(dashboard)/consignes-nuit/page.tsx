@@ -205,6 +205,12 @@ async function fetchAstreinteSettings(): Promise<AstreinteSettings> {
   };
 }
 
+async function fetchCadreMailUnlocked(): Promise<boolean> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'cadre_mail_unlocked').maybeSingle();
+  return (data?.value as boolean) ?? false;
+}
+
 async function fetchArchivedDates(): Promise<string[]> {
   const sb = createClient();
   const { data } = await sb.from('consigne_nuit').select('date').order('date', { ascending: false });
@@ -530,7 +536,7 @@ export default function ConsignesNuitPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showArchives, setShowArchives] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
-  const [sendCadre, setSendCadre] = useState(false); // admin : désactivé par défaut
+  const [sendCadre, setSendCadre] = useState(false); // désactivé par défaut
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -544,6 +550,7 @@ export default function ConsignesNuitPage() {
 
   // Queries
   const { data: astreinteSettings } = useQuery({ queryKey: ['astreinte_settings'], queryFn: fetchAstreinteSettings });
+  const { data: cadreMailUnlocked = false } = useQuery({ queryKey: ['settings', 'cadre_mail_unlocked'], queryFn: fetchCadreMailUnlocked });
   const ides = astreinteSettings?.ides ?? [{ nom: 'Pierre', email: '' }, { nom: 'Florence', email: '' }, { nom: 'Mandy', email: '' }];
   const { data: residents = [], isLoading } = useQuery({ queryKey: ['residents'], queryFn: fetchResidents });
   const { data: girData = [] } = useQuery({ queryKey: ['niveau_soin'], queryFn: fetchNiveauSoin });
@@ -837,8 +844,8 @@ export default function ConsignesNuitPage() {
 
     const ideConfig = ides.find(i => i.nom === ideAstreinte);
     const ideEmail = ideConfig?.email ?? '';
-    // Non-admin : toujours envoyer au cadre ; admin : selon le toggle
-    const effectiveSendCadre = !isAdmin || sendCadre;
+    // Si toggle déverrouillé (admin ou réglage activé) : selon le toggle ; sinon toujours ON
+    const effectiveSendCadre = (isAdmin || cadreMailUnlocked) ? sendCadre : true;
     const cadreEmail = effectiveSendCadre ? (astreinteSettings?.cadreEmail ?? '') : '';
 
     // Vérification avant envoi : au moins un destinataire doit avoir un email
@@ -1065,8 +1072,8 @@ export default function ConsignesNuitPage() {
               </Button>
 
               {/* Toggle cadre en copie */}
-              {isAdmin ? (
-                /* Admin : interactif, désactivé par défaut */
+              {(isAdmin || cadreMailUnlocked) ? (
+                /* Admin OU réglage déverrouillé : toggle interactif */
                 <button
                   type="button"
                   onClick={() => setSendCadre(v => !v)}
@@ -1083,10 +1090,10 @@ export default function ConsignesNuitPage() {
                     <span className="absolute w-3 h-3 rounded-full bg-white shadow transition-transform"
                       style={{ transform: sendCadre ? 'translateX(14px)' : 'translateX(2px)', top: 2 }} />
                   </span>
-                  <span>Cadre en copie</span>
+                  <span>Mail au cadre</span>
                 </button>
               ) : (
-                /* Autres comptes : toujours ON, non modifiable */
+                /* Réglage verrouillé : toujours ON, non modifiable */
                 <span
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-default"
                   style={{ background: 'rgba(255,255,255,0.22)', borderColor: 'rgba(255,255,255,0.35)', color: 'white' }}

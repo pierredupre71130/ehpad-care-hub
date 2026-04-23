@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Loader2, Mail, User, PhoneCall } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, Mail, User, PhoneCall, Lock, Unlock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { HomeButton } from '@/components/ui/home-button';
 import { toast } from 'sonner';
@@ -48,6 +48,20 @@ async function saveSettings(data: AstreinteData): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+async function fetchCadreMailUnlocked(): Promise<boolean> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'cadre_mail_unlocked').maybeSingle();
+  return (data?.value as boolean) ?? false;
+}
+
+async function saveCadreMailUnlocked(value: boolean): Promise<void> {
+  const sb = createClient();
+  await sb.from('settings').upsert(
+    { key: 'cadre_mail_unlocked', value, updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AstreinteSettingsPage() {
@@ -56,11 +70,30 @@ export default function AstreinteSettingsPage() {
   const [ides, setIdes] = useState<IdeConfig[]>([]);
   const [cadreEmail, setCadreEmail] = useState('');
   const [initialized, setInitialized] = useState(false);
+  const [togglingCadre, setTogglingCadre] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['astreinte_settings'],
     queryFn: fetchSettings,
   });
+
+  const { data: cadreMailUnlocked = false } = useQuery({
+    queryKey: ['settings', 'cadre_mail_unlocked'],
+    queryFn: fetchCadreMailUnlocked,
+  });
+
+  const handleToggleCadreMail = async () => {
+    setTogglingCadre(true);
+    try {
+      await saveCadreMailUnlocked(!cadreMailUnlocked);
+      await qc.invalidateQueries({ queryKey: ['settings', 'cadre_mail_unlocked'] });
+      toast.success(!cadreMailUnlocked ? 'Bouton "Mail au cadre" déverrouillé pour tous les utilisateurs' : 'Bouton "Mail au cadre" reverrouillé');
+    } catch {
+      toast.error('Erreur lors de la sauvegarde');
+    } finally {
+      setTogglingCadre(false);
+    }
+  };
 
   // Initialiser le state local UNE SEULE FOIS quand les données arrivent
   useEffect(() => {
@@ -209,6 +242,48 @@ export default function AstreinteSettingsPage() {
                 className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Déverrouillage bouton Mail au cadre */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+            <h2 className="font-semibold text-slate-800">Bouton &quot;Mail au cadre&quot;</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Dans les Consignes de Nuit, le bouton &quot;Mail au cadre&quot; est par défaut toujours actif et non modifiable pour les non-admins.
+              Vous pouvez le déverrouiller pour leur permettre de l&apos;activer ou désactiver.
+            </p>
+          </div>
+          <div className="px-5 py-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${cadreMailUnlocked ? 'bg-emerald-50' : 'bg-slate-100'}`}>
+                {cadreMailUnlocked
+                  ? <Unlock className="h-4.5 w-4.5 text-emerald-600" style={{ width: 18, height: 18 }} />
+                  : <Lock className="h-4.5 w-4.5 text-slate-400" style={{ width: 18, height: 18 }} />
+                }
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">
+                  {cadreMailUnlocked ? 'Déverrouillé — toggle visible par tous' : 'Verrouillé — toujours ON pour les non-admins'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {cadreMailUnlocked
+                    ? 'Les IDEs et autres utilisateurs peuvent choisir d\'inclure ou non le cadre dans le mail'
+                    : 'Le cadre reçoit systématiquement une copie du mail'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleToggleCadreMail}
+              disabled={togglingCadre}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${cadreMailUnlocked ? 'bg-emerald-500' : 'bg-slate-200'}`}
+              role="switch"
+              aria-checked={cadreMailUnlocked}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${cadreMailUnlocked ? 'translate-x-5' : 'translate-x-0'}`}
+              />
+            </button>
           </div>
         </div>
 
