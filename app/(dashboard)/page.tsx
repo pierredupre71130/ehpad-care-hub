@@ -214,7 +214,12 @@ export default function DashboardPage() {
       const allowedList = Array.isArray(allowed) ? allowed : [];
       mods = mods.filter(m => allowedList.includes(m.id));
     }
-    return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
+    // Admin / mode admin : exclure les bottom-nav de la grille (ils sont déjà dans le bandeau)
+    // Non-admin : inclure les bottom-nav SI ils sont dans leurs permissions (ex: secrétaire avec seulement GIR)
+    if (isAdmin || isAdminMode) {
+      return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
+    }
+    return mods.filter(m => m.id !== 'fichesDePoste');
   }, [effectiveRole, isAdmin, isAdminMode, rolePermissions, profile?.role]);
 
   // Fiches de poste visible selon permissions
