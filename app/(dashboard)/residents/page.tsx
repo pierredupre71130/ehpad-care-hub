@@ -18,7 +18,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { HomeButton } from '@/components/ui/home-button';
 
 import { createClient }        from '@/lib/supabase/client';
 import { Button }              from '@/components/ui/button';
@@ -1460,7 +1459,6 @@ export default function ResidentsPage() {
           }}
         />
       ))}
-      <HomeButton />
     </div>
   );
 }
