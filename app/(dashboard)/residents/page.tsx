@@ -11,8 +11,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
   Loader2, UserPlus, Users, AlertTriangle,
-  Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2,
+  Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home,
 } from 'lucide-react';
+import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -1073,27 +1074,32 @@ export default function ResidentsPage() {
 
   /* ── Render ── */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-slate-100">
+    <div className="min-h-screen" style={{ background: '#dde4ee' }}>
 
       {/* ══ HEADER ══════════════════════════════════════════════ */}
-      <header className="bg-white/90 backdrop-blur-sm border-b border-slate-200/80 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2">
-          <Users className="h-4 w-4 text-slate-500 flex-shrink-0" />
-          <h1 className="text-base font-bold text-slate-800 flex-1 truncate">
-            Gestion des Résidents
-            <span className="ml-2 text-sm font-normal text-slate-400">({residents.length})</span>
-          </h1>
-          <Button
-            size="sm"
-            onClick={startCreate}
-            disabled={editingId !== null}
-            className="h-8 gap-1.5 text-xs flex-shrink-0"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Nouveau résident</span>
-            <span className="sm:hidden">+</span>
-          </Button>
-        </div>
+      <header
+        className="w-full px-4 sm:px-6 py-4 flex items-center gap-4"
+        style={{ background: 'linear-gradient(135deg, #1a3560 0%, #0e6e80 100%)' }}
+      >
+        <Link href="/" className="text-white/70 hover:text-white transition-colors flex-shrink-0">
+          <Home className="h-5 w-5" />
+        </Link>
+        <div className="h-5 w-px bg-white/20 flex-shrink-0" />
+        <Users className="h-5 w-5 text-white/80 flex-shrink-0" />
+        <h1 className="text-lg font-bold text-white flex-1 truncate">
+          Gestion des Résidents
+          <span className="ml-2 text-sm font-normal text-white/50">({residents.length})</span>
+        </h1>
+        <Button
+          size="sm"
+          onClick={startCreate}
+          disabled={editingId !== null}
+          className="h-8 gap-1.5 text-xs flex-shrink-0 bg-white/20 hover:bg-white/30 text-white border-0"
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Nouveau résident</span>
+          <span className="sm:hidden">+</span>
+        </Button>
       </header>
 
       {/* ══ BARRE DE FILTRES ════════════════════════════════════ */}

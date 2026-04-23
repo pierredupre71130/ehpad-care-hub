@@ -2,10 +2,10 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X, Printer, HeartPulse } from 'lucide-react';
+import { Loader2, X, Printer, HeartPulse, Home } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-import { HomeButton } from '@/components/ui/home-button';
+import Link from 'next/link';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -341,18 +341,26 @@ export default function GIRNiveauSoinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen" style={{ background: '#dde4ee' }}>
 
       {/* ══ HEADER ══════════════════════════════════════════════ */}
-      <div className="print:hidden bg-purple-800 text-white py-4 px-6 shadow-md flex items-center justify-between">
-        <h1 className="text-xl font-bold flex-1 text-center">GIR / Niveau de soin / Appel Nuit</h1>
+      <header
+        className="print:hidden w-full px-4 sm:px-6 py-4 flex items-center gap-4"
+        style={{ background: 'linear-gradient(135deg, #1a3560 0%, #0e6e80 100%)' }}
+      >
+        <Link href="/" className="text-white/70 hover:text-white transition-colors flex-shrink-0">
+          <Home className="h-5 w-5" />
+        </Link>
+        <div className="h-5 w-px bg-white/20 flex-shrink-0" />
+        <HeartPulse className="h-5 w-5 text-white/80 flex-shrink-0" />
+        <h1 className="text-lg font-bold text-white flex-1">GIR / Niveau de soin / Appel Nuit</h1>
         <button
           onClick={() => window.print()}
-          className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+          className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg px-3 py-1.5 text-sm font-medium transition-colors flex-shrink-0"
         >
           <Printer className="h-4 w-4" /> Imprimer
         </button>
-      </div>
+      </header>
 
       {/* ══ VERSION IMPRESSION ══════════════════════════════════ */}
       <div className="hidden print:block" style={{ padding: '4mm', fontFamily: 'Arial, sans-serif' }}>
