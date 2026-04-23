@@ -510,7 +510,7 @@ function EditForm({
         <span className="text-sm font-semibold text-white truncate">{headerTitle}</span>
         <Button
           variant="ghost" size="icon"
-          onClick={onCancel} disabled={saving}
+          onClick={onCancel}
           className="h-7 w-7 flex-shrink-0 ml-2 text-blue-200 hover:text-white hover:bg-blue-700"
         >
           <X className="h-4 w-4" />
@@ -763,7 +763,6 @@ function EditForm({
           <Button
             variant="outline"
             onClick={onCancel}
-            disabled={saving}
             className="gap-1.5"
           >
             <X className="h-4 w-4" /> Annuler
