@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { PhoneCall, ShieldCheck, UserCog, ScrollText, Scale } from 'lucide-react';
+import { PhoneCall, ShieldCheck, UserCog, ScrollText, Scale, Megaphone } from 'lucide-react';
 
 interface AdminUnlockDialogProps {
   open: boolean;
@@ -108,6 +108,19 @@ export function AdminUnlockDialog({
             <div>
               <div>Outils RGPD</div>
               <div className="text-xs text-slate-400 font-normal">Export & anonymisation des données</div>
+            </div>
+          </Link>
+          <Link
+            href="/admin-announcements"
+            onClick={() => onOpenChange(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors text-sm text-slate-700 font-medium"
+          >
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <Megaphone className="h-4 w-4 text-amber-600" />
+            </div>
+            <div>
+              <div>Annonces & Bandeau</div>
+              <div className="text-xs text-slate-400 font-normal">Messages défilants pour les utilisateurs</div>
             </div>
           </Link>
         </div>
