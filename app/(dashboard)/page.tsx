@@ -7,6 +7,7 @@ import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, Clipbo
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
+import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -317,6 +318,16 @@ export default function DashboardPage() {
 
       {/* ── Contenu principal ── */}
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 pb-28">
+
+        {/* Widgets PAP — psychologue uniquement */}
+        {effectiveRole === 'psychologue' && !isAdminMode && (
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+              Tableau de bord PAP
+            </p>
+            <PapStatsWidget />
+          </div>
+        )}
 
         {isAdminMode && (
           <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm mb-6">
