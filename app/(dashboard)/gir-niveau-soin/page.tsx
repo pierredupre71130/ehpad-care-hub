@@ -596,7 +596,6 @@ export default function GIRNiveauSoinPage() {
           </tbody>
         </table>
       </div>
-      <HomeButton />
     </div>
   );
 }
