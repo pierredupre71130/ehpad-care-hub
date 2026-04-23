@@ -199,25 +199,32 @@ export default function DashboardPage() {
     saveRole(role);
   };
 
+  // Pour les non-admins : toujours filtrer par le rôle réel du profil,
+  // jamais par currentRole qui peut être en retard (race condition au chargement)
+  const effectiveRole = isAdmin ? currentRole : (profile?.role ?? null);
+
   // Modules filtrés selon permissions dynamiques (hors bottom-nav)
   const visibleModules = useMemo(() => {
+    // Tant que le profil non-admin n'est pas chargé → rien n'afficher
+    if (!isAdmin && !profile?.role) return [];
     let mods = MODULES;
-    if (currentRole !== 'all' && !isAdminMode && rolePermissions) {
-      const allowed = rolePermissions[currentRole];
-      // null / undefined / [] → aucun module autorisé (ne pas bypasser le filtre)
+    if (effectiveRole !== 'all' && effectiveRole !== null && !isAdminMode && rolePermissions) {
+      const allowed = rolePermissions[effectiveRole];
+      // null / undefined / [] → aucun module autorisé
       const allowedList = Array.isArray(allowed) ? allowed : [];
       mods = mods.filter(m => allowedList.includes(m.id));
     }
     return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
-  }, [currentRole, isAdminMode, rolePermissions]);
+  }, [effectiveRole, isAdmin, isAdminMode, rolePermissions, profile?.role]);
 
   // Fiches de poste visible selon permissions
   const fichesDePosteVisible = useMemo(() => {
     if (isAdmin || isAdminMode || !rolePermissions) return true;
-    const allowed = rolePermissions[currentRole];
+    if (!effectiveRole) return false;
+    const allowed = rolePermissions[effectiveRole];
     const allowedList = Array.isArray(allowed) ? allowed : [];
     return allowedList.includes('fichesDePoste');
-  }, [isAdmin, currentRole, isAdminMode, rolePermissions]);
+  }, [isAdmin, effectiveRole, isAdminMode, rolePermissions]);
 
   // Visibilité bottom nav selon permissions du rôle réel
   const realRole = profile?.role ?? 'ide';
