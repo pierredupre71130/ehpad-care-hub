@@ -782,10 +782,10 @@ export default function ConsignesNuitPage() {
     </table>`;
   };
 
-  const buildPageHTML = (section: string, residentsList: Resident[], notes: Record<string, string>, zoom = 1, infosGenerales = '') => {
+  const buildPageHTML = (section: string, residentsList: Resident[], notes: Record<string, string>, zoom = 1, infosGenerales = '', floorLabel = activeFloor) => {
     const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
     const header = `<div style='border-bottom:2px solid #1e293b;margin-bottom:8px;padding-bottom:4px;display:flex;justify-content:space-between;align-items:baseline'>
-      <div style='font-size:14px;font-weight:bold;color:#1e293b'>Consignes de Nuit — ${activeFloor} · ${section}</div>
+      <div style='font-size:14px;font-weight:bold;color:#1e293b'>Consignes de Nuit — ${floorLabel} · ${section}</div>
       <div style='font-size:9px;color:#475569'><strong>Date :</strong> ${dateStr} &nbsp;|&nbsp; <strong>IDE d'astreinte :</strong> ${ideAstreinte || '—'}</div>
     </div>`;
 
@@ -949,15 +949,32 @@ export default function ConsignesNuitPage() {
       await sendEmail();
       // Petit délai pour laisser la notification s'afficher avant l'impression
       await new Promise(resolve => setTimeout(resolve, 800));
-      const notes = notesByFloor[activeFloor] ?? {};
-      const currentInfos = infosByFloor[activeFloor] ?? '';
+
       const pageContentH = 1083;
-      const rectoH = measureNaturalHeight('Mapad', mapadResidents, notes);
-      const versoH = measureNaturalHeight('Long Séjour', longSejourResidents, notes);
-      const rectoZoom = rectoH > pageContentH ? pageContentH / rectoH : 1;
-      const versoZoom = versoH > pageContentH ? pageContentH / versoH : 1;
-      const rectoHTML = buildPageHTML('Mapad', mapadResidents, notes, rectoZoom, currentInfos);
-      const versoHTML = buildPageHTML('Long Séjour', longSejourResidents, notes, versoZoom, currentInfos);
+
+      // ── RDC ──────────────────────────────────────────────────
+      const rdcNotes = notesByFloor['RDC'] ?? {};
+      const rdcInfos = infosByFloor['RDC'] ?? '';
+      const rdcMapad = residents.filter(r => r.floor === 'RDC' && r.section === 'Mapad');
+      const rdcLS    = residents.filter(r => r.floor === 'RDC' && r.section === 'Long Séjour');
+      const rdcMapadZoom = (() => { const h = measureNaturalHeight('Mapad', rdcMapad, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
+      const rdcLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', rdcLS, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
+
+      // ── 1ER ──────────────────────────────────────────────────
+      const erNotes = notesByFloor['1ER'] ?? {};
+      const erInfos = infosByFloor['1ER'] ?? '';
+      const erMapad = residents.filter(r => r.floor === '1ER' && r.section === 'Mapad');
+      const erLS    = residents.filter(r => r.floor === '1ER' && r.section === 'Long Séjour');
+      const erMapadZoom = (() => { const h = measureNaturalHeight('Mapad', erMapad, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
+      const erLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', erLS, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
+
+      const pages = [
+        buildPageHTML('Mapad',       rdcMapad, rdcNotes, rdcMapadZoom, rdcInfos, 'RDC'),
+        buildPageHTML('Long Séjour', rdcLS,    rdcNotes, rdcLSZoom,    rdcInfos, 'RDC'),
+        buildPageHTML('Mapad',       erMapad,  erNotes,  erMapadZoom,  erInfos,  '1ER'),
+        buildPageHTML('Long Séjour', erLS,     erNotes,  erLSZoom,     erInfos,  '1ER'),
+      ];
+
       const html = `<!DOCTYPE html><html><head><meta charset='utf-8'/>
         <style>
           @page { size: A4 portrait; margin: 0; }
@@ -966,9 +983,9 @@ export default function ConsignesNuitPage() {
           .page:last-child { page-break-after: avoid; break-after: avoid; }
         </style>
       </head><body>
-        <div class="page">${rectoHTML}</div>
-        <div class="page">${versoHTML}</div>
+        ${pages.map(p => `<div class="page">${p}</div>`).join('')}
       </body></html>`;
+
       const existing = document.getElementById('nuit-print-iframe');
       if (existing) existing.remove();
       const iframe = document.createElement('iframe');
