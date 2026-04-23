@@ -537,6 +537,18 @@ export default function ConsignesNuitPage() {
   const [showArchives, setShowArchives] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
   const [sendCadre, setSendCadre] = useState(false); // désactivé par défaut
+  const [showInfoPopup, setShowInfoPopup] = useState(false);
+
+  // Afficher la popup d'info une fois par session
+  useEffect(() => {
+    const dismissed = sessionStorage.getItem('consignes_nuit_info_dismissed');
+    if (!dismissed) setShowInfoPopup(true);
+  }, []);
+
+  const dismissInfoPopup = () => {
+    sessionStorage.setItem('consignes_nuit_info_dismissed', '1');
+    setShowInfoPopup(false);
+  };
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -1012,6 +1024,73 @@ export default function ConsignesNuitPage() {
 
   return (
     <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+
+      {/* ── Popup d'information ─────────────────────────────────────────────── */}
+      {showInfoPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden">
+          {/* Overlay */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={dismissInfoPopup} />
+
+          {/* Card */}
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #0f7e8e 0%, #074f5c 100%)' }}>
+                <Moon className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Consignes de nuit</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Information importante avant de commencer</p>
+              </div>
+              <button onClick={dismissInfoPopup}
+                className="ml-auto p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 flex-shrink-0">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 pb-6 space-y-3">
+              {/* Bloc 1 : deux étages */}
+              <div className="flex gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800 leading-snug">
+                  Remplissez les consignes des <span className="font-semibold">deux étages</span> (RDC et 1ER)
+                  avant d'utiliser le bouton <span className="font-semibold">Imprimer &amp; Sauvegarder</span>.
+                </p>
+              </div>
+
+              {/* Bloc 2 : impression */}
+              <div className="flex gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <Printer className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-800 leading-snug">
+                  L'impression génère automatiquement les <span className="font-semibold">4 pages</span> des
+                  deux étages en une seule fois.
+                </p>
+              </div>
+
+              {/* Bloc 3 : envoi automatique */}
+              <div className="flex gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <PhoneCall className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-emerald-800 leading-snug">
+                  Un résumé sera automatiquement envoyé au <span className="font-semibold">soignant d'astreinte</span> ainsi
+                  qu'au <span className="font-semibold">cadre du service</span>.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-5">
+              <button onClick={dismissInfoPopup}
+                className="w-full py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #0f7e8e 0%, #074f5c 100%)' }}>
+                J'ai compris, commencer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dense page background network */}
       <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5 }}
