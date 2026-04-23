@@ -964,9 +964,9 @@ export default function ResidentsPage() {
           .update({ nom: '', matin: '', apres_midi: '', protection: '', updated_at: new Date().toISOString() })
           .eq('chambre', room);
       }
-      // Archiver le résident et libérer la chambre (room → '')
+      // Archiver le résident — conserver le numéro de chambre pour l'historique
       const { error: rErr } = await sb.from('residents')
-        .update({ archived: true, date_sortie: dateSortie, room: '' })
+        .update({ archived: true, date_sortie: dateSortie })
         .eq('id', id);
       if (rErr) throw new Error(rErr.message);
       // Marquer ses vaccinations comme archivées
