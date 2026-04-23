@@ -214,12 +214,13 @@ export default function DashboardPage() {
       const allowedList = Array.isArray(allowed) ? allowed : [];
       mods = mods.filter(m => allowedList.includes(m.id));
     }
-    // Admin / mode admin : exclure les bottom-nav de la grille (ils sont déjà dans le bandeau)
-    // Non-admin : inclure les bottom-nav SI ils sont dans leurs permissions (ex: secrétaire avec seulement GIR)
-    if (isAdmin || isAdminMode) {
-      return mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
+    // Exclure toujours les bottom-nav de la grille (ils sont dans le bandeau)
+    // Exception : si l'utilisateur n'a AUCUN autre module accessible, on affiche quand même les bottom-nav permis
+    const gridMods = mods.filter(m => !BOTTOM_NAV_IDS.includes(m.id) && m.id !== 'fichesDePoste');
+    if (!isAdmin && !isAdminMode && gridMods.length === 0) {
+      return mods.filter(m => m.id !== 'fichesDePoste');
     }
-    return mods.filter(m => m.id !== 'fichesDePoste');
+    return gridMods;
   }, [effectiveRole, isAdmin, isAdminMode, rolePermissions, profile?.role]);
 
   // Fiches de poste visible selon permissions
