@@ -103,7 +103,7 @@ export function PapStatsWidget() {
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
       {/* ── Carte 1 : PAP effectués ── */}
-      <Link href="/pap"
+      <Link href="/pap?filter=faits"
         className="group bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md hover:border-indigo-200 transition-all"
       >
         <div className="flex items-start justify-between mb-3">

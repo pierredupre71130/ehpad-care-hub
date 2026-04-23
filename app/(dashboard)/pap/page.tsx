@@ -408,7 +408,9 @@ function PAPPageInner() {
   const [viewingVersion, setViewingVersion] = useState<{ pap: Pap; res: Resident; date: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ papId: string; residentName: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<'tous' | 'faits' | 'a_faire'>('tous');
+  const [filter, setFilter] = useState<'tous' | 'faits' | 'a_faire'>(
+    (searchParams.get('filter') as 'tous' | 'faits' | 'a_faire') ?? 'tous'
+  );
   const [filterReferent, setFilterReferent] = useState('');
   const [showSansReferents, setShowSansReferents] = useState(false);
   const [showPrintReferents, setShowPrintReferents] = useState(false);
