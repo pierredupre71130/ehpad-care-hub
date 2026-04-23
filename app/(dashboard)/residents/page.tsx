@@ -89,8 +89,8 @@ interface Resident {
   title: string;
   first_name: string;
   last_name: string;
-  date_naissance: string;
-  date_entree: string;
+  date_naissance: string | null;
+  date_entree: string | null;
   floor: 'RDC' | '1ER';
   section: string;
   sort_order: number;
@@ -111,7 +111,7 @@ interface Resident {
   appel_nuit: boolean;
   // Sortie
   archived?: boolean;
-  date_sortie?: string;
+  date_sortie?: string | null;
   // Photo
   photo_url?: string;
 }
@@ -174,7 +174,7 @@ const TRAITEMENT_BADGES = [
 
 const EMPTY_FORM: Omit<Resident, 'id'> = {
   room: '', title: 'Mme', first_name: '', last_name: '',
-  date_naissance: '', date_entree: new Date().toISOString().split('T')[0],
+  date_naissance: '', date_entree: '',
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
   annotations: '', medecin: '', referent: '',
   regime_mixe: false, viande_mixee: false, regime_diabetique: false,
@@ -1106,11 +1106,14 @@ export default function ResidentsPage() {
   }
 
   function handleSave() {
-    if (!editForm.last_name?.trim()) { toast.error('Le nom de famille est obligatoire'); return; }
-    if (!editForm.room?.trim())      { toast.error('Le numéro de chambre est obligatoire'); return; }
-    const payload = editingId === 'NEW'
-      ? editForm
-      : { ...editForm, id: editingId! };
+    if (!editForm.room?.trim()) { toast.error('Le numéro de chambre est obligatoire'); return; }
+    // Convertir les dates vides en null pour éviter l'erreur Supabase "invalid input syntax for type date"
+    const payload = {
+      ...(editingId === 'NEW' ? editForm : { ...editForm, id: editingId! }),
+      date_naissance: editForm.date_naissance?.trim() || null,
+      date_entree:    editForm.date_entree?.trim()    || null,
+      date_sortie:    editForm.date_sortie?.trim()    || null,
+    };
     saveMutation.mutate(payload);
   }
 
