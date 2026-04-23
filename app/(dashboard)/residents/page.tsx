@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
@@ -1121,9 +1122,11 @@ export default function ResidentsPage() {
   }
 
   function cancelEdit() {
-    setEditingId(null);
-    setEditForm({});
-    setRoomUnlocked(false);
+    flushSync(() => {
+      setEditingId(null);
+      setEditForm({});
+      setRoomUnlocked(false);
+    });
   }
 
   // Fermer avec Échap
@@ -1157,10 +1160,12 @@ export default function ResidentsPage() {
     // garantissent l'exécution dans le bon contexte React, contrairement à onSuccess de useMutation
     saveMutation.mutate(payload, {
       onSuccess: () => {
+        flushSync(() => {
+          setEditingId(null);
+          setEditForm({});
+          setRoomUnlocked(false);
+        });
         toast.success(isNew ? 'Résident créé ✓' : 'Modifications sauvegardées ✓');
-        setEditingId(null);
-        setEditForm({});
-        setRoomUnlocked(false);
       },
     });
   }
