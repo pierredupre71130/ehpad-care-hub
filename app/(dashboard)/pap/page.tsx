@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -366,7 +366,7 @@ function PAPFormComp({
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
-export default function PAPPage() {
+function PAPPageInner() {
   const supabase = createClient();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
@@ -1072,5 +1072,13 @@ export default function PAPPage() {
 
       </div>{/* fin z-index: 1 */}
     </div>
+  );
+}
+
+export default function PAPPage() {
+  return (
+    <Suspense fallback={null}>
+      <PAPPageInner />
+    </Suspense>
   );
 }
