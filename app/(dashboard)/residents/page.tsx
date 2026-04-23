@@ -2,7 +2,6 @@
 
 /**
  * Gestion des Résidents — Next.js 15 + Supabase
- *
  * Prérequis shadcn : npx shadcn@latest add checkbox textarea select
  */
 
@@ -14,6 +13,7 @@ import {
   Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -930,6 +930,7 @@ function AccessCodesEditDialog({
 
 export default function ResidentsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
   const [search, setSearch]             = useState('');
@@ -964,6 +965,7 @@ export default function ResidentsPage() {
       setEditingId(null);
       setEditForm({});
       setRoomUnlocked(false);
+      router.refresh();
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -1128,6 +1130,7 @@ export default function ResidentsPage() {
     setEditingId(null);
     setEditForm({});
     setRoomUnlocked(false);
+    router.refresh();
   }
 
   // Fermer avec Échap
