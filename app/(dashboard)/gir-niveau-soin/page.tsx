@@ -286,6 +286,7 @@ function ConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel
 // Champs autorisés par rôle (null = tous les champs autorisés)
 const ROLE_ALLOWED_FIELDS: Record<string, string[] | null> = {
   secretaire: ['gir', 'appel_nuit', 'appel_nuit_info', 'pompes_funebres'],
+  cadre:      ['gir', 'appel_nuit', 'appel_nuit_info', 'pompes_funebres'],
   medecin:    ['niveau_soin'],
 };
 
@@ -550,7 +551,7 @@ export default function GIRNiveauSoinPage() {
       {!readOnly && allowedFields !== null && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mx-4 mb-2 mt-4 text-sm text-amber-700 font-medium print:hidden">
           <Eye className="h-4 w-4 flex-shrink-0" />
-          {profile?.role === 'secretaire' && 'Vous pouvez modifier le GIR, l\'appel de nuit et les pompes funèbres. Le niveau de soin est réservé au médecin.'}
+          {(profile?.role === 'secretaire' || profile?.role === 'cadre') && 'Vous pouvez modifier le GIR, l\'appel de nuit et les pompes funèbres. Le niveau de soin est réservé au médecin.'}
           {profile?.role === 'medecin' && 'Vous pouvez modifier uniquement le niveau de soin. Les autres champs sont gérés par l\'équipe soignante.'}
         </div>
       )}
