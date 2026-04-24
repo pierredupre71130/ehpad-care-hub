@@ -214,9 +214,8 @@ export default function DashboardPage() {
     if (!isAdmin && (!profile?.role || !rolePermissions)) return [];
     let mods = MODULES;
     if (effectiveRole && effectiveRole !== 'all' && !isAdminMode) {
-      const allowed = rolePermissions?.[effectiveRole];
-      const allowedList = Array.isArray(allowed) ? allowed : [];
-      mods = mods.filter(m => allowedList.includes(m.id));
+      const allowedObj = rolePermissions?.[effectiveRole] as Record<string, string> | undefined;
+      mods = mods.filter(m => allowedObj && m.id in allowedObj);
     }
     // Exclure toujours les bottom-nav de la grille (ils sont dans le bandeau)
     // Exception : si l'utilisateur n'a AUCUN autre module accessible, on affiche quand même les bottom-nav permis
@@ -231,9 +230,8 @@ export default function DashboardPage() {
   const fichesDePosteVisible = useMemo(() => {
     if (isAdmin || isAdminMode) return true;
     if (!rolePermissions || !effectiveRole) return false; // attendre le chargement
-    const allowed = rolePermissions[effectiveRole];
-    const allowedList = Array.isArray(allowed) ? allowed : [];
-    return allowedList.includes('fichesDePoste');
+    const allowedObj = rolePermissions[effectiveRole] as Record<string, string> | undefined;
+    return !!(allowedObj && 'fichesDePoste' in allowedObj);
   }, [isAdmin, effectiveRole, isAdminMode, rolePermissions]);
 
   // Visibilité bottom nav selon permissions du rôle réel
@@ -241,17 +239,15 @@ export default function DashboardPage() {
   const residentsVisible = useMemo(() => {
     if (isAdmin) return true;
     if (!rolePermissions) return false;
-    const allowed = rolePermissions[realRole];
-    const allowedList = Array.isArray(allowed) ? allowed : [];
-    return allowedList.includes('residents');
+    const allowedObj = rolePermissions[realRole] as Record<string, string> | undefined;
+    return !!(allowedObj && 'residents' in allowedObj);
   }, [isAdmin, realRole, rolePermissions]);
 
   const girVisible = useMemo(() => {
     if (isAdmin) return true;
     if (!rolePermissions) return false;
-    const allowed = rolePermissions[realRole];
-    const allowedList = Array.isArray(allowed) ? allowed : [];
-    return allowedList.includes('girNiveauSoin');
+    const allowedObj = rolePermissions[realRole] as Record<string, string> | undefined;
+    return !!(allowedObj && 'girNiveauSoin' in allowedObj);
   }, [isAdmin, realRole, rolePermissions]);
 
   if (isLoading || !isAuthenticated) {

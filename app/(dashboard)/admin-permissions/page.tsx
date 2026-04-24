@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   ShieldCheck, Home, Save, CheckSquare, Square,
-  Users, Check, AlertCircle, Loader2,
+  Users, Check, AlertCircle, Loader2, Eye,
 } from 'lucide-react';
 import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
 import { MODULES } from '@/components/dashboard/module-config';
@@ -112,15 +112,20 @@ function AdminPermissionsContent() {
     },
   });
 
-  const toggle = useCallback((role: string, moduleId: string) => {
+  const cycle = useCallback((role: string, moduleId: string) => {
     setLocalPerms(prev => {
       if (!prev) return prev;
-      const cur = prev[role] ?? [];
-      const next = cur.includes(moduleId)
-        ? cur.filter(id => id !== moduleId)
-        : [...cur, moduleId];
+      const current = prev[role]?.[moduleId]; // undefined | 'full' | 'read'
+      const updated = { ...prev, [role]: { ...prev[role] } };
+      if (!current) {
+        updated[role][moduleId] = 'full';
+      } else if (current === 'full') {
+        updated[role][moduleId] = 'read';
+      } else {
+        delete updated[role][moduleId];
+      }
       setIsDirty(true);
-      return { ...prev, [role]: next };
+      return updated;
     });
   }, []);
 
@@ -129,16 +134,18 @@ function AdminPermissionsContent() {
       if (!prev) return prev;
       const updated = { ...prev };
       if (type === 'role') {
-        // Toggle all modules for a given role
-        updated[key] = value ? MODULES.map(m => m.id) : [];
+        updated[key] = {};
+        if (value) {
+          for (const m of MODULES) updated[key][m.id] = 'full';
+        }
       } else {
-        // Toggle a given module for all roles
+        // key = moduleId
         for (const { value: rv } of CONFIGURABLE_ROLES) {
-          const cur = updated[rv] ?? [];
+          updated[rv] = { ...updated[rv] };
           if (value) {
-            if (!cur.includes(key)) updated[rv] = [...cur, key];
+            updated[rv][key] = 'full';
           } else {
-            updated[rv] = cur.filter(id => id !== key);
+            delete updated[rv][key];
           }
         }
       }
@@ -252,8 +259,19 @@ function AdminPermissionsContent() {
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 mb-6 text-sm text-blue-800">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-blue-500" />
           <div>
-            <span className="font-semibold">L&apos;administrateur</span> a toujours accès à tous les modules.
-            Les changements sont appliqués dès l&apos;enregistrement.
+            <span className="font-semibold">L&apos;administrateur</span> a toujours accès à tous les modules en écriture.
+            <span className="ml-2">Cliquez sur une case pour cycler : </span>
+            <span className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-white rounded border border-slate-200 text-xs">
+              <span className="w-2 h-2 bg-slate-200 rounded-sm inline-block" /> Pas d&apos;accès
+            </span>
+            →
+            <span className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-blue-50 rounded border border-blue-200 text-xs text-blue-700">
+              <Check className="h-3 w-3" /> Accès complet
+            </span>
+            →
+            <span className="inline-flex items-center gap-1 mx-1 px-2 py-0.5 bg-blue-50 rounded border border-blue-200 text-xs text-blue-400">
+              <Eye className="h-3 w-3" /> Lecture seule
+            </span>
           </div>
         </div>
 
@@ -285,7 +303,7 @@ function AdminPermissionsContent() {
                     Module
                   </th>
                   {CONFIGURABLE_ROLES.map(role => {
-                    const allChecked = MODULES.every(m => (localPerms[role.value] ?? []).includes(m.id));
+                    const allChecked = MODULES.every(m => !!localPerms[role.value]?.[m.id]);
                     return (
                       <th key={role.value} className="px-3 py-3 text-center" style={{ minWidth: 72 }}>
                         <div className="flex flex-col items-center gap-1.5">
@@ -315,9 +333,7 @@ function AdminPermissionsContent() {
               <tbody>
                 {MODULES.map((mod, idx) => {
                   const Icon = mod.icon;
-                  const allChecked = CONFIGURABLE_ROLES.every(r =>
-                    (localPerms[r.value] ?? []).includes(mod.id)
-                  );
+                  const allChecked = CONFIGURABLE_ROLES.every(r => !!localPerms[r.value]?.[mod.id]);
                   return (
                     <tr
                       key={mod.id}
@@ -339,23 +355,31 @@ function AdminPermissionsContent() {
                         </div>
                       </td>
 
-                      {/* Role checkboxes */}
+                      {/* Role cells — 3 states */}
                       {CONFIGURABLE_ROLES.map(role => {
-                        const checked = (localPerms[role.value] ?? []).includes(mod.id);
+                        const access = localPerms[role.value]?.[mod.id]; // undefined|'full'|'read'
                         return (
                           <td key={role.value} className="px-3 py-3 text-center">
                             <button
-                              onClick={() => toggle(role.value, mod.id)}
+                              onClick={() => cycle(role.value, mod.id)}
                               className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all hover:scale-110 active:scale-95"
                               style={
-                                checked
+                                access === 'full'
                                   ? { background: role.color + '18', border: `1.5px solid ${role.color}50` }
+                                  : access === 'read'
+                                  ? { background: '#eff6ff', border: '1.5px solid #93c5fd' }
                                   : { background: '#f8fafc', border: '1.5px solid #e2e8f0' }
                               }
-                              title={checked ? 'Révoquer' : 'Autoriser'}
+                              title={
+                                !access ? 'Pas d\'accès → cliquer pour accès complet'
+                                : access === 'full' ? 'Accès complet → cliquer pour lecture seule'
+                                : 'Lecture seule → cliquer pour supprimer l\'accès'
+                              }
                             >
-                              {checked ? (
+                              {access === 'full' ? (
                                 <Check className="h-3.5 w-3.5" style={{ color: role.color }} />
+                              ) : access === 'read' ? (
+                                <Eye className="h-3.5 w-3.5 text-blue-400" />
                               ) : (
                                 <span className="w-2 h-2 rounded-sm bg-slate-200 block" />
                               )}
@@ -373,7 +397,7 @@ function AdminPermissionsContent() {
                     Basculer une colonne entière →
                   </td>
                   {CONFIGURABLE_ROLES.map(role => {
-                    const allChecked = MODULES.every(m => (localPerms[role.value] ?? []).includes(m.id));
+                    const allChecked = MODULES.every(m => !!localPerms[role.value]?.[m.id]);
                     return (
                       <td key={role.value} className="px-3 py-3 text-center">
                         <button
@@ -408,6 +432,11 @@ function AdminPermissionsContent() {
               <span className="text-slate-400">= {role.label}</span>
             </div>
           ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-4 px-1 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-slate-100 border border-slate-200 inline-flex items-center justify-center"><span className="w-1.5 h-1.5 bg-slate-200 rounded-sm" /></span> Pas d&apos;accès</span>
+          <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-green-50 border border-green-200 inline-flex items-center justify-center"><Check className="h-2.5 w-2.5 text-green-600" /></span> Accès complet (lecture + écriture)</span>
+          <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-50 border border-blue-200 inline-flex items-center justify-center"><Eye className="h-2.5 w-2.5 text-blue-400" /></span> Lecture seule (consultation uniquement)</span>
         </div>
 
         {/* Save button (bottom) */}

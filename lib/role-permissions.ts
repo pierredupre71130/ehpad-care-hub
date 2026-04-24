@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/client';
 import { ROLE_MODULES, MODULES } from '@/components/dashboard/module-config';
 
-export type RolePermissions = Record<string, string[]>;
+export type ModuleAccess = 'full' | 'read';
+// New format: role → { moduleId → 'full'|'read' }
+export type RolePermissions = Record<string, Record<string, ModuleAccess>>;
 
 export const CONFIGURABLE_ROLES: {
   value: string;
@@ -23,12 +25,36 @@ export function getDefaultPermissions(): RolePermissions {
   const defaults: RolePermissions = {};
   for (const { value } of CONFIGURABLE_ROLES) {
     const allowed = ROLE_MODULES[value];
-    defaults[value] =
-      allowed === null || allowed === undefined
-        ? MODULES.map(m => m.id)
-        : [...allowed];
+    const ids = (allowed === null || allowed === undefined)
+      ? MODULES.map(m => m.id)
+      : allowed;
+    defaults[value] = {};
+    for (const id of ids) {
+      defaults[value][id] = 'full';
+    }
   }
   return defaults;
+}
+
+/** Migrate old string[] format or unknown data to new RolePermissions format */
+function migrateToNewFormat(raw: unknown): RolePermissions {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return getDefaultPermissions();
+  const result: RolePermissions = {};
+  for (const [role, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(value)) {
+      // Old format: string[] → all modules get 'full' access
+      result[role] = {};
+      for (const moduleId of value as string[]) {
+        result[role][moduleId] = 'full';
+      }
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // New format already
+      result[role] = value as Record<string, ModuleAccess>;
+    } else {
+      result[role] = {};
+    }
+  }
+  return result;
 }
 
 export async function fetchRolePermissions(): Promise<RolePermissions> {
@@ -39,13 +65,13 @@ export async function fetchRolePermissions(): Promise<RolePermissions> {
     .eq('key', 'role_permissions')
     .maybeSingle();
 
-  if (data?.value && typeof data.value === 'object' && !Array.isArray(data.value)) {
-    // Merge with defaults so newly added modules appear
-    const stored = data.value as RolePermissions;
+  if (data?.value) {
+    const migrated = migrateToNewFormat(data.value);
+    // Merge with defaults so newly added modules appear for all roles
     const defaults = getDefaultPermissions();
     const merged: RolePermissions = {};
     for (const { value } of CONFIGURABLE_ROLES) {
-      merged[value] = stored[value] ?? defaults[value];
+      merged[value] = migrated[value] ?? defaults[value];
     }
     return merged;
   }
@@ -58,4 +84,14 @@ export async function saveRolePermissions(perms: RolePermissions): Promise<void>
     { key: 'role_permissions', value: perms, updated_at: new Date().toISOString() },
     { onConflict: 'key' }
   );
+}
+
+/** Whether a role has ANY access (full or read) to a module */
+export function hasModuleAccess(perms: RolePermissions, role: string, moduleId: string): boolean {
+  return !!perms[role]?.[moduleId];
+}
+
+/** Whether a role has read-only access to a module */
+export function isModuleReadOnly(perms: RolePermissions, role: string, moduleId: string): boolean {
+  return perms[role]?.[moduleId] === 'read';
 }
