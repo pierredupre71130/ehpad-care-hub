@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X, Printer, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -282,10 +283,25 @@ function ConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel
 // PAGE PRINCIPALE
 // ─────────────────────────────────────────────────────────────
 
+// Champs autorisés par rôle (null = tous les champs autorisés)
+const ROLE_ALLOWED_FIELDS: Record<string, string[] | null> = {
+  secretaire: ['gir', 'appel_nuit', 'appel_nuit_info', 'pompes_funebres'],
+  medecin:    ['niveau_soin'],
+};
+
 export default function GIRNiveauSoinPage() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
   const access = useModuleAccess('girNiveauSoin');
   const readOnly = access === 'read';
+
+  // Restriction par champ selon le rôle
+  const allowedFields = profile?.role ? (ROLE_ALLOWED_FIELDS[profile.role] ?? null) : null;
+  const canEdit = useCallback((field: string): boolean => {
+    if (readOnly) return false;
+    if (allowedFields === null) return true; // tous les champs autorisés
+    return allowedFields.includes(field);
+  }, [readOnly, allowedFields]);
 
   // ── UI state ──
   const [modal, setModal] = useState<ModalType>(null);
@@ -485,7 +501,7 @@ export default function GIRNiveauSoinPage() {
                 {r.title} {r.last_name} {r.first_name ?? ''}{' '}
                 <span className="text-xs text-slate-400">Ch.{r.room}</span>
               </span>
-              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={readOnly} />
+              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={!canEdit('gir')} />
             </div>
           ))}
         </SummaryModal>
@@ -499,7 +515,7 @@ export default function GIRNiveauSoinPage() {
                 {r.title} {r.last_name} {r.first_name ?? ''}{' '}
                 <span className="text-xs text-slate-400">Ch.{r.room}</span>
               </span>
-              <ToggleGroup options={NIVEAU_OPTIONS} value={getRec(r.id).niveau_soin} onChange={v => updateField(r, 'niveau_soin', v)} colorFn={niveauColor} readOnly={readOnly} />
+              <ToggleGroup options={NIVEAU_OPTIONS} value={getRec(r.id).niveau_soin} onChange={v => updateField(r, 'niveau_soin', v)} colorFn={niveauColor} readOnly={!canEdit('niveau_soin')} />
             </div>
           ))}
         </SummaryModal>
@@ -514,8 +530,8 @@ export default function GIRNiveauSoinPage() {
                 <span className="text-xs text-slate-400">Ch.{r.room}</span>
               </span>
               <div className="flex gap-1">
-                <button onClick={() => updateField(r, 'appel_nuit', true)} disabled={readOnly} className="px-2 py-0.5 rounded text-xs font-bold border border-red-500 bg-white text-red-500 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">Oui</button>
-                <button onClick={() => updateField(r, 'appel_nuit', false)} disabled={readOnly} className="px-2 py-0.5 rounded text-xs font-bold border border-green-500 bg-white text-green-500 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed">Non</button>
+                <button onClick={() => updateField(r, 'appel_nuit', true)} disabled={!canEdit('appel_nuit')} className="px-2 py-0.5 rounded text-xs font-bold border border-red-500 bg-white text-red-500 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">Oui</button>
+                <button onClick={() => updateField(r, 'appel_nuit', false)} disabled={!canEdit('appel_nuit')} className="px-2 py-0.5 rounded text-xs font-bold border border-green-500 bg-white text-green-500 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed">Non</button>
               </div>
             </div>
           ))}
@@ -527,6 +543,15 @@ export default function GIRNiveauSoinPage() {
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mx-4 mb-2 mt-4 text-sm text-blue-700 font-medium print:hidden">
           <Eye className="h-4 w-4 flex-shrink-0" />
           Vous consultez cette page en lecture seule.
+        </div>
+      )}
+
+      {/* ══ RESTRICTIONS PAR CHAMP ══════════════════════════════ */}
+      {!readOnly && allowedFields !== null && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mx-4 mb-2 mt-4 text-sm text-amber-700 font-medium print:hidden">
+          <Eye className="h-4 w-4 flex-shrink-0" />
+          {profile?.role === 'secretaire' && 'Vous pouvez modifier le GIR, l\'appel de nuit et les pompes funèbres. Le niveau de soin est réservé au médecin.'}
+          {profile?.role === 'medecin' && 'Vous pouvez modifier uniquement le niveau de soin. Les autres champs sont gérés par l\'équipe soignante.'}
         </div>
       )}
 
@@ -599,7 +624,7 @@ export default function GIRNiveauSoinPage() {
                       value={rec.gir}
                       onChange={v => updateField(r, 'gir', v)}
                       colorFn={girColor}
-                      readOnly={readOnly}
+                      readOnly={!canEdit('gir')}
                     />
                   </td>
 
@@ -610,7 +635,7 @@ export default function GIRNiveauSoinPage() {
                       value={rec.niveau_soin}
                       onChange={v => updateField(r, 'niveau_soin', v)}
                       colorFn={niveauColor}
-                      readOnly={readOnly}
+                      readOnly={!canEdit('niveau_soin')}
                     />
                   </td>
 
@@ -620,7 +645,7 @@ export default function GIRNiveauSoinPage() {
                       <div className="flex gap-1">
                         <button
                           onClick={() => updateField(r, 'appel_nuit', true)}
-                          disabled={readOnly}
+                          disabled={!canEdit('appel_nuit')}
                           className={cn(
                             'px-2 py-0.5 rounded text-xs font-bold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
                             rec.appel_nuit === true
@@ -630,7 +655,7 @@ export default function GIRNiveauSoinPage() {
                         >Oui</button>
                         <button
                           onClick={() => updateField(r, 'appel_nuit', false)}
-                          disabled={readOnly}
+                          disabled={!canEdit('appel_nuit')}
                           className={cn(
                             'px-2 py-0.5 rounded text-xs font-bold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
                             rec.appel_nuit === false
@@ -642,11 +667,11 @@ export default function GIRNiveauSoinPage() {
                       {rec.appel_nuit === true && (
                         <textarea
                           value={rec.appel_nuit_info ?? ''}
-                          onChange={e => !readOnly && updateField(r, 'appel_nuit_info', e.target.value)}
-                          onBlur={e => !readOnly && doUpdate(r, 'appel_nuit_info', e.target.value)}
+                          onChange={e => canEdit('appel_nuit_info') && updateField(r, 'appel_nuit_info', e.target.value)}
+                          onBlur={e => canEdit('appel_nuit_info') && doUpdate(r, 'appel_nuit_info', e.target.value)}
                           placeholder="Informations..."
                           rows={2}
-                          readOnly={readOnly}
+                          readOnly={!canEdit('appel_nuit_info')}
                           className="w-full border border-slate-200 rounded px-2 py-1 text-xs resize-none focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
                         />
                       )}
@@ -657,14 +682,14 @@ export default function GIRNiveauSoinPage() {
                   <td className="border border-slate-300 px-2 py-1.5 text-sm">
                     <textarea
                       value={rec.pompes_funebres ?? ''}
-                      onChange={e => !readOnly && setLocalUpdates(prev => ({
+                      onChange={e => canEdit('pompes_funebres') && setLocalUpdates(prev => ({
                         ...prev,
                         [r.id]: { ...(prev[r.id] ?? {}), pompes_funebres: e.target.value },
                       }))}
-                      onBlur={e => !readOnly && doUpdate(r, 'pompes_funebres', e.target.value)}
+                      onBlur={e => canEdit('pompes_funebres') && doUpdate(r, 'pompes_funebres', e.target.value)}
                       placeholder="Nom, coordonnées..."
                       rows={2}
-                      readOnly={readOnly}
+                      readOnly={!canEdit('pompes_funebres')}
                       className="w-full border border-slate-200 rounded px-2 py-1 text-xs resize-none focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
                     />
                   </td>
