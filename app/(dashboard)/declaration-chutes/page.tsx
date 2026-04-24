@@ -7,6 +7,12 @@ import {
   Pill, CheckCircle2, Clock, Filter, Search, ChevronDown, ChevronUp,
   AlertCircle, TrendingUp, Users, Calendar,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart, Line,
+  BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -579,6 +585,16 @@ function PharmaModal({
 
 // ── Statistiques ──────────────────────────────────────────────────────────────
 
+const TRAUMATISME_KEYS = [
+  'Traumatisme crânien', 'Fracture confirmée', 'Fracture suspectée',
+  'Hospitalisation/transfert', 'Plaie profonde', 'Plaie superficielle',
+  'Hématome/ecchymose', 'Douleur sans lésion visible',
+];
+
+function hasTraumatisme(consequences: string[] = []) {
+  return consequences.some(c => TRAUMATISME_KEYS.includes(c));
+}
+
 function StatBar({ label, value, max, color = 'bg-orange-500' }: { label: string; value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
@@ -597,7 +613,7 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const thisYear  = String(now.getFullYear());
 
-  const total     = falls.length;
+  const total      = falls.length;
   const thisMonthN = falls.filter(f => f.date_chute?.startsWith(thisMonth)).length;
   const thisYearN  = falls.filter(f => f.date_chute?.startsWith(thisYear)).length;
 
@@ -611,9 +627,9 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
     const key = `${f.patient_nom}|${f.patient_prenom ?? ''}`.toLowerCase();
     patientFalls[key] = (patientFalls[key] ?? 0) + 1;
   });
-  const uniquePatients    = Object.keys(patientFalls).length;
-  const recidivists       = Object.values(patientFalls).filter(n => n > 1).length;
-  const recidivismRate    = uniquePatients > 0 ? Math.round((recidivists / uniquePatients) * 100) : 0;
+  const uniquePatients = Object.keys(patientFalls).length;
+  const recidivists    = Object.values(patientFalls).filter(n => n > 1).length;
+  const recidivismRate = uniquePatients > 0 ? Math.round((recidivists / uniquePatients) * 100) : 0;
 
   // Pharma
   const pharmaCompleted = falls.filter(f => f.pharma_complete).length;
@@ -642,16 +658,33 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
   falls.forEach(f => (f.consequences ?? []).forEach(c => { consCount[c] = (consCount[c] ?? 0) + 1; }));
   const topCons = Object.entries(consCount).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
-  // Évolution mensuelle (6 derniers mois)
-  const monthlyData: Array<{ label: string; count: number }> = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
-    const count = falls.filter(f => f.date_chute?.startsWith(key)).length;
-    monthlyData.push({ label, count });
+  // Données mensuelles — on couvre toute la plage des données + mois courant
+  const allKeys = falls
+    .map(f => f.date_chute?.slice(0, 7))
+    .filter(Boolean) as string[];
+  const minKey = allKeys.length > 0 ? allKeys.reduce((a, b) => a < b ? a : b) : thisMonth;
+  const maxKey = thisMonth;
+
+  const monthlyData: Array<{ label: string; total: number; traumatisme: number; sansConsequence: number }> = [];
+  {
+    let cur = new Date(minKey + '-01');
+    const end = new Date(maxKey + '-01');
+    while (cur <= end) {
+      const key   = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`;
+      const label = cur.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+      const mFalls = falls.filter(f => f.date_chute?.startsWith(key));
+      monthlyData.push({
+        label,
+        total: mFalls.length,
+        traumatisme: mFalls.filter(f => hasTraumatisme(f.consequences ?? [])).length,
+        sansConsequence: mFalls.filter(f =>
+          (f.consequences ?? []).length === 0 ||
+          (f.consequences ?? []).every(c => c === 'Aucune lésion apparente')
+        ).length,
+      });
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
   }
-  const maxMonthly = Math.max(...monthlyData.map(m => m.count), 1);
 
   const KPI = ({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color: string }) => (
     <div className={cn('rounded-xl border p-4', color)}>
@@ -689,7 +722,7 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {(['critique', 'grave', 'moderee', 'legere'] as const).map(g => {
             const gc = GRAVITY_CONFIG[g];
-            const n = byGravity[g];
+            const n  = byGravity[g];
             return (
               <div key={g} className={cn('rounded-lg border p-3 text-center', gc.bg, gc.border)}>
                 <p className="text-2xl font-black text-slate-800">{n}</p>
@@ -701,54 +734,74 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
         </div>
       </div>
 
-      {/* Évolution mensuelle */}
+      {/* Graphique 1 — Évolution linéaire */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
-        <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-blue-500" /> Évolution sur 6 mois
+        <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-blue-500" /> Évolution des chutes par mois
         </p>
-        <div className="flex items-end gap-2 h-24">
-          {monthlyData.map(({ label, count }) => (
-            <div key={label} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-xs font-bold text-slate-600">{count > 0 ? count : ''}</span>
-              <div className="w-full flex items-end" style={{ height: 64 }}>
-                <div
-                  className="w-full bg-orange-400 rounded-t-md transition-all"
-                  style={{ height: `${maxMonthly > 0 ? (count / maxMonthly) * 64 : 0}px`, minHeight: count > 0 ? 4 : 0 }}
-                />
-              </div>
-              <span className="text-[10px] text-slate-400">{label}</span>
-            </div>
-          ))}
-        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={monthlyData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
+              labelStyle={{ fontWeight: 600, color: '#1e293b' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line
+              type="monotone" dataKey="total" name="Total des chutes"
+              stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }}
+            />
+            <Line
+              type="monotone" dataKey="traumatisme" name="Avec traumatisme"
+              stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Graphique 2 — Barres groupées par mois */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-orange-500" /> Répartition des conséquences par mois
+        </p>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={monthlyData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
+              labelStyle={{ fontWeight: 600, color: '#1e293b' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="traumatisme" name="Avec traumatisme" fill="#ef4444" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="sansConsequence" name="Sans conséquence" fill="#22c55e" radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Grille de stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Lieux */}
         {topLieux.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
             <p className="text-sm font-bold text-slate-700 mb-3">📍 Lieux fréquents</p>
             {topLieux.map(([l, n]) => <StatBar key={l} label={l} value={n} max={topLieux[0][1]} color="bg-blue-400" />)}
           </div>
         )}
-
-        {/* Conséquences */}
         {topCons.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
             <p className="text-sm font-bold text-slate-700 mb-3">🩹 Conséquences fréquentes</p>
             {topCons.map(([c, n]) => <StatBar key={c} label={c} value={n} max={topCons[0][1]} color="bg-orange-500" />)}
           </div>
         )}
-
-        {/* Facteurs intrinsèques */}
         {topFI.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
             <p className="text-sm font-bold text-slate-700 mb-3">🧑 Facteurs intrinsèques</p>
             {topFI.map(([f, n]) => <StatBar key={f} label={f} value={n} max={topFI[0][1]} color="bg-purple-500" />)}
           </div>
         )}
-
-        {/* Facteurs extrinsèques */}
         {topFE.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
             <p className="text-sm font-bold text-slate-700 mb-3">🏥 Facteurs extrinsèques</p>
@@ -774,7 +827,7 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
         </p>
       </div>
 
-      {/* Patients avec plusieurs chutes */}
+      {/* Patients récidivistes */}
       {recidivists > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
@@ -787,7 +840,7 @@ function StatsView({ falls }: { falls: ChuteRecord[] }) {
               .slice(0, 8)
               .map(([key, n]) => {
                 const parts = key.split('|');
-                const name = `${parts[0]} ${parts[1]}`.trim();
+                const name  = `${parts[0]} ${parts[1]}`.trim();
                 return (
                   <div key={key} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
                     <span className="text-sm font-medium text-slate-700 capitalize">{name}</span>
