@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Printer, Pencil, Check, X, Loader2, ChevronRight, Clock, Save, ClipboardList } from 'lucide-react';
+import { Printer, Pencil, Check, X, Loader2, ChevronRight, Clock, Save, ClipboardList, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -401,11 +402,12 @@ function FicheTimeline({ text }: { text: string }) {
 // ── FicheView ─────────────────────────────────────────────────────────────────
 
 function FicheView({
-  fiche, poste, onSave,
+  fiche, poste, onSave, readOnly = false,
 }: {
   fiche: FicheDePoste | undefined;
   poste: string;
   onSave: (id: string | undefined, poste: string, contenu: string) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const content = fiche?.contenu ?? DEFAULTS[poste] ?? '';
   const [editing, setEditing] = useState(false);
@@ -425,8 +427,17 @@ function FicheView({
   return (
     <div>
       {/* Barre d'actions */}
-      <div className="flex justify-end gap-2 mb-6 print:hidden">
-        {editing ? (
+      <div className="flex justify-end items-center gap-2 mb-6 print:hidden">
+        {readOnly ? (
+          <>
+            <span className="flex items-center gap-1.5 text-xs text-blue-500 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg font-medium">
+              <Eye className="h-3.5 w-3.5" /> Lecture seule
+            </span>
+            <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5">
+              <Printer className="h-4 w-4" /> Imprimer
+            </Button>
+          </>
+        ) : editing ? (
           <>
             <Button size="sm" variant="outline" onClick={handleCancel} className="gap-1.5 text-slate-600">
               <X className="h-4 w-4" /> Annuler
@@ -474,6 +485,8 @@ function FicheView({
 export default function FichesDePostePage() {
   const queryClient = useQueryClient();
   const [selectedPoste, setSelectedPoste] = useState<string | null>(null);
+  const access = useModuleAccess('fichesDePoste');
+  const readOnly = access === 'read';
 
   const { data: fiches = [], isLoading } = useQuery({
     queryKey: ['fiches_de_poste'],
@@ -569,7 +582,7 @@ export default function FichesDePostePage() {
         </div>
 
         <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-12">
-          <FicheView fiche={fiche} poste={selectedPoste} onSave={handleSave} />
+          <FicheView fiche={fiche} poste={selectedPoste} onSave={handleSave} readOnly={readOnly} />
         </main>
       </div>
     );
