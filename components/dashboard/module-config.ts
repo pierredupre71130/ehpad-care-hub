@@ -13,6 +13,7 @@ import {
   Users,
   BriefcaseMedical,
   NotebookPen,
+  Package,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -178,6 +179,18 @@ export const MODULES: ModuleConfig[] = [
     visibleRoles: null,
   },
   {
+    id: 'peremptions',
+    label: 'Péremptions',
+    description: 'Suivi des dates de péremption du matériel et médicaments',
+    href: '/peremptions',
+    icon: Package,
+    cardFrom: '#16a34a',
+    cardTo: '#0d6830',
+    colorClass: 'border-green-100 hover:border-green-300 hover:bg-green-50/60',
+    iconBg: 'bg-green-100 text-green-600',
+    visibleRoles: null,
+  },
+  {
     id: 'residents',
     label: 'Gestion des Résidents',
     description: 'Données, régimes et informations résidents',
@@ -198,7 +211,7 @@ export const ROLE_MODULES: Record<string, string[] | null> = {
   cadre: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
   'aide-soignante': ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
   as: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap'],
-  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions'],
+  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'peremptions'],
   secretaire: ['residents'],
   medecin: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'pap', 'surveillancePoids'],
 };
