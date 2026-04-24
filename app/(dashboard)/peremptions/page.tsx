@@ -1151,11 +1151,15 @@ export default function PeremptionsPage() {
                     <Download className="w-4 h-4 mr-2" />
                     Sauvegarder (Télécharger JSON)
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="justify-start">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Charger une sauvegarde
-                  </Button>
-                  <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={loadJsonFile} />
+                  {adminMode && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="justify-start text-blue-700 border-blue-300 hover:bg-blue-50">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Charger une sauvegarde
+                      </Button>
+                      <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={loadJsonFile} />
+                    </>
+                  )}
                   {!adminMode ? (
                     <Button variant="outline" size="sm" onClick={() => setAdminOpen(o => !o)} className="justify-start text-amber-700 border-amber-300 hover:bg-amber-50">
                       <ShieldCheck className="w-4 h-4 mr-2" />
