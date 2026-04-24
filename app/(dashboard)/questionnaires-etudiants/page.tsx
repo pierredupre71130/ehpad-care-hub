@@ -124,7 +124,7 @@ function QuestionnaireForm({
   const validate = () => {
     const errs: string[] = [];
     const qs = isEsi ? [...QUESTIONS_BASE, ...QUESTIONS_ESI] : QUESTIONS_BASE;
-    const missing = qs.filter(q => !(form as Record<string, string>)[q.key]).map(q => q.label);
+    const missing = qs.filter(q => !(form as unknown as Record<string, string>)[q.key]).map(q => q.label);
     if (missing.length > 0) errs.push(`Veuillez noter : ${missing.join(', ')}`);
     return errs;
   };
@@ -147,18 +147,18 @@ function QuestionnaireForm({
               type="radio"
               name={q.key}
               value={s.value}
-              checked={(form as Record<string, string>)[q.key] === s.value}
+              checked={(form as unknown as Record<string, string>)[q.key] === s.value}
               onChange={() => set(q.key as keyof QuestionnaireFormData, s.value as QuestionnaireFormData[keyof QuestionnaireFormData])}
               className="sr-only"
             />
             <span
               className={cn(
                 'w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-all',
-                (form as Record<string, string>)[q.key] === s.value
+                (form as unknown as Record<string, string>)[q.key] === s.value
                   ? 'text-white border-transparent'
                   : 'text-slate-400 border-slate-200 group-hover:border-slate-400',
               )}
-              style={(form as Record<string, string>)[q.key] === s.value
+              style={(form as unknown as Record<string, string>)[q.key] === s.value
                 ? { backgroundColor: s.color, borderColor: s.color }
                 : {}}
             >
@@ -394,7 +394,7 @@ function QuestionnaireDetail({
               </thead>
               <tbody>
                 {qs.map(question => {
-                  const val = (q as Record<string, string>)[question.key];
+                  const val = (q as unknown as Record<string, string>)[question.key];
                   return (
                     <tr key={question.key} className={cn('border-b border-slate-100 last:border-0', question.esiOnly && 'bg-violet-50/50')}>
                       <td className="px-4 py-2.5 text-sm text-slate-700">{question.label}</td>
@@ -483,7 +483,7 @@ function DistributionBar({ records, questionKey, label }: {
   const counts = [0, 0, 0, 0];
   let total = 0;
   records.forEach(r => {
-    const v = parseInt((r as Record<string, string>)[questionKey] ?? '', 10);
+    const v = parseInt((r as unknown as Record<string, string>)[questionKey] ?? '', 10);
     if (v >= 1 && v <= 4) { counts[v - 1]++; total++; }
   });
   const avg = total > 0 ? counts.reduce((s, c, i) => s + c * (i + 1), 0) / total : 0;
@@ -954,7 +954,7 @@ export default function QuestionnairesEtudiantsPage() {
                           <p className="text-xs text-slate-400 mb-2">{fmtDate(r.date_soumission)}</p>
                           <div className="flex flex-wrap gap-1">
                             {qs.slice(0, 6).map(q => {
-                              const v = (r as Record<string, string>)[q.key];
+                              const v = (r as unknown as Record<string, string>)[q.key];
                               return v ? (
                                 <span key={q.key} title={q.label}
                                   className="inline-flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-bold"
