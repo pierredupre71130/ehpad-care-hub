@@ -1000,7 +1000,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
             <p className="text-xs text-slate-400 mb-4">{esiRecs.length} questionnaire{esiRecs.length !== 1 ? 's' : ''}</p>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={pieEsi} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
+                <Pie data={pieEsi} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={(props) => { const p = props as { name?: string; pct?: number }; return (p.pct ?? 0) > 5 ? `${p.name} ${p.pct}%` : ''; }} labelLine={false}>
                   {pieEsi.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
                 <Tooltip formatter={(v, _, props) => { const pl = props?.payload as { name?: string; pct?: number } | undefined; return [`${v} réponses (${pl?.pct ?? 0}%)`, pl?.name ?? '']; }} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
@@ -1022,7 +1022,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
             <p className="text-xs text-slate-400 mb-4">{easRecs.length} questionnaire{easRecs.length !== 1 ? 's' : ''}</p>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={pieEas} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
+                <Pie data={pieEas} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={(props) => { const p = props as { name?: string; pct?: number }; return (p.pct ?? 0) > 5 ? `${p.name} ${p.pct}%` : ''; }} labelLine={false}>
                   {pieEas.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
                 <Tooltip formatter={(v, _, props) => { const pl = props?.payload as { name?: string; pct?: number } | undefined; return [`${v} réponses (${pl?.pct ?? 0}%)`, pl?.name ?? '']; }} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
