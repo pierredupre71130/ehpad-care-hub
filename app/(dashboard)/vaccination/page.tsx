@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2, Info,
+  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2, Info, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -161,12 +162,13 @@ function CellDisplay({ value }: { value: string | null | undefined }) {
 
 // ── EditableCell ──────────────────────────────────────────────────────────────
 
-function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccination' }: {
+function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccination', readOnly }: {
   value: string | null | undefined;
   field: string;
   recordId: string;
   onSaved: () => void;
   tableName?: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value || '');
@@ -246,8 +248,8 @@ function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccinatio
 
   return (
     <div
-      onClick={() => setEditing(true)}
-      className="cursor-pointer px-1 py-0.5 rounded hover:bg-slate-100 min-w-[60px] min-h-[22px] flex items-center justify-center"
+      onClick={readOnly ? undefined : () => setEditing(true)}
+      className={`${readOnly ? 'cursor-default' : 'cursor-pointer'} px-1 py-0.5 rounded hover:bg-slate-100 min-w-[60px] min-h-[22px] flex items-center justify-center`}
     >
       <CellDisplay value={value} />
     </div>
@@ -256,7 +258,7 @@ function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccinatio
 
 // ── InfosCell — dropdowns Covid + Grippe ──────────────────────────────────────
 
-function InfosCell({ record, onSaved }: { record: Vaccination; onSaved: () => void }) {
+function InfosCell({ record, onSaved, readOnly }: { record: Vaccination; onSaved: () => void; readOnly?: boolean }) {
   const [saving, setSaving] = useState(false);
   const { covid: covidVal, grippe: grippeVal } = parseInfos(record.infos);
 
@@ -316,6 +318,7 @@ function InfosCell({ record, onSaved }: { record: Vaccination; onSaved: () => vo
         <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wide w-10 flex-shrink-0">Covid</span>
         <Select
           value={covidVal || '__none__'}
+          disabled={readOnly}
           onValueChange={v => {
             if (v === '__clear__') { applyChoice('covid', null); return; }
             if (v === '__none__') return;
@@ -349,6 +352,7 @@ function InfosCell({ record, onSaved }: { record: Vaccination; onSaved: () => vo
         <span className="text-[10px] font-bold text-purple-500 uppercase tracking-wide w-10 flex-shrink-0">Grippe</span>
         <Select
           value={grippeVal || '__none__'}
+          disabled={readOnly}
           onValueChange={v => {
             if (v === '__clear__') { applyChoice('grippe', null); return; }
             if (v === '__none__') return;
@@ -499,12 +503,13 @@ function RecoPanel({ title, color, children }: { title: string; color: 'teal' | 
 
 // ── VaccLTRow — ligne tétanos / pneumovax ─────────────────────────────────────
 
-function VaccLTRow({ resident, record, field, onSaved, onCreateRecord }: {
+function VaccLTRow({ resident, record, field, onSaved, onCreateRecord, readOnly }: {
   resident: Resident;
   record?: VaccinationLT | null;
   field: 'tetanos_date' | 'pneumovax_date';
   onSaved: () => void;
   onCreateRecord?: () => void;
+  readOnly?: boolean;
 }) {
   const value = record ? record[field] : null;
   const displayName = `${(resident.last_name || '').toUpperCase()} ${resident.first_name || ''}`;
@@ -520,8 +525,8 @@ function VaccLTRow({ resident, record, field, onSaved, onCreateRecord }: {
       </td>
       <td className="px-2 py-1.5 text-center">
         {record ? (
-          <EditableCell value={value} field={field} recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" />
-        ) : onCreateRecord ? (
+          <EditableCell value={value} field={field} recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" readOnly={readOnly} />
+        ) : (!readOnly && onCreateRecord) ? (
           <button onClick={onCreateRecord} className="text-xs text-green-600 hover:underline">+ Ajouter</button>
         ) : (
           <span className="text-slate-300 text-xs">—</span>
@@ -540,7 +545,7 @@ function VaccLTRow({ resident, record, field, onSaved, onCreateRecord }: {
       )}
       <td className="px-3 py-2 text-center">
         {record ? (
-          <EditableCell value={record.notes} field="notes" recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" />
+          <EditableCell value={record.notes} field="notes" recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" readOnly={readOnly} />
         ) : (
           <span className="text-slate-300 text-xs">—</span>
         )}
@@ -551,12 +556,13 @@ function VaccLTRow({ resident, record, field, onSaved, onCreateRecord }: {
 
 // ── VacRow ────────────────────────────────────────────────────────────────────
 
-function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord }: {
+function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord, readOnly }: {
   resident?: Resident | null;
   record?: Vaccination | null;
   onSaved: () => void;
   showYear?: boolean;
   onCreateRecord?: () => void;
+  readOnly?: boolean;
 }) {
   const [resetting, setSaving] = useState(false);
 
@@ -588,29 +594,31 @@ function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord }:
       {record ? (
         <>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj1} field="covid_inj1" recordId={record.id} onSaved={onSaved} />
+            <EditableCell value={record.covid_inj1} field="covid_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj2} field="covid_inj2" recordId={record.id} onSaved={onSaved} />
+            <EditableCell value={record.covid_inj2} field="covid_inj2" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj3} field="covid_inj3" recordId={record.id} onSaved={onSaved} />
+            <EditableCell value={record.covid_inj3} field="covid_inj3" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.grippe_inj1} field="grippe_inj1" recordId={record.id} onSaved={onSaved} />
+            <EditableCell value={record.grippe_inj1} field="grippe_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
           </td>
           <td className="px-2 py-1.5">
-            <InfosCell record={record} onSaved={onSaved} />
+            <InfosCell record={record} onSaved={onSaved} readOnly={readOnly} />
           </td>
           <td className="px-2 py-1.5 print:hidden">
-            <button
-              onClick={handleReset}
-              disabled={resetting}
-              title="Réinitialiser la ligne"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            {!readOnly && (
+              <button
+                onClick={handleReset}
+                disabled={resetting}
+                title="Réinitialiser la ligne"
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </td>
         </>
       ) : (
@@ -620,7 +628,7 @@ function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord }:
           <td className="px-3 py-2 text-center"><span className="text-slate-200 text-xs">—</span></td>
           <td className="px-3 py-2 text-center"><span className="text-slate-200 text-xs">—</span></td>
           <td className="px-3 py-2">
-            {onCreateRecord && (
+            {!readOnly && onCreateRecord && (
               <button onClick={onCreateRecord} className="text-xs text-green-600 hover:underline">
                 + Ajouter
               </button>
@@ -635,18 +643,20 @@ function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord }:
 
 // ── ColHeader ─────────────────────────────────────────────────────────────────
 
-function ColHeader({ label, colorClass, onBulk }: { label: string; colorClass: string; onBulk: () => void }) {
+function ColHeader({ label, colorClass, onBulk, readOnly }: { label: string; colorClass: string; onBulk: () => void; readOnly?: boolean }) {
   return (
     <th className={`px-3 py-2 text-center ${colorClass}`}>
       <div className="flex flex-col items-center gap-1">
         <span className="font-bold text-xs">{label}</span>
-        <button
-          onClick={onBulk}
-          title="Injection en masse"
-          className="flex items-center gap-0.5 text-xs opacity-60 hover:opacity-100 bg-white/70 hover:bg-white px-1.5 py-0.5 rounded transition-all print:hidden"
-        >
-          <Zap className="h-2.5 w-2.5" /> masse
-        </button>
+        {!readOnly && (
+          <button
+            onClick={onBulk}
+            title="Injection en masse"
+            className="flex items-center gap-0.5 text-xs opacity-60 hover:opacity-100 bg-white/70 hover:bg-white px-1.5 py-0.5 rounded transition-all print:hidden"
+          >
+            <Zap className="h-2.5 w-2.5" /> masse
+          </button>
+        )}
       </div>
     </th>
   );
@@ -714,6 +724,8 @@ function NetworkBackground() {
 
 export default function VaccinationPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('vaccination');
+  const readOnly = access === 'read';
 
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
     queryKey: ['settings', 'module_colors'],
@@ -1000,6 +1012,13 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           ))}
         </div>
 
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
+
         {/* Filtres — visibles sur tous les onglets */}
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <input
@@ -1081,6 +1100,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                       label={col.label}
                       colorClass={col.colorClass}
                       onBulk={() => setBulkModal({ column: col.field, label: col.label, records: currentYearRecords })}
+                      readOnly={readOnly}
                     />
                   ))}
                   <th className="px-3 py-2 text-left min-w-[210px]">Infos / Statut</th>
@@ -1097,7 +1117,8 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                       resident={resident}
                       record={currentRecord}
                       onSaved={invalidate}
-                      onCreateRecord={!currentRecord ? () => {
+                      readOnly={readOnly}
+                      onCreateRecord={!currentRecord && !readOnly ? () => {
                         createMutation.mutate({
                           resident_id: resident.id,
                           resident_name: `${resident.last_name} ${resident.first_name || ''}`.trim(),
@@ -1157,7 +1178,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                     </thead>
                     <tbody>
                       {rows.map(({ resident, rec }) => (
-                        <VacRow key={resident.id} resident={resident} record={rec} onSaved={invalidate} />
+                        <VacRow key={resident.id} resident={resident} record={rec} onSaved={invalidate} readOnly={readOnly} />
                       ))}
                     </tbody>
                   </table>
@@ -1207,7 +1228,8 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                       record={ltRec}
                       field="tetanos_date"
                       onSaved={invalidateLT}
-                      onCreateRecord={!ltRec ? () => createMutationLT.mutate({
+                      readOnly={readOnly}
+                      onCreateRecord={!ltRec && !readOnly ? () => createMutationLT.mutate({
                         resident_id: resident.id,
                         resident_name: `${resident.last_name} ${resident.first_name || ''}`.trim(),
                         archived: false,
@@ -1259,7 +1281,8 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                       record={ltRec}
                       field="pneumovax_date"
                       onSaved={invalidateLT}
-                      onCreateRecord={!ltRec ? () => createMutationLT.mutate({
+                      readOnly={readOnly}
+                      onCreateRecord={!ltRec && !readOnly ? () => createMutationLT.mutate({
                         resident_id: resident.id,
                         resident_name: `${resident.last_name} ${resident.first_name || ''}`.trim(),
                         archived: false,
@@ -1354,7 +1377,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                                 <tr><td colSpan={8} className="px-3 py-3 text-center text-xs text-slate-400 italic">Aucune vaccination enregistrée</td></tr>
                               )}
                               {recs.map(rec => (
-                                <VacRow key={rec.id} resident={resident} record={rec} onSaved={invalidate} showYear />
+                                <VacRow key={rec.id} resident={resident} record={rec} onSaved={invalidate} showYear readOnly={readOnly} />
                               ))}
                             </tbody>
                           </table>

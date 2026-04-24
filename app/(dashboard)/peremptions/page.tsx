@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, ChevronRight, ChevronDown, ChevronUp, AlertTriangle,
   ShieldCheck, ShieldOff, Plus, Trash2, Download, Upload,
-  RefreshCw, Search, ChevronsUpDown, Info, Package,
+  RefreshCw, Search, ChevronsUpDown, Info, Package, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -657,6 +658,8 @@ export default function PeremptionsPage() {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
   const isAppAdmin = profile?.role === 'admin';
+  const access = useModuleAccess('peremptions');
+  const readOnly = access === 'read';
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -1077,6 +1080,13 @@ export default function PeremptionsPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
 
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
+
         {/* ── Alert panel ──────────────────────────────────────────────────── */}
         {alertProducts.length > 0 && (
           <div className="bg-orange-50 border border-orange-200 rounded-xl shadow-sm overflow-hidden">
@@ -1465,9 +1475,9 @@ export default function PeremptionsPage() {
                       <td className="px-4 py-2.5 font-medium">{product.Produit}</td>
                       <td className="px-4 py-2.5 text-xs">{categoryLabel}</td>
                       <td
-                        className="px-4 py-2.5 cursor-pointer"
-                        onClick={() => !isEditing && startEdit(product)}
-                        title="Cliquer pour modifier la date"
+                        className={`px-4 py-2.5 ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                        onClick={readOnly ? undefined : () => !isEditing && startEdit(product)}
+                        title={readOnly ? undefined : "Cliquer pour modifier la date"}
                       >
                         {isEditing ? (
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>

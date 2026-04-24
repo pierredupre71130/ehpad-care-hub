@@ -11,8 +11,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
   Loader2, UserPlus, Users, AlertTriangle,
-  Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home,
+  Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -360,8 +361,8 @@ function ResidentPhotoButton({ resident, onUploaded }: {
 // ─────────────────────────────────────────────────────────────
 
 function ResidentRow({
-  r, onEdit, onPhotoUploaded, dimmed,
-}: { r: Resident; onEdit: () => void; onPhotoUploaded: (path: string) => void; dimmed: boolean }) {
+  r, onEdit, onPhotoUploaded, dimmed, readOnly,
+}: { r: Resident; onEdit: () => void; onPhotoUploaded: (path: string) => void; dimmed: boolean; readOnly?: boolean }) {
   return (
     <div className={cn(
       'flex items-start gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0',
@@ -402,15 +403,17 @@ function ResidentRow({
       {/* Actions */}
       <div className="flex-shrink-0 pt-0.5 flex items-center gap-1">
         <ResidentPhotoButton resident={r} onUploaded={onPhotoUploaded} />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onEdit}
-          className="h-8 gap-1.5 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-100"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Éditer</span>
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEdit}
+            className="h-8 gap-1.5 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-100"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Éditer</span>
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -930,6 +933,8 @@ function AccessCodesEditDialog({
 
 export default function ResidentsPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('residents');
+  const readOnly = access === 'read';
 
   const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
   const [search, setSearch]             = useState('');
@@ -1120,12 +1125,14 @@ export default function ResidentsPage() {
 
   /* ── Helpers édition ── */
   function startEdit(r: Resident) {
+    if (readOnly) return;
     setEditingId(r.id);
     setEditForm({ ...r });
     setRoomUnlocked(false);
   }
 
   function startCreate() {
+    if (readOnly) return;
     setEditingId('NEW');
     setEditForm({ ...EMPTY_FORM });
     setRoomUnlocked(true);
@@ -1212,7 +1219,7 @@ export default function ResidentsPage() {
             </div>
             <button
               onClick={startCreate}
-              disabled={editingId !== null}
+              disabled={editingId !== null || readOnly}
               className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
             >
               <UserPlus className="h-4 w-4" />
@@ -1273,6 +1280,13 @@ export default function ResidentsPage() {
       {/* ══ CONTENU PRINCIPAL ═══════════════════════════════════ */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-4 space-y-3 pb-12">
 
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
+
         {/* Cartes infos */}
         <DoctorsCard doctors={doctors} onEdit={() => setShowDoctorsEdit(true)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1297,7 +1311,7 @@ export default function ResidentsPage() {
         )}
 
         {/* Formulaire nouveau résident — apparaît en haut de liste */}
-        {editingId === 'NEW' && (
+        {editingId === 'NEW' && !readOnly && (
           <EditForm
             form={editForm}   patch={patch}
             roomUnlocked      onUnlockRoom={() => {}}
@@ -1352,7 +1366,7 @@ export default function ResidentsPage() {
                   )}
 
                   {/* Formulaire inline si ce résident est en édition */}
-                  {editingId === r.id ? (
+                  {editingId === r.id && !readOnly ? (
                     <div className="p-3 border-b border-slate-100 last:border-0 bg-slate-50/50">
                       <EditForm
                         form={editForm}   patch={patch}
@@ -1379,6 +1393,7 @@ export default function ResidentsPage() {
                         );
                       }}
                       dimmed={editingId !== null && editingId !== r.id}
+                      readOnly={readOnly}
                     />
                   )}
                 </div>
