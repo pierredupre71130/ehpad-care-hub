@@ -8,8 +8,7 @@ import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
-import { UserMessagingWidget } from '@/components/dashboard/user-messaging-widget';
-import { AdminMessagesWidget } from '@/components/dashboard/admin-messages-widget';
+import { MessagingHeaderButton } from '@/components/dashboard/messaging-header-button';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -302,6 +301,9 @@ export default function DashboardPage() {
               <BookUser className="h-3.5 w-3.5" />
               Annuaire
             </Link>
+            <div className="hidden sm:flex">
+              <MessagingHeaderButton />
+            </div>
           </div>
 
           {/* Droite : salutation + rôle */}
@@ -338,20 +340,6 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm mb-6">
             <GripVertical className="h-4 w-4" />
             Mode administrateur activé — vous pouvez déplacer les modules
-          </div>
-        )}
-
-        {/* Widget messagerie — utilisateurs */}
-        {!isAdmin && !isAdminMode && (
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Messagerie</p>
-            <UserMessagingWidget />
-          </div>
-        )}
-        {/* Widget messagerie — admin */}
-        {isAdmin && !isAdminMode && (
-          <div className="mb-6">
-            <AdminMessagesWidget />
           </div>
         )}
 
