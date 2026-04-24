@@ -19,8 +19,9 @@ import {
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useAuth } from '@/lib/auth-context';
 import {
-  type QuestionnaireRecord, type QuestionnaireFormData, type AnalyseRecord, type RatingPoint,
+  type QuestionnaireRecord, type QuestionnaireFormData, type AnalyseRecord, type RatingPoint, type RapportIARecord,
   QUESTIONS_BASE, QUESTIONS_ESI, SCALE, DEFAULT_FORM,
   getAnneeScolaire, computeAvg, computeGlobalAvg,
 } from '@/components/questionnaire-etudiant/types';
@@ -1051,11 +1052,27 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
   const [loading, setLoading]           = useState(false);
   const [rapport,  setRapport]          = useState('');
   const [error,    setError]            = useState('');
+  const [saving,   setSaving]           = useState(false);
+  const [savedOk,  setSavedOk]          = useState(false);
+  const [viewSaved, setViewSaved]       = useState<RapportIARecord | null>(null);
 
   const anneesScolaires = useMemo(() =>
     [...new Set(allRecords.map(r => r.annee_scolaire))].sort().reverse(),
     [allRecords]
   );
+
+  // ── Rapports sauvegardés ──
+  const { data: savedRapports = [], refetch: refetchSaved } = useQuery({
+    queryKey: ['rapport_ia_list'],
+    queryFn: async () => {
+      const sb = createClient();
+      const { data, error } = await sb.from(ANALYSE).select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as RapportIARecord[]).filter(r =>
+        r.resultats?.type === 'rapport_ia'
+      );
+    },
+  });
 
   const records = useMemo(() => {
     return allRecords.filter(r => {
@@ -1129,6 +1146,66 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!rapport) return;
+    setSaving(true);
+    try {
+      const sb = createClient();
+      const titre = `Rapport IA — ${filtresLabel} — ${new Date().toLocaleDateString('fr-FR')}`;
+      await sb.from(ANALYSE).insert({
+        titre,
+        statut_filtre: filterStatut,
+        nb_reponses: records.length,
+        resultats: {
+          type: 'rapport_ia',
+          rapport_text: rapport,
+          filtres_label: filtresLabel,
+        },
+        commentaires: rapport,
+        created_at: new Date().toISOString(),
+      });
+      setSavedOk(true);
+      refetchSaved();
+      setTimeout(() => setSavedOk(false), 3000);
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  const handleDeleteSaved = async (id: string) => {
+    const sb = createClient();
+    await sb.from(ANALYSE).delete().eq('id', id);
+    refetchSaved();
+  };
+
+  const handlePrint = (text: string, titre: string) => {
+    const html = renderMarkdown(text);
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8"/>
+      <title>${titre}</title>
+      <style>
+        body{font-family:Georgia,serif;padding:2cm;max-width:21cm;margin:0 auto;color:#1e293b;font-size:12pt}
+        h2{font-size:1.2em;border-bottom:1px solid #e2e8f0;padding-bottom:.3em;margin-top:1.5em;color:#1e293b}
+        h3{font-size:1em;color:#5b21b6;margin-top:1em}
+        ul{margin:.4em 0;padding-left:1.5em}li{margin:.2em 0;line-height:1.5}
+        p{margin:.4em 0;line-height:1.6}strong{font-weight:700}
+        .header{border-bottom:2px solid #7c3aed;padding-bottom:1em;margin-bottom:1.5em}
+        .header h1{font-size:1.3em;color:#7c3aed;margin:0}
+        .header p{color:#64748b;font-size:.85em;margin:.3em 0 0}
+        @media print{body{padding:1cm}}
+      </style>
+    </head><body>
+      <div class="header">
+        <h1>✨ ${titre}</h1>
+        <p>EHPAD · Questionnaires étudiants · Imprimé le ${new Date().toLocaleDateString('fr-FR')}</p>
+      </div>
+      ${html}
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   // Rendu Markdown simple → HTML
@@ -1238,12 +1315,27 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 Généré le {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} · {records.length} questionnaire{records.length !== 1 ? 's' : ''} analysé{records.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
-            >
-              <Printer className="h-4 w-4" /> Imprimer
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving || savedOk}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl border transition-colors shadow-sm',
+                  savedOk
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                )}
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Sauvegarde…' : savedOk ? '✓ Sauvegardé' : 'Sauvegarder'}
+              </button>
+              <button
+                onClick={() => handlePrint(rapport, `Rapport IA — ${filtresLabel}`)}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                <Printer className="h-4 w-4" /> Imprimer
+              </button>
+            </div>
           </div>
 
           {/* Corps du rapport */}
@@ -1286,6 +1378,83 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
           </div>
         </div>
       )}
+
+      {/* ── Rapports sauvegardés ── */}
+      {savedRapports.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-violet-600" />
+              Rapports sauvegardés ({savedRapports.length})
+            </p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {savedRapports.map(r => (
+              <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{r.titre ?? '—'}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {r.nb_reponses ? ` · ${r.nb_reponses} questionnaire${r.nb_reponses > 1 ? 's' : ''}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewSaved(r)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Voir
+                  </button>
+                  <button
+                    onClick={() => handlePrint(r.resultats?.rapport_text ?? '', r.titre ?? '')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> Imprimer
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSaved(r.id)}
+                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modale lecture rapport sauvegardé ── */}
+      {viewSaved && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setViewSaved(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
+              <div>
+                <p className="font-bold text-slate-800">{viewSaved.titre ?? '—'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Sauvegardé le {new Date(viewSaved.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePrint(viewSaved.resultats?.rapport_text ?? '', viewSaved.titre ?? '')}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                >
+                  <Printer className="h-4 w-4" /> Imprimer
+                </button>
+                <button onClick={() => setViewSaved(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div
+              className="overflow-y-auto px-6 py-5 prose max-w-none"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(viewSaved.resultats?.rapport_text ?? '') }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1298,6 +1467,8 @@ export default function QuestionnairesEtudiantsPage() {
   const qc = useQueryClient();
   const access   = useModuleAccess('questionnairesEtudiants');
   const readOnly = access === 'read';
+  const { profile } = useAuth();
+  const isAdminOrIde = profile?.role === 'admin' || profile?.role === 'ide';
 
   const [tab, setTab]         = useState<Tab>('form');
   const [success, setSuccess] = useState(false);
@@ -1356,11 +1527,13 @@ export default function QuestionnairesEtudiantsPage() {
   };
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'form',       label: 'Formulaire',                    icon: <ClipboardList className="h-4 w-4" /> },
-    { id: 'history',    label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
-    { id: 'analyses',   label: 'Analyses',                      icon: <BarChart2 className="h-4 w-4" /> },
-    { id: 'graphiques', label: 'Graphiques',                    icon: <TrendingUp className="h-4 w-4" /> },
-    { id: 'rapport',    label: 'Rapport IA ✨',                 icon: <FileText className="h-4 w-4" /> },
+    { id: 'form', label: 'Formulaire', icon: <ClipboardList className="h-4 w-4" /> },
+    ...(isAdminOrIde ? [
+      { id: 'history'    as Tab, label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
+      { id: 'analyses'   as Tab, label: 'Analyses',                       icon: <BarChart2 className="h-4 w-4" /> },
+      { id: 'graphiques' as Tab, label: 'Graphiques',                     icon: <TrendingUp className="h-4 w-4" /> },
+      { id: 'rapport'    as Tab, label: 'Rapport IA ✨',                  icon: <FileText className="h-4 w-4" /> },
+    ] : []),
   ];
 
   return (
