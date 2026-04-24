@@ -1141,7 +1141,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/^(?!<[hli])(.+)$/gm, '<p class="text-slate-700 mb-2">$1</p>')
       .replace(/<\/li>\n<li/g, '</li><li')
-      .replace(/(<li.*<\/li>)/gs, '<ul class="space-y-1 mb-3">$1</ul>');
+      .replace(/(<li[\s\S]*?<\/li>)/gm, '<ul class="space-y-1 mb-3">$1</ul>');
   };
 
   const filtresLabel = [
