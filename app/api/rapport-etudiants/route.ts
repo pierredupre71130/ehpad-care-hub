@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY non configurée' }, { status: 503 });
+    return NextResponse.json({ error: 'XAI_API_KEY non configurée' }, { status: 503 });
   }
 
   const { stats, commentaires, suggestions, filtres } = await req.json();
@@ -63,28 +63,27 @@ Organise l'analyse en 4 sous-domaines :
 Sois précis, factuel, et appuie-toi sur les données fournies. Évite le jargon excessif. Longueur cible : 600-900 mots.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
-        }),
-      }
-    );
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'grok-3-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
 
     if (!res.ok) {
       const err = await res.text();
-      return NextResponse.json({ error: `Erreur Gemini : ${err}` }, { status: 500 });
+      return NextResponse.json({ error: `Erreur Grok : ${err}` }, { status: 500 });
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const text = data?.choices?.[0]?.message?.content ?? '';
 
     return NextResponse.json({ rapport: text });
   } catch (e) {
