@@ -969,16 +969,19 @@ export default function ResidentsPage() {
   const archiveMutation = useMutation({
     mutationFn: async ({ id, dateSortie }: { id: string; dateSortie: string }) => {
       const sb = createClient();
-      // Récupérer la chambre avant de l'effacer
-      const { data: res } = await sb.from('residents').select('room').eq('id', id).single();
-      const room = res?.room ?? '';
-      // Vider la ligne prise_en_charge correspondante (nom/matin/apres_midi/protection)
+      // Récupérer les infos du résident avant archivage
+      const { data: res } = await sb.from('residents').select('room, floor, section, sort_order').eq('id', id).single();
+      const room       = res?.room       ?? '';
+      const floor      = res?.floor      ?? 'RDC';
+      const section    = res?.section    ?? 'Mapad';
+      const sort_order = res?.sort_order ?? 999;
+      // Vider la ligne prise_en_charge correspondante
       if (room) {
         await sb.from('prise_en_charge')
           .update({ nom: '', matin: '', apres_midi: '', protection: '', updated_at: new Date().toISOString() })
           .eq('chambre', room);
       }
-      // Archiver le résident — conserver le numéro de chambre pour l'historique
+      // Archiver le résident — conserver toutes ses données pour l'historique
       const { error: rErr } = await sb.from('residents')
         .update({ archived: true, date_sortie: dateSortie })
         .eq('id', id);
@@ -987,13 +990,24 @@ export default function ResidentsPage() {
       await sb.from('vaccination')
         .update({ archived: true })
         .eq('resident_id', id);
+      // Recréer une ligne vide pour la chambre afin qu'elle reste visible dans les listes
+      if (room) {
+        const { error: insErr } = await sb.from('residents').insert({
+          room, floor, section, sort_order,
+          title: 'Mme', first_name: '', last_name: '',
+          archived: false,
+        });
+        if (insErr) throw new Error(insErr.message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['residents'] });
       queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
-      toast.success('Résident archivé — données conservées dans l\'historique');
-      setEditingId(null);
-      setEditForm({});
+      toast.success('Résident archivé — chambre libérée et conservée dans les listes');
+      flushSync(() => {
+        setEditingId(null);
+        setEditForm({});
+      });
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
