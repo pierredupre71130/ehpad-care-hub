@@ -1000,6 +1000,28 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           ))}
         </div>
 
+        {/* Filtres — visibles sur tous les onglets */}
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher un résident..."
+            className="w-64 pl-3 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"
+          />
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+            {([['ALL', 'Tous'], ['RDC', 'RDC'], ['1ER', '1er']] as [string, string][]).map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setFloorFilter(val)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${floorFilter === val ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── Contenu onglet Covid & Grippe ────────────────────────────────── */}
         {activeTab === 'covid-grippe' && (<>
 
@@ -1024,28 +1046,6 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
               <div className="text-2xl font-bold text-purple-800">{grippeEnAttente}</div>
               <div className="text-xs text-purple-400">résident{grippeEnAttente > 1 ? 's' : ''} à vacciner</div>
             </div>
-          </div>
-        </div>
-
-        {/* Filtres */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher un résident..."
-            className="w-64 pl-3 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"
-          />
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
-            {([['ALL', 'Tous'], ['RDC', 'RDC'], ['1ER', '1er']] as [string, string][]).map(([val, lbl]) => (
-              <button
-                key={val}
-                onClick={() => setFloorFilter(val)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${floorFilter === val ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                {lbl}
-              </button>
-            ))}
           </div>
         </div>
 
