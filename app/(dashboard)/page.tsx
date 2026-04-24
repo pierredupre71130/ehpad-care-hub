@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale } from 'lucide-react';
+import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
@@ -299,6 +299,13 @@ export default function DashboardPage() {
                 Fiches de Poste
               </Link>
             )}
+            <Link
+              href="/annuaire"
+              className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/85 hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-white/15 transition-colors"
+            >
+              <BookUser className="h-3.5 w-3.5" />
+              Annuaire
+            </Link>
           </div>
 
           {/* Droite : salutation + rôle */}
