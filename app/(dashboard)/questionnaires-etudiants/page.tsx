@@ -940,7 +940,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
             <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
             <Tooltip
               contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
-              formatter={(v: number) => [`${v.toFixed(2)} / 4`, '']}
+              formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)} / 4` : v, '']}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {esiRecs.length > 0 && <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} />}
@@ -956,7 +956,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-20} textAnchor="end" interval={0} height={50} />
                 <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v.toFixed(2)} / 4`, 'ESI']} />
+                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)} / 4` : v, 'ESI']} />
                 <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} maxBarSize={60} />
               </BarChart>
             </ResponsiveContainer>
@@ -978,9 +978,10 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
               <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
-                formatter={(v: number, name: string, props: { payload: { nESI: number; nEAS: number } }) => {
-                  const n = name === 'ESI' ? props.payload.nESI : props.payload.nEAS;
-                  return [`${v.toFixed(2)} / 4 (n=${n})`, name];
+                formatter={(v, name, props) => {
+                  const pl = props?.payload as { nESI?: number; nEAS?: number } | undefined;
+                  const n = name === 'ESI' ? (pl?.nESI ?? '') : (pl?.nEAS ?? '');
+                  return [typeof v === 'number' ? `${v.toFixed(2)} / 4 (n=${n})` : v, name];
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -1002,7 +1003,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 <Pie data={pieEsi} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
                   {pieEsi.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number, _: string, props: { payload: { name: string; pct: number } }) => [`${v} réponses (${props.payload.pct}%)`, props.payload.name]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                <Tooltip formatter={(v, _, props) => { const pl = props?.payload as { name?: string; pct?: number } | undefined; return [`${v} réponses (${pl?.pct ?? 0}%)`, pl?.name ?? '']; }} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap gap-2 justify-center mt-1">
@@ -1024,7 +1025,7 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 <Pie data={pieEas} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
                   {pieEas.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number, _: string, props: { payload: { name: string; pct: number } }) => [`${v} réponses (${props.payload.pct}%)`, props.payload.name]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                <Tooltip formatter={(v, _, props) => { const pl = props?.payload as { name?: string; pct?: number } | undefined; return [`${v} réponses (${pl?.pct ?? 0}%)`, pl?.name ?? '']; }} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap gap-2 justify-center mt-1">
@@ -1268,7 +1269,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0} height={70} />
                 <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v.toFixed(2)} / 4`, '']} />
+                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)} / 4` : v, '']} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 {esiRecs.length > 0 && <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} />}
                 {easRecs.length > 0 && <Bar dataKey="EAS" fill="#3b82f6" radius={[3, 3, 0, 0]} />}
