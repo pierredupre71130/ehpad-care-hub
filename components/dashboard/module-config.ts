@@ -256,4 +256,4 @@ export const ROLE_MODULES: Record<string, string[] | null> = {
 };
 
 /** IDs shown in the bottom nav bar (excluded from the main grid) */
-export const BOTTOM_NAV_IDS = ['residents', 'girNiveauSoin'];
+export const BOTTOM_NAV_IDS = ['residents'];

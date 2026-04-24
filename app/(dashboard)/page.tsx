@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Settings, Stethoscope, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser } from 'lucide-react';
+import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
@@ -242,13 +242,6 @@ export default function DashboardPage() {
     return !!(allowedObj && 'residents' in allowedObj);
   }, [isAdmin, realRole, rolePermissions]);
 
-  const girVisible = useMemo(() => {
-    if (isAdmin) return true;
-    if (!rolePermissions) return false;
-    const allowedObj = rolePermissions[realRole] as Record<string, string> | undefined;
-    return !!(allowedObj && 'girNiveauSoin' in allowedObj);
-  }, [isAdmin, realRole, rolePermissions]);
-
   if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center"
@@ -359,15 +352,6 @@ export default function DashboardPage() {
                 <Users className="h-4 w-4" />
               </div>
               <span className="text-[11px] font-medium">Résidents</span>
-            </Link>
-          )}
-
-          {girVisible && (
-            <Link href="/gir-niveau-soin" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-                <Stethoscope className="h-4 w-4" />
-              </div>
-              <span className="text-[11px] font-medium">GIR & Soins</span>
             </Link>
           )}
 
