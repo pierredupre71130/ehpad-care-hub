@@ -11,7 +11,7 @@ import Link from 'next/link';
 import {
   ResponsiveContainer,
   LineChart, Line,
-  BarChart, Bar,
+  BarChart, Bar, LabelList,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -1264,15 +1264,23 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                   ...(esiRecs.length > 0 ? { ESI: parseFloat(computeAvg(esiRecs, q.key).toFixed(2)) } : {}),
                   ...(easRecs.length > 0 ? { EAS: parseFloat(computeAvg(easRecs, q.key).toFixed(2)) } : {}),
                 }))}
-                margin={{ top: 5, right: 20, left: -10, bottom: 60 }}
+                margin={{ top: 20, right: 20, left: -10, bottom: 60 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0} height={70} />
                 <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v) => [typeof v === 'number' ? `${v.toFixed(2)} / 4` : v, '']} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                {esiRecs.length > 0 && <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} />}
-                {easRecs.length > 0 && <Bar dataKey="EAS" fill="#3b82f6" radius={[3, 3, 0, 0]} />}
+                {esiRecs.length > 0 && (
+                  <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="ESI" position="top" formatter={(v: unknown) => typeof v === 'number' ? v.toFixed(1) : ''} style={{ fontSize: 10, fill: '#7c3aed', fontWeight: 600 }} />
+                  </Bar>
+                )}
+                {easRecs.length > 0 && (
+                  <Bar dataKey="EAS" fill="#3b82f6" radius={[3, 3, 0, 0]}>
+                    <LabelList dataKey="EAS" position="top" formatter={(v: unknown) => typeof v === 'number' ? v.toFixed(1) : ''} style={{ fontSize: 10, fill: '#3b82f6', fontWeight: 600 }} />
+                  </Bar>
+                )}
               </BarChart>
             </ResponsiveContainer>
           </div>
