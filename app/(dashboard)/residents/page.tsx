@@ -993,6 +993,7 @@ export default function ResidentsPage() {
       // Recréer une ligne vide pour la chambre afin qu'elle reste visible dans les listes
       if (room) {
         const { error: insErr } = await sb.from('residents').insert({
+          id: crypto.randomUUID(),
           room, floor, section, sort_order,
           title: 'Mme', first_name: '', last_name: '',
           archived: false,
@@ -1003,11 +1004,6 @@ export default function ResidentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['residents'] });
       queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
-      toast.success('Résident archivé — chambre libérée et conservée dans les listes');
-      flushSync(() => {
-        setEditingId(null);
-        setEditForm({});
-      });
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -1364,7 +1360,12 @@ export default function ResidentsPage() {
                         onUnlockRoom={() => setShowAdminDlg(true)}
                         onSave={handleSave} onCancel={cancelEdit}
                         saving={isSaving}   isNew={false}
-                        onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie })}
+                        onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie }, {
+                          onSuccess: () => {
+                            toast.success('Résident archivé — chambre libérée et conservée dans les listes');
+                            flushSync(() => { setEditingId(null); setEditForm({}); });
+                          },
+                        })}
                         onDelete={() => deleteMutation.mutate(r.id)}
                       />
                     </div>
