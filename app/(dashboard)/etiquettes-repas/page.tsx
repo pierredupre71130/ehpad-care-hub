@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -211,6 +211,38 @@ export default function EtiquettesRepasPage() {
   const [withPhoto, setWithPhoto] = useState(false);
   const saveTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+  const fileInputRef  = useRef<HTMLInputElement>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const uploadingIdRef = useRef<string | null>(null);
+  useEffect(() => { uploadingIdRef.current = uploadingId; }, [uploadingId]);
+
+  const uploadPhoto = useCallback(async (residentId: string, file: File) => {
+    const sb = createClient();
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `${residentId}.${ext}`;
+    const { error: upErr } = await sb.storage.from('resident-photos').upload(path, file, { upsert: true });
+    if (upErr) { toast.error('Erreur upload : ' + upErr.message); return; }
+    const { error: dbErr } = await sb.from('residents').update({ photo_url: path }).eq('id', residentId);
+    if (dbErr) { toast.error('Erreur mise à jour : ' + dbErr.message); return; }
+    queryClient.invalidateQueries({ queryKey: ['residents'] });
+    toast.success('Photo mise à jour !');
+  }, [queryClient]);
+
+  const handleCameraClick = useCallback((e: React.MouseEvent, residentId: string) => {
+    e.stopPropagation();
+    setUploadingId(residentId);
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const id = uploadingIdRef.current;
+    if (!file || !id) return;
+    await uploadPhoto(id, file);
+    setUploadingId(null);
+    e.target.value = '';
+  }, [uploadPhoto]);
+
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
     queryKey: ['settings', 'module_colors'],
     queryFn: fetchColorOverrides,
@@ -402,44 +434,73 @@ export default function EtiquettesRepasPage() {
               </div>
 
               <p className="text-xs text-slate-400 mb-3">
-                Cliquer pour sélectionner · les photos se gèrent dans{' '}
-                <span className="font-medium text-slate-500">Gestion des résidents</span>
+                <Camera className="inline h-3 w-3 mr-0.5 mb-0.5" /> Cliquer sur la photo pour uploader · Cliquer sur le nom pour sélectionner
               </p>
+
+              {/* Input fichier caché — partagé pour tous les résidents */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
 
               <div className="flex flex-col gap-1">
                 {floorResidents.map(r => {
                   const isSelected = selected.includes(r.id);
                   return (
-                    <div
-                      key={r.id}
-                      onClick={() => !readOnly && toggleSelect(r.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) toggleSelect(r.id); }}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-sm border select-none ${
-                        readOnly ? 'cursor-default' : 'cursor-pointer'
-                      } ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-300 text-blue-800 font-semibold'
-                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200">
+                    <div key={r.id} className="flex items-center gap-2">
+
+                      {/* Bouton photo — HORS du bloc sélectionnable */}
+                      <button
+                        type="button"
+                        onClick={e => !readOnly && handleCameraClick(e, r.id)}
+                        title={r.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
+                        className={`w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 transition-all group relative ${
+                          r.photo_url
+                            ? 'border-slate-200 hover:border-blue-400'
+                            : 'border-dashed border-slate-300 hover:border-blue-400 bg-slate-50'
+                        } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                      >
                         {r.photo_url
                           ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
                           : <div className="w-full h-full flex items-center justify-center">
-                              <Camera className="h-3 w-3 text-slate-300" />
+                              <Camera className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
                             </div>
                         }
+                        {/* Overlay caméra au survol si photo existante */}
+                        {r.photo_url && !readOnly && (
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                            <Camera className="h-3 w-3 text-white" />
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Bloc sélectionnable */}
+                      <div
+                        onClick={() => !readOnly && toggleSelect(r.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) toggleSelect(r.id); }}
+                        className={`flex items-center gap-3 flex-1 px-3 py-2 rounded-lg text-left transition-all text-sm border select-none ${
+                          readOnly ? 'cursor-default' : 'cursor-pointer'
+                        } ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-300 text-blue-800 font-semibold'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span className="w-10 text-xs text-slate-400 font-mono shrink-0">Ch.{r.room}</span>
+                        <span className="font-semibold flex-1 truncate">
+                          {r.title} {r.last_name?.toUpperCase()} {r.first_name}
+                        </span>
+                        {hasDiet(r) && (
+                          <span className="text-[10px] text-orange-600 font-semibold shrink-0">régime</span>
+                        )}
+                        {isSelected && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
                       </div>
-                      <span className="w-10 text-xs text-slate-400 font-mono shrink-0">Ch.{r.room}</span>
-                      <span className="font-semibold flex-1 truncate">
-                        {r.title} {r.last_name?.toUpperCase()} {r.first_name}
-                      </span>
-                      {hasDiet(r) && (
-                        <span className="text-[10px] text-orange-600 font-semibold shrink-0">régime</span>
-                      )}
-                      {isSelected && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
+
                     </div>
                   );
                 })}
