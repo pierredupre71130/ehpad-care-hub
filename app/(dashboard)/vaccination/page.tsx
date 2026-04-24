@@ -724,6 +724,7 @@ export default function VaccinationPage() {
   const colorFrom = colorOverrides['vaccination']?.from ?? vacModule?.cardFrom ?? '#0d9080';
   const colorTo   = colorOverrides['vaccination']?.to   ?? vacModule?.cardTo   ?? '#087060';
 
+  const [activeTab, setActiveTab] = useState<'covid-grippe' | 'tetanos' | 'pneumovax'>('covid-grippe');
   const [search, setSearch] = useState('');
   const [floorFilter, setFloorFilter] = useState('ALL');
   const [showArchivedSection, setShowArchivedSection] = useState(false);
@@ -972,6 +973,36 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-6">
+
+        {/* ── Onglets ──────────────────────────────────────────────────────── */}
+        <div className="flex gap-1 mb-6 bg-white border border-slate-200 rounded-2xl p-1.5 shadow-sm w-fit">
+          {([
+            { id: 'covid-grippe', label: 'Covid & Grippe', color: 'blue' },
+            { id: 'tetanos',      label: 'Tétanos',        color: 'teal' },
+            { id: 'pneumovax',    label: 'Pneumovax',      color: 'cyan' },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === tab.id
+                  ? tab.color === 'blue'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : tab.color === 'teal'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              <Syringe className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Contenu onglet Covid & Grippe ────────────────────────────────── */}
+        {activeTab === 'covid-grippe' && (<>
+
         {/* Stats */}
         <div className="flex flex-wrap gap-3 mb-5">
           <div className="flex items-center gap-3 bg-white border border-blue-200 rounded-xl px-5 py-3 min-w-[200px] shadow-sm">
@@ -1136,7 +1167,9 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           </div>
         )}
 
-        {/* ── Section Tétanos ──────────────────────────────────────────────────── */}
+        </>)}
+        {/* ── Contenu onglet Tétanos ───────────────────────────────────────── */}
+        {activeTab === 'tetanos' && (
         <div className="bg-white rounded-xl border border-teal-200 overflow-hidden mb-4">
           <div className="px-4 py-3 border-b border-teal-100 bg-teal-50 flex items-center gap-2">
             <Syringe className="h-4 w-4 text-teal-600" />
@@ -1187,7 +1220,9 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           </div>
         </div>
 
-        {/* ── Section Pneumovax ────────────────────────────────────────────────── */}
+        )}
+        {/* ── Contenu onglet Pneumovax ─────────────────────────────────────── */}
+        {activeTab === 'pneumovax' && (
         <div className="bg-white rounded-xl border border-cyan-200 overflow-hidden mb-4">
           <div className="px-4 py-3 border-b border-cyan-100 bg-cyan-50 flex items-center gap-2">
             <Syringe className="h-4 w-4 text-cyan-600" />
@@ -1237,6 +1272,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           </div>
         </div>
 
+        )}
         {/* Résidents sortis */}
         <div className="flex justify-end mb-2">
           <button
