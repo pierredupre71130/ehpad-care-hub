@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -654,6 +655,8 @@ type SortDir = 'asc' | 'desc';
 
 export default function PeremptionsPage() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isAppAdmin = profile?.role === 'admin';
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -1110,96 +1113,98 @@ export default function PeremptionsPage() {
           </div>
         )}
 
-        {/* ── Info section ─────────────────────────────────────────────────── */}
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-            onClick={() => setInfoOpen(o => !o)}
-          >
-            <div className="flex items-center gap-2 text-gray-700 font-semibold">
-              <Info className="w-4 h-4 text-teal-600" />
-              Informations & Outils
-            </div>
-            {infoOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
-          </button>
-          {infoOpen && (
-            <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Dernière modification :</span>{' '}
-                    {appData.lastModificationDate ?? 'Aucune'}
-                  </p>
-                  {appData.modificationLog.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm font-medium text-gray-700 mb-1">10 dernières modifications :</p>
-                      <ul className="text-xs text-gray-600 space-y-0.5 max-h-40 overflow-y-auto">
-                        {appData.modificationLog.map((m, i) => (
-                          <li key={i} className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
-                            <span className="truncate">{m.productName}</span>
-                            <span className="text-gray-400 flex-shrink-0">→</span>
-                            <span className="text-teal-700 flex-shrink-0">{m.newDate}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Button variant="outline" size="sm" onClick={saveJson} className="justify-start">
-                    <Download className="w-4 h-4 mr-2" />
-                    Sauvegarder (Télécharger JSON)
-                  </Button>
-                  {adminMode && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="justify-start text-blue-700 border-blue-300 hover:bg-blue-50">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Charger une sauvegarde
-                      </Button>
-                      <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={loadJsonFile} />
-                    </>
-                  )}
-                  {!adminMode ? (
-                    <Button variant="outline" size="sm" onClick={() => setAdminOpen(o => !o)} className="justify-start text-amber-700 border-amber-300 hover:bg-amber-50">
-                      <ShieldCheck className="w-4 h-4 mr-2" />
-                      Mode Administrateur
-                    </Button>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={exitAdmin} className="justify-start text-red-700 border-red-300 hover:bg-red-50">
-                      <ShieldOff className="w-4 h-4 mr-2" />
-                      Quitter le mode Admin
-                    </Button>
-                  )}
-                </div>
+        {/* ── Info section (admin uniquement) ──────────────────────────────── */}
+        {isAppAdmin && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+              onClick={() => setInfoOpen(o => !o)}
+            >
+              <div className="flex items-center gap-2 text-gray-700 font-semibold">
+                <Info className="w-4 h-4 text-teal-600" />
+                Informations & Outils
               </div>
-
-              {/* Admin login */}
-              {adminOpen && !adminMode && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-sm font-medium text-amber-800 mb-2">Mot de passe administrateur</p>
-                  <div className="flex gap-2">
-                    <Input
-                      type="password"
-                      placeholder="DD/MM/YYYY"
-                      value={adminPasswordInput}
-                      onChange={e => setAdminPasswordInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && tryAdminLogin()}
-                      className="max-w-xs text-sm"
-                    />
-                    <Button size="sm" onClick={tryAdminLogin} className="bg-amber-600 hover:bg-amber-700 text-white">
-                      Valider
-                    </Button>
+              {infoOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+            </button>
+            {infoOpen && (
+              <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Dernière modification :</span>{' '}
+                      {appData.lastModificationDate ?? 'Aucune'}
+                    </p>
+                    {appData.modificationLog.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-gray-700 mb-1">10 dernières modifications :</p>
+                        <ul className="text-xs text-gray-600 space-y-0.5 max-h-40 overflow-y-auto">
+                          {appData.modificationLog.map((m, i) => (
+                            <li key={i} className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
+                              <span className="truncate">{m.productName}</span>
+                              <span className="text-gray-400 flex-shrink-0">→</span>
+                              <span className="text-teal-700 flex-shrink-0">{m.newDate}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  {adminPasswordError && <p className="text-red-600 text-xs mt-1">{adminPasswordError}</p>}
+                  <div className="flex flex-col gap-2">
+                    <Button variant="outline" size="sm" onClick={saveJson} className="justify-start">
+                      <Download className="w-4 h-4 mr-2" />
+                      Sauvegarder (Télécharger JSON)
+                    </Button>
+                    {adminMode && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="justify-start text-blue-700 border-blue-300 hover:bg-blue-50">
+                          <Upload className="w-4 h-4 mr-2" />
+                          Charger une sauvegarde
+                        </Button>
+                        <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={loadJsonFile} />
+                      </>
+                    )}
+                    {!adminMode ? (
+                      <Button variant="outline" size="sm" onClick={() => setAdminOpen(o => !o)} className="justify-start text-amber-700 border-amber-300 hover:bg-amber-50">
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Mode Administrateur
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={exitAdmin} className="justify-start text-red-700 border-red-300 hover:bg-red-50">
+                        <ShieldOff className="w-4 h-4 mr-2" />
+                        Quitter le mode Admin
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                {/* Admin login */}
+                {adminOpen && !adminMode && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-amber-800 mb-2">Mot de passe administrateur</p>
+                    <div className="flex gap-2">
+                      <Input
+                        type="password"
+                        placeholder="DD/MM/YYYY"
+                        value={adminPasswordInput}
+                        onChange={e => setAdminPasswordInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && tryAdminLogin()}
+                        className="max-w-xs text-sm"
+                      />
+                      <Button size="sm" onClick={tryAdminLogin} className="bg-amber-600 hover:bg-amber-700 text-white">
+                        Valider
+                      </Button>
+                    </div>
+                    {adminPasswordError && <p className="text-red-600 text-xs mt-1">{adminPasswordError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Admin panel ───────────────────────────────────────────────────── */}
-        {adminMode && (
+        {isAppAdmin && adminMode && (
           <div className="bg-red-50 border border-red-200 rounded-xl shadow-sm p-4 space-y-4">
             <h2 className="font-bold text-red-800 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4" />
