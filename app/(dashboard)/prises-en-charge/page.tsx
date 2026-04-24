@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Printer, Loader2, BriefcaseMedical } from 'lucide-react';
+import { Plus, Printer, Loader2, BriefcaseMedical, Eye } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
@@ -244,10 +245,12 @@ function EditableCell({
   value,
   onSave,
   placeholder = '—',
+  readOnly,
 }: {
   value: string;
   onSave: (v: string) => void;
   placeholder?: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -275,9 +278,9 @@ function EditableCell({
 
   return (
     <div
-      onClick={() => { setDraft(value); setEditing(true); }}
-      className="text-xs cursor-text hover:bg-blue-50 rounded px-1 py-0.5 min-h-[28px] whitespace-pre-wrap leading-relaxed"
-      title="Cliquer pour modifier"
+      onClick={readOnly ? undefined : () => { setDraft(value); setEditing(true); }}
+      className={`text-xs rounded px-1 py-0.5 min-h-[28px] whitespace-pre-wrap leading-relaxed ${readOnly ? '' : 'cursor-text hover:bg-blue-50'}`}
+      title={readOnly ? undefined : 'Cliquer pour modifier'}
     >
       {value || <span className="text-slate-300">{placeholder}</span>}
     </div>
@@ -312,6 +315,8 @@ async function fetchResidents(): Promise<Resident[]> {
 
 export default function PrisesEnChargePage() {
   const qc = useQueryClient();
+  const access = useModuleAccess('priseEnCharge');
+  const readOnly = access === 'read';
   const [activeFloor, setActiveFloor] = useState<Floor>('RDC');
   const [activeColor, setActiveColor] = useState<TableColor>('jaune');
 
@@ -641,6 +646,12 @@ export default function PrisesEnChargePage() {
 
       {/* Contenu */}
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -685,7 +696,8 @@ export default function PrisesEnChargePage() {
                           <select
                             value={row.chambre}
                             onChange={e => updateChambre(row.id, e.target.value)}
-                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-blue-400"
+                            disabled={readOnly}
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                           >
                             {row.chambre && !floorResidents.find(r => r.room === row.chambre) && (
                               <option value={row.chambre}>Ch. {row.chambre}</option>
@@ -711,6 +723,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.matin}
                             onSave={v => updateField(row.id, 'matin', v)}
+                            readOnly={readOnly}
                           />
                         </td>
 
@@ -719,6 +732,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.apres_midi}
                             onSave={v => updateField(row.id, 'apres_midi', v)}
+                            readOnly={readOnly}
                           />
                         </td>
 
@@ -727,6 +741,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.protection}
                             onSave={v => updateField(row.id, 'protection', v)}
+                            readOnly={readOnly}
                           />
                         </td>
 
@@ -737,15 +752,17 @@ export default function PrisesEnChargePage() {
               </div>
 
               {/* Ajouter une ligne */}
-              <div className="px-4 py-2 border-t border-slate-100 print:hidden">
-                <button
-                  onClick={() => addRow(table_index, table_color)}
-                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Ajouter un résident
-                </button>
-              </div>
+              {!readOnly && (
+                <div className="px-4 py-2 border-t border-slate-100 print:hidden">
+                  <button
+                    onClick={() => addRow(table_index, table_color)}
+                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Ajouter un résident
+                  </button>
+                </div>
+              )}
             </div>
           );
         })()}

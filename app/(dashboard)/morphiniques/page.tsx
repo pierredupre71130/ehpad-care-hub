@@ -27,13 +27,14 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Trash2, Printer, Pill, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, Save, Trash2, Printer, Pill, ChevronRight, ArrowLeft, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -557,6 +558,8 @@ type PanelMode = 'list' | 'new' | 'view';
 
 export default function MorphiniquesPage() {
   const qc = useQueryClient();
+  const access = useModuleAccess('morphiniques');
+  const readOnly = access === 'read';
 
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
     queryKey: ['settings', 'module_colors'],
@@ -755,11 +758,18 @@ export default function MorphiniquesPage() {
             ) : (
               /* Fiches list */
               <div className="flex flex-col flex-1 p-4 gap-4">
+                {readOnly && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-700 font-medium">
+                    <Eye className="h-4 w-4 flex-shrink-0" />
+                    Vous consultez cette page en lecture seule.
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Fiches enregistrées</h2>
                   <button
                     onClick={startNew}
-                    className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+                    disabled={readOnly}
+                    className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Ajouter une fiche
@@ -772,7 +782,7 @@ export default function MorphiniquesPage() {
                   <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-300">
                     <Pill className="h-12 w-12 opacity-30" />
                     <p className="text-sm font-medium">Aucune fiche enregistrée</p>
-                    <button onClick={startNew} className="mt-2 flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors">
+                    <button onClick={startNew} disabled={readOnly} className="mt-2 flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                       <Plus className="h-4 w-4" /> Ajouter la première fiche
                     </button>
                   </div>
@@ -805,7 +815,8 @@ export default function MorphiniquesPage() {
                         </div>
                         <button
                           onClick={e => { e.stopPropagation(); setDeleteTarget({ id: f.id, nom: f.nom }); }}
-                          className={cn('opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg', selectedFiche?.id === f.id && panelMode === 'view' ? 'text-red-200 hover:bg-white/20' : 'text-red-400 hover:bg-red-50')}
+                          disabled={readOnly}
+                          className={cn('opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg disabled:hidden', selectedFiche?.id === f.id && panelMode === 'view' ? 'text-red-200 hover:bg-white/20' : 'text-red-400 hover:bg-red-50')}
                           title="Supprimer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -867,7 +878,7 @@ export default function MorphiniquesPage() {
             </p>
             <div className="flex gap-2">
               <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
-              <button onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending} className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors disabled:opacity-60">
+              <button onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending || readOnly} className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors disabled:opacity-60">
                 {deleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
               </button>
             </div>

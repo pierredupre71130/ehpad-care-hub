@@ -14,6 +14,7 @@ import { MODULES } from '@/components/dashboard/module-config';
 import { toast } from 'sonner';
 import PAPView from '@/components/pap/PAPView';
 import PrintReferentsTable from '@/components/pap/PrintReferentsTable';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 // ── Network background ────────────────────────────────────────────────────────
 
@@ -155,13 +156,14 @@ function computeProgress(form: Partial<PapForm>): number {
 // ─── PAPForm Component ───────────────────────────────────────────────────────
 
 function PAPFormComp({
-  resident, initialData, onSave, onCancel, isSaving,
+  resident, initialData, onSave, onCancel, isSaving, readOnly,
 }: {
   resident: Resident;
   initialData?: Pap | null;
   onSave: (data: PapForm) => void;
   onCancel: () => void;
   isSaving: boolean;
+  readOnly?: boolean;
 }) {
   const [form, setForm] = useState<PapForm>(initialData ? { ...emptyForm, ...initialData } : { ...emptyForm });
 
@@ -373,7 +375,7 @@ function PAPFormComp({
             className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition-colors">
             Annuler
           </button>
-          <button onClick={() => onSave(form)} disabled={isSaving}
+          <button onClick={() => onSave(form)} disabled={isSaving || readOnly}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm hover:bg-slate-700 disabled:opacity-50 transition-colors">
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Enregistrer
@@ -390,6 +392,8 @@ function PAPPageInner() {
   const supabase = createClient();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
+  const access = useModuleAccess('pap');
+  const readOnly = access === 'read';
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -629,6 +633,13 @@ function PAPPageInner() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-white/60 p-6">
 
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
+
         {/* Prochaines réévaluations */}
         {prochaines4.length > 0 && (
           <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-3 items-start">
@@ -698,13 +709,13 @@ function PAPPageInner() {
             <Printer className="h-5 w-5 text-slate-500" />
             <div className="text-left"><div className="text-sm font-bold text-slate-700">Tableau référents</div><div className="text-xs text-slate-400">Imprimer la liste</div></div>
           </button>
-          <button onClick={() => setShowGestionReferents(true)}
-            className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-indigo-100 transition-colors">
+          <button onClick={() => setShowGestionReferents(true)} disabled={readOnly}
+            className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-indigo-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             <UserPen className="h-5 w-5 text-indigo-500" />
             <div className="text-left"><div className="text-sm font-bold text-indigo-700">Gestion des référents</div><div className="text-xs text-indigo-500">{allReferents.length} référent{allReferents.length > 1 ? 's' : ''}</div></div>
           </button>
-          <button onClick={() => { setShowSansReferents(true); setAssigningReferentFor(null); }}
-            className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-rose-100 transition-colors">
+          <button onClick={() => { setShowSansReferents(true); setAssigningReferentFor(null); }} disabled={readOnly}
+            className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             <Users className="h-5 w-5 text-rose-500" />
             <div className="text-left"><div className="text-sm font-bold text-rose-700">Résidents à assigner</div><div className="text-xs text-rose-600">{nbSansReferent} sans référent</div></div>
           </button>
@@ -754,6 +765,7 @@ function PAPPageInner() {
               onSave={form => saveMutation.mutate({ residentId: editingId, form })}
               onCancel={() => setEditingId(null)}
               isSaving={saveMutation.isPending}
+              readOnly={readOnly}
             />
           </div>
         ) : (
@@ -778,10 +790,12 @@ function PAPPageInner() {
                         {resident.referent
                           ? <span className="text-xs text-indigo-600 font-medium">Référent : {resident.referent}</span>
                           : <span className="text-xs text-slate-400 italic">Aucun référent</span>}
-                        <button onClick={() => setEditingReferent({ residentId: resident.id, value: resident.referent || '' })}
-                          className="ml-1 text-slate-400 hover:text-indigo-600 transition-colors" title="Modifier le référent">
-                          <UserPen className="h-3.5 w-3.5" />
-                        </button>
+                        {!readOnly && (
+                          <button onClick={() => setEditingReferent({ residentId: resident.id, value: resident.referent || '' })}
+                            className="ml-1 text-slate-400 hover:text-indigo-600 transition-colors" title="Modifier le référent">
+                            <UserPen className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                       {progress !== null && (
                         <div className="flex items-center gap-2 mt-1.5">
@@ -810,14 +824,15 @@ function PAPPageInner() {
                           <History className="h-3.5 w-3.5" /> Historique
                         </button>
                       )}
-                      <button onClick={() => setEditingId(resident.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${hasPap ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                      <button onClick={() => setEditingId(resident.id)} disabled={readOnly}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${hasPap ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                         {hasPap ? 'Modifier' : 'Créer'}
                       </button>
                       {hasPap && (
                         <button
                           onClick={() => setDeleteTarget({ papId: pap!.id, residentName: `${resident.last_name} ${resident.first_name}` })}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                          disabled={readOnly}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}

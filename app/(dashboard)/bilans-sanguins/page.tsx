@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   TestTube2, ChevronDown, ChevronUp, Plus, X, Check, Loader2,
   Printer, ChevronLeft, ChevronRight, Search, Pencil, Trash2, Save,
-  Calendar, Lock,
+  Calendar, Lock, Eye,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import GenerateDatesModal from './generate-dates-modal';
 import { PdfCalibration, PDF_CALIBRATION_DEFAULTS, DEFAULT_CHECK_COORDS } from '@/lib/generate-bilan-pdf';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -726,6 +727,8 @@ const PG_EDGES: [number, number][] = (() => {
 export default function BilansSanguinsPage() {
   const qc = useQueryClient();
   const supabase = createClient();
+  const access = useModuleAccess('bilansSanguins');
+  const readOnly = access === 'read';
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
@@ -996,22 +999,29 @@ export default function BilansSanguinsPage() {
           {/* ── Contenu ── */}
           <div className="max-w-6xl mx-auto px-6 py-6">
 
+            {readOnly && (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+                <Eye className="h-4 w-4 flex-shrink-0" />
+                Vous consultez cette page en lecture seule.
+              </div>
+            )}
+
             <Section title="Jours de prélèvement par médecin" icon={<Calendar className="h-4 w-4" />}>
               <MedecinJoursSection residents={residents} configs={medecinConfigs}
-                onSave={(name, jours, existingId) => saveMedecinConfig.mutate({ name, jours, existingId })} />
+                onSave={readOnly ? () => {} : (name, jours, existingId) => saveMedecinConfig.mutate({ name, jours, existingId })} />
             </Section>
 
             <Section title="Référentiel des bilans biologiques" icon={<TestTube2 className="h-4 w-4" />}>
               <BilanReferentielSection refs={refs}
-                onCreate={d => createRef.mutate(d)}
-                onUpdate={(id, d) => updateRef.mutate({ id, ...d })}
-                onDelete={id => deleteRef.mutate(id)} />
+                onCreate={readOnly ? () => {} : d => createRef.mutate(d)}
+                onUpdate={readOnly ? () => {} : (id, d) => updateRef.mutate({ id, ...d })}
+                onDelete={readOnly ? () => {} : id => deleteRef.mutate(id)} />
             </Section>
 
             <Section title="Bilans spéciaux" icon={<TestTube2 className="h-4 w-4" />}>
               <BilanSpeciauxSection specials={specials}
-                onCreate={d => createSpecial.mutate(d)}
-                onDelete={id => deleteSpecial.mutate(id)} />
+                onCreate={readOnly ? () => {} : d => createSpecial.mutate(d)}
+                onDelete={readOnly ? () => {} : id => deleteSpecial.mutate(id)} />
             </Section>
 
             {/* Planning annuel */}
@@ -1025,8 +1035,8 @@ export default function BilansSanguinsPage() {
               <PlanningGrid
                 residents={residents} cells={cells} refs={refs} specials={specials}
                 annee={annee} floor={floor} onFloorChange={setFloor}
-                onCellSave={(data, existingId) => saveCell.mutate({ data, existingId })}
-                onCellDelete={id => deleteCell.mutate(id)}
+                onCellSave={readOnly ? () => {} : (data, existingId) => saveCell.mutate({ data, existingId })}
+                onCellDelete={readOnly ? () => {} : id => deleteCell.mutate(id)}
                 onMonthClick={mois => setGenerateModal({ mois })}
               />
             </div>

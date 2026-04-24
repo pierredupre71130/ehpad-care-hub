@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Scale, TrendingDown, TrendingUp, Plus, X, Loader2,
   Check, Pencil, Save, Activity, User, Pill, ChevronRight, ChevronDown,
-  AlertTriangle, Trash2, Calendar, Settings, ArrowDown, ArrowUp, ArrowRight, Printer,
+  AlertTriangle, Trash2, Calendar, Settings, ArrowDown, ArrowUp, ArrowRight, Printer, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Customized,
@@ -386,9 +387,10 @@ function computeStatutNutritionnel(imc?: number | null, albumine?: number | null
 
 // ─── Complements Section (modal) ──────────────────────────────────────────────
 
-function ComplementsSection({ residentId, complements }: {
+function ComplementsSection({ residentId, complements, readOnly }: {
   residentId: string;
   complements: ComplementAlimentaire[];
+  readOnly?: boolean;
 }) {
   const qc = useQueryClient();
   const supabase = createClient();
@@ -440,9 +442,11 @@ function ComplementsSection({ residentId, complements }: {
         <h3 className="font-semibold text-slate-700 flex items-center gap-2 text-sm">
           <Pill className="h-4 w-4 text-amber-600" /> Compléments alimentaires
         </h3>
-        <Button size="sm" variant="outline" className="no-print h-7 px-2 text-xs" onClick={() => setAdding(a => !a)}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="outline" className="no-print h-7 px-2 text-xs" onClick={() => setAdding(a => !a)}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
+          </Button>
+        )}
       </div>
       {adding && (
         <div className="no-print mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
@@ -480,13 +484,17 @@ function ComplementsSection({ residentId, complements }: {
                   <span className={`text-xs px-2 py-0.5 rounded border ${c.actif ? 'border-amber-400 text-amber-700 bg-amber-100' : 'border-slate-300 text-slate-500 bg-white'}`}>
                     {c.actif ? 'Actif' : 'Inactif'}
                   </span>
-                  <button onClick={() => toggleActif.mutate({ id: c.id, actif: !c.actif })}
-                    className={`no-print text-xs px-2 py-0.5 rounded border ${c.actif ? 'border-amber-400 text-amber-700 bg-amber-100' : 'border-slate-300 text-slate-500 bg-white'}`}>
-                    Changer
-                  </button>
-                  <button onClick={() => deleteC.mutate(c.id)} className="no-print text-red-400 hover:text-red-600">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  {!readOnly && (
+                    <button onClick={() => toggleActif.mutate({ id: c.id, actif: !c.actif })}
+                      className={`no-print text-xs px-2 py-0.5 rounded border ${c.actif ? 'border-amber-400 text-amber-700 bg-amber-100' : 'border-slate-300 text-slate-500 bg-white'}`}>
+                      Changer
+                    </button>
+                  )}
+                  {!readOnly && (
+                    <button onClick={() => deleteC.mutate(c.id)} className="no-print text-red-400 hover:text-red-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -498,13 +506,14 @@ function ComplementsSection({ residentId, complements }: {
 
 // ─── Resident Modal ───────────────────────────────────────────────────────────
 
-function ResidentModal({ resident, allMesures, allComplements, allDossiers, alertSettings, onClose }: {
+function ResidentModal({ resident, allMesures, allComplements, allDossiers, alertSettings, onClose, readOnly }: {
   resident: Resident;
   allMesures: PoidsMesure[];
   allComplements: ComplementAlimentaire[];
   allDossiers: DossierNutritionnel[];
   alertSettings: AlertSettings;
   onClose: () => void;
+  readOnly?: boolean;
 }) {
   const qc = useQueryClient();
   const supabase = createClient();
@@ -935,10 +944,12 @@ ${chartSvgHtml ? `<div class="section">
                       {STATUT_CONFIG[savedStatut]?.label}
                     </span>
                   )}
-                  <Button size="sm" variant="outline" className="no-print h-7 px-2 text-xs"
-                    onClick={() => setEditBilan(e => !e)}>
-                    {editBilan ? <><X className="h-3.5 w-3.5 mr-1" />Fermer</> : <><Pencil className="h-3.5 w-3.5 mr-1" />Modifier</>}
-                  </Button>
+                  {!readOnly && (
+                    <Button size="sm" variant="outline" className="no-print h-7 px-2 text-xs"
+                      onClick={() => setEditBilan(e => !e)}>
+                      {editBilan ? <><X className="h-3.5 w-3.5 mr-1" />Fermer</> : <><Pencil className="h-3.5 w-3.5 mr-1" />Modifier</>}
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1002,7 +1013,7 @@ ${chartSvgHtml ? `<div class="section">
                   )}
                   <div className="flex gap-2 justify-end">
                     <Button size="sm" variant="outline" onClick={() => setEditBilan(false)}>Annuler</Button>
-                    <Button size="sm" onClick={() => saveBilan.mutate()} disabled={saveBilan.isPending}>
+                    <Button size="sm" onClick={() => saveBilan.mutate()} disabled={saveBilan.isPending || readOnly}>
                       <Save className="h-3.5 w-3.5 mr-1" /> Enregistrer
                     </Button>
                   </div>
@@ -1040,7 +1051,7 @@ ${chartSvgHtml ? `<div class="section">
             </section>
           )}
 
-          <ComplementsSection residentId={resident.id} complements={complements} />
+          <ComplementsSection residentId={resident.id} complements={complements} readOnly={readOnly} />
 
         </div>
       </DialogContent>
@@ -1050,11 +1061,12 @@ ${chartSvgHtml ? `<div class="section">
 
 // ─── Pesée du jour ────────────────────────────────────────────────────────────
 
-function PeseeView({ residents, allMesures, floor, onFloorChange }: {
+function PeseeView({ residents, allMesures, floor, onFloorChange, readOnly }: {
   residents: Resident[];
   allMesures: PoidsMesure[];
   floor: 'RDC' | '1ER';
   onFloorChange: (f: 'RDC' | '1ER') => void;
+  readOnly?: boolean;
 }) {
   const qc = useQueryClient();
   const supabase = createClient();
@@ -1227,7 +1239,7 @@ function PeseeView({ residents, allMesures, floor, onFloorChange }: {
                         onChange={e => setWeights(w => ({ ...w, [r.id]: e.target.value }))}
                         onKeyDown={e => e.key === 'Enter' && savePoids(r)}
                         className="h-8 w-20 text-sm text-center" />
-                      <button onClick={() => savePoids(r)} disabled={!weights[r.id] || saving[r.id]}
+                      <button onClick={() => savePoids(r)} disabled={!weights[r.id] || saving[r.id] || readOnly}
                         className="h-8 w-8 flex items-center justify-center rounded-lg bg-blue-600 text-white disabled:opacity-30 hover:bg-blue-700 transition-colors flex-shrink-0">
                         {saving[r.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                       </button>
@@ -1276,7 +1288,7 @@ function PeseeView({ residents, allMesures, floor, onFloorChange }: {
                           }} />
                         <span className="text-xs text-slate-400">kg</span>
                         <button onClick={() => updateMesure.mutate({ id: m.id, poids_kg: parseFloat(editDlgVal), date: editDlgDate })}
-                          disabled={updateMesure.isPending} className="text-green-600 hover:text-green-800">
+                          disabled={updateMesure.isPending || readOnly} className="text-green-600 hover:text-green-800 disabled:opacity-40">
                           <Check className="h-3.5 w-3.5" />
                         </button>
                         <button onClick={() => setEditingDlgId(null)} className="text-slate-400 hover:text-slate-600">
@@ -1288,12 +1300,14 @@ function PeseeView({ residents, allMesures, floor, onFloorChange }: {
                         <span className="text-xs text-slate-400 w-24 flex-shrink-0">{fmtDate(m.date)}</span>
                         <span className="text-sm font-semibold text-slate-800 w-16">{m.poids_kg} kg</span>
                         {m.commentaire && <span className="text-xs text-slate-400 truncate flex-1">{m.commentaire}</span>}
-                        <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => { setEditingDlgId(m.id); setEditDlgVal(m.poids_kg.toString()); setEditDlgDate(m.date); }}
-                            className="text-slate-400 hover:text-blue-600"><Pencil className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => deleteMesure.mutate(m.id)}
-                            className="text-slate-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
-                        </div>
+                        {!readOnly && (
+                          <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => { setEditingDlgId(m.id); setEditDlgVal(m.poids_kg.toString()); setEditDlgDate(m.date); }}
+                              className="text-slate-400 hover:text-blue-600"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => deleteMesure.mutate(m.id)}
+                              className="text-slate-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1973,6 +1987,8 @@ function NetworkBackground() {
 export default function SurveillancePoidsPage() {
   const supabase = createClient();
   const qc = useQueryClient();
+  const access = useModuleAccess('surveillancePoids');
+  const readOnly = access === 'read';
 
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
     queryKey: ['settings', 'module_colors'],
@@ -2140,6 +2156,16 @@ export default function SurveillancePoidsPage() {
               </div>
             </div>
           </div>
+
+        {/* Lecture seule banner */}
+        {readOnly && (
+          <div className="max-w-6xl mx-auto px-8 pt-5">
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
+              <Eye className="h-4 w-4 flex-shrink-0" />
+              Vous consultez cette page en lecture seule.
+            </div>
+          </div>
+        )}
 
         {/* Alert banners */}
         <div className="max-w-6xl mx-auto px-8 pt-5 grid grid-cols-2 gap-4">
@@ -2319,7 +2345,7 @@ export default function SurveillancePoidsPage() {
             </TabsList>
 
             <TabsContent value="pesee">
-              <PeseeView residents={residents} allMesures={allMesures} floor={floor} onFloorChange={setFloor} />
+              <PeseeView residents={residents} allMesures={allMesures} floor={floor} onFloorChange={setFloor} readOnly={readOnly} />
             </TabsContent>
             <TabsContent value="residents">
               <ResidentsView residents={residents} allMesures={allMesures} allDossiers={allDossiers} allComplements={allComplements} floor={floor} onFloorChange={setFloor} onSelect={setSelectedResident} alertSettings={alertSettings} />
@@ -2344,6 +2370,7 @@ export default function SurveillancePoidsPage() {
           allDossiers={allDossiers}
           alertSettings={alertSettings}
           onClose={() => setSelectedResident(null)}
+          readOnly={readOnly}
         />
       )}
     </>
