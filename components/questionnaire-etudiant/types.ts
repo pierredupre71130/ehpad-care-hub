@@ -111,7 +111,7 @@ export function noteColor(v?: NoteItem | string): string {
 
 export function computeAvg(records: QuestionnaireRecord[], key: string): number {
   const vals = records
-    .map(r => parseFloat((r as Record<string, string>)[key] ?? ''))
+    .map(r => parseFloat((r as unknown as Record<string, string>)[key] ?? ''))
     .filter(n => !isNaN(n));
   if (!vals.length) return 0;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -124,7 +124,7 @@ export function computeGlobalAvg(records: QuestionnaireRecord[]): number {
       ? [...QUESTIONS_BASE, ...QUESTIONS_ESI]
       : QUESTIONS_BASE;
     questions.forEach(q => {
-      const v = parseFloat((r as Record<string, string>)[q.key] ?? '');
+      const v = parseFloat((r as unknown as Record<string, string>)[q.key] ?? '');
       if (!isNaN(v)) { sum += v; count++; }
     });
   });
