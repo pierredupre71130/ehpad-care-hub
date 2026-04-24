@@ -9,7 +9,11 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  ResponsiveContainer, LineChart, Line,
+  ResponsiveContainer,
+  LineChart, Line,
+  BarChart, Bar,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -747,9 +751,300 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
   );
 }
 
+// ── Graphiques de satisfaction ────────────────────────────────────────────────
+
+const RADAR_LABELS: Record<string, string> = {
+  accueil: 'Accueil', deroulement: 'Déroulement', planning: 'Planning',
+  encadrement_as: 'Encadr. AS', encadrement_ide: 'Encadr. IDE',
+  objectifs: 'Objectifs', relationnel_ash: 'Relat. ASH',
+  relationnel_as: 'Relat. AS', relationnel_ide: 'Relat. IDE',
+  relationnel_tuteurs: 'Tuteurs',
+};
+
+const PIE_COLORS = ['#ef4444', '#f97316', '#84cc16', '#22c55e'];
+
+function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
+  const [filterAnnee, setFilterAnnee] = useState('all');
+
+  const anneesScolaires = useMemo(() =>
+    [...new Set(allRecords.map(r => r.annee_scolaire))].sort().reverse(),
+    [allRecords]
+  );
+
+  const records = useMemo(() =>
+    filterAnnee === 'all' ? allRecords : allRecords.filter(r => r.annee_scolaire === filterAnnee),
+    [allRecords, filterAnnee]
+  );
+
+  const esiRecs = records.filter(r => r.statut_etudiant === 'esi');
+  const easRecs = records.filter(r => r.statut_etudiant === 'eas');
+
+  const avgEsi = computeGlobalAvg(esiRecs);
+  const avgEas = computeGlobalAvg(easRecs);
+
+  // Radar : 10 questions communes
+  const radarData = QUESTIONS_BASE.map(q => ({
+    question: RADAR_LABELS[q.key] ?? q.label,
+    ESI: parseFloat(computeAvg(esiRecs, q.key).toFixed(2)),
+    EAS: parseFloat(computeAvg(easRecs, q.key).toFixed(2)),
+  }));
+
+  // Barres groupées par question (toutes questions)
+  const barData = QUESTIONS_BASE.map(q => ({
+    label: RADAR_LABELS[q.key] ?? q.label,
+    ESI: parseFloat(computeAvg(esiRecs, q.key).toFixed(2)),
+    EAS: parseFloat(computeAvg(easRecs, q.key).toFixed(2)),
+  }));
+  const barDataEsi = QUESTIONS_ESI.map(q => ({
+    label: q.label.replace('Objectifs ', 'Obj. '),
+    ESI: parseFloat(computeAvg(esiRecs, q.key).toFixed(2)),
+    EAS: 0,
+  }));
+
+  // Évolution par année scolaire
+  const evolutionData = useMemo(() => {
+    return anneesScolaires.map(yr => {
+      const yrEsi = allRecords.filter(r => r.annee_scolaire === yr && r.statut_etudiant === 'esi');
+      const yrEas = allRecords.filter(r => r.annee_scolaire === yr && r.statut_etudiant === 'eas');
+      return {
+        annee: yr,
+        ESI: yrEsi.length > 0 ? parseFloat(computeGlobalAvg(yrEsi).toFixed(2)) : null,
+        EAS: yrEas.length > 0 ? parseFloat(computeGlobalAvg(yrEas).toFixed(2)) : null,
+        nESI: yrEsi.length,
+        nEAS: yrEas.length,
+      };
+    }).reverse(); // chronologique
+  }, [allRecords, anneesScolaires]);
+
+  // Répartition des notes (donut) pour ESI et EAS
+  function buildPie(recs: QuestionnaireRecord[]) {
+    const counts = [0, 0, 0, 0];
+    recs.forEach(r => {
+      QUESTIONS_BASE.forEach(q => {
+        const v = parseInt((r as unknown as Record<string, string>)[q.key] ?? '', 10);
+        if (v >= 1 && v <= 4) counts[v - 1]++;
+      });
+    });
+    const total = counts.reduce((a, b) => a + b, 0);
+    return SCALE.map((s, i) => ({
+      name: s.short,
+      value: counts[i],
+      pct: total > 0 ? Math.round((counts[i] / total) * 100) : 0,
+    }));
+  }
+  const pieEsi = buildPie(esiRecs);
+  const pieEas = buildPie(easRecs);
+
+  if (allRecords.length === 0) {
+    return (
+      <div className="py-20 text-center bg-white rounded-2xl border border-slate-200">
+        <BarChart2 className="h-12 w-12 mx-auto text-slate-200 mb-4" />
+        <p className="text-slate-500 font-medium">Aucune donnée disponible</p>
+      </div>
+    );
+  }
+
+  const CustomTooltipRadar = ({ active, payload }: { active?: boolean; payload?: { name: string; value: number }[] }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-lg text-xs">
+        {payload.map(p => (
+          <p key={p.name} className="font-semibold" style={{ color: p.name === 'ESI' ? '#7c3aed' : '#3b82f6' }}>
+            {p.name} : {p.value.toFixed(2)} / 4
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Filtre */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4 flex-wrap">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Année scolaire</span>
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setFilterAnnee('all')}
+            className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+              filterAnnee === 'all' ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300')}>
+            Toutes
+          </button>
+          {anneesScolaires.map(a => (
+            <button key={a} onClick={() => setFilterAnnee(a)}
+              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                filterAnnee === a ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300')}>
+              {a}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">ESI</p>
+          <p className="text-3xl font-black text-slate-800">{esiRecs.length}</p>
+          <p className="text-xs text-slate-400 mt-0.5">questionnaire{esiRecs.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">EAS</p>
+          <p className="text-3xl font-black text-slate-800">{easRecs.length}</p>
+          <p className="text-xs text-slate-400 mt-0.5">questionnaire{easRecs.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Moy. ESI</p>
+          <p className="text-3xl font-black text-violet-700">{esiRecs.length > 0 ? avgEsi.toFixed(2) : '—'}</p>
+          <p className="text-xs text-slate-400 mt-0.5">sur 4</p>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Moy. EAS</p>
+          <p className="text-3xl font-black text-blue-700">{easRecs.length > 0 ? avgEas.toFixed(2) : '—'}</p>
+          <p className="text-xs text-slate-400 mt-0.5">sur 4</p>
+        </div>
+      </div>
+
+      {/* Radar ESI vs EAS */}
+      {esiRecs.length > 0 && easRecs.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <BarChart2 className="h-4 w-4 text-violet-600" />
+            Profil de satisfaction ESI vs EAS — 10 critères communs
+          </p>
+          <ResponsiveContainer width="100%" height={320}>
+            <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+              <PolarGrid stroke="#e2e8f0" />
+              <PolarAngleAxis dataKey="question" tick={{ fontSize: 11, fill: '#475569' }} />
+              <PolarRadiusAxis angle={90} domain={[0, 4]} tick={{ fontSize: 10, fill: '#94a3b8' }} tickCount={5} />
+              <Radar name="ESI" dataKey="ESI" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.25} strokeWidth={2} dot />
+              <Radar name="EAS" dataKey="EAS" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} dot />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Tooltip content={<CustomTooltipRadar />} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Barres groupées par question */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <BarChart2 className="h-4 w-4 text-blue-500" />
+          Scores moyens par question
+        </p>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart
+            data={barData}
+            margin={{ top: 5, right: 20, left: -10, bottom: 60 }}
+            barCategoryGap="30%"
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0} height={70} />
+            <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
+              formatter={(v: number) => [`${v.toFixed(2)} / 4`, '']}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {esiRecs.length > 0 && <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} />}
+            {easRecs.length > 0 && <Bar dataKey="EAS" fill="#3b82f6" radius={[3, 3, 0, 0]} />}
+          </BarChart>
+        </ResponsiveContainer>
+        {/* Questions ESI uniquement */}
+        {esiRecs.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-3">Questions spécifiques ESI</p>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={barDataEsi} margin={{ top: 5, right: 20, left: -10, bottom: 40 }} barCategoryGap="40%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-20} textAnchor="end" interval={0} height={50} />
+                <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v.toFixed(2)} / 4`, 'ESI']} />
+                <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} maxBarSize={60} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Évolution par année scolaire */}
+      {evolutionData.length >= 2 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5">
+          <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-green-500" />
+            Évolution de la satisfaction globale par année scolaire
+          </p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={evolutionData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="annee" tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
+              <Tooltip
+                contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }}
+                formatter={(v: number, name: string, props: { payload: { nESI: number; nEAS: number } }) => {
+                  const n = name === 'ESI' ? props.payload.nESI : props.payload.nEAS;
+                  return [`${v.toFixed(2)} / 4 (n=${n})`, name];
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="ESI" stroke="#7c3aed" strokeWidth={2.5} dot={{ r: 5 }} activeDot={{ r: 7 }} connectNulls />
+              <Line type="monotone" dataKey="EAS" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 5 }} activeDot={{ r: 7 }} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Répartition des notes — donuts */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {esiRecs.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <p className="text-sm font-bold text-slate-700 mb-1">Répartition des notes — ESI</p>
+            <p className="text-xs text-slate-400 mb-4">{esiRecs.length} questionnaire{esiRecs.length !== 1 ? 's' : ''}</p>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={pieEsi} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
+                  {pieEsi.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
+                </Pie>
+                <Tooltip formatter={(v: number, _: string, props: { payload: { name: string; pct: number } }) => [`${v} réponses (${props.payload.pct}%)`, props.payload.name]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-2 justify-center mt-1">
+              {SCALE.map((s, i) => (
+                <span key={s.value} className="flex items-center gap-1 text-xs text-slate-600">
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: PIE_COLORS[i] }} />
+                  {s.short} ({pieEsi[i]?.value ?? 0})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {easRecs.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <p className="text-sm font-bold text-slate-700 mb-1">Répartition des notes — EAS</p>
+            <p className="text-xs text-slate-400 mb-4">{easRecs.length} questionnaire{easRecs.length !== 1 ? 's' : ''}</p>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={pieEas} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} label={({ name, pct }) => pct > 5 ? `${name} ${pct}%` : ''} labelLine={false}>
+                  {pieEas.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
+                </Pie>
+                <Tooltip formatter={(v: number, _: string, props: { payload: { name: string; pct: number } }) => [`${v} réponses (${props.payload.pct}%)`, props.payload.name]} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-2 justify-center mt-1">
+              {SCALE.map((s, i) => (
+                <span key={s.value} className="flex items-center gap-1 text-xs text-slate-600">
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: PIE_COLORS[i] }} />
+                  {s.short} ({pieEas[i]?.value ?? 0})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
-type Tab = 'form' | 'history' | 'analyses';
+type Tab = 'form' | 'history' | 'analyses' | 'graphiques';
 
 export default function QuestionnairesEtudiantsPage() {
   const qc = useQueryClient();
@@ -813,9 +1108,10 @@ export default function QuestionnairesEtudiantsPage() {
   };
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'form',     label: 'Formulaire',                    icon: <ClipboardList className="h-4 w-4" /> },
-    { id: 'history',  label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
-    { id: 'analyses', label: 'Analyses',                      icon: <BarChart2 className="h-4 w-4" /> },
+    { id: 'form',       label: 'Formulaire',                    icon: <ClipboardList className="h-4 w-4" /> },
+    { id: 'history',    label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
+    { id: 'analyses',   label: 'Analyses',                      icon: <BarChart2 className="h-4 w-4" /> },
+    { id: 'graphiques', label: 'Analyses graphiques',           icon: <TrendingUp className="h-4 w-4" /> },
   ];
 
   return (
@@ -993,6 +1289,13 @@ export default function QuestionnairesEtudiantsPage() {
           isLoading
             ? <div className="py-12 text-center text-slate-400">Chargement…</div>
             : <AnalysesView allRecords={records} readOnly={readOnly} />
+        )}
+
+        {/* ── Analyses graphiques ── */}
+        {tab === 'graphiques' && (
+          isLoading
+            ? <div className="py-12 text-center text-slate-400">Chargement…</div>
+            : <GraphiquesView allRecords={records} />
         )}
       </div>
 
