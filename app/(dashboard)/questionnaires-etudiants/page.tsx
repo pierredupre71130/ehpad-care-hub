@@ -1042,9 +1042,248 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
   );
 }
 
+// ── Rapport IA ────────────────────────────────────────────────────────────────
+
+function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
+  const [filterStatut, setFilterStatut] = useState<'all' | 'esi' | 'eas'>('all');
+  const [filterAnnee,  setFilterAnnee]  = useState('all');
+  const [loading, setLoading]           = useState(false);
+  const [rapport,  setRapport]          = useState('');
+  const [error,    setError]            = useState('');
+
+  const anneesScolaires = useMemo(() =>
+    [...new Set(allRecords.map(r => r.annee_scolaire))].sort().reverse(),
+    [allRecords]
+  );
+
+  const records = useMemo(() => {
+    return allRecords.filter(r => {
+      if (filterStatut !== 'all' && r.statut_etudiant !== filterStatut) return false;
+      if (filterAnnee  !== 'all' && r.annee_scolaire  !== filterAnnee)  return false;
+      return true;
+    });
+  }, [allRecords, filterStatut, filterAnnee]);
+
+  const esiRecs = records.filter(r => r.statut_etudiant === 'esi');
+  const easRecs = records.filter(r => r.statut_etudiant === 'eas');
+
+  const buildStats = () => {
+    const lines: string[] = [];
+    const groups: { label: string; recs: QuestionnaireRecord[] }[] = [];
+    if (esiRecs.length > 0) groups.push({ label: 'ESI', recs: esiRecs });
+    if (easRecs.length > 0) groups.push({ label: 'EAS', recs: easRecs });
+
+    groups.forEach(({ label, recs }) => {
+      lines.push(`\n### ${label} (n=${recs.length}) — Moyenne globale : ${computeGlobalAvg(recs).toFixed(2)}/4`);
+      const qs = label === 'ESI' ? [...QUESTIONS_BASE, ...QUESTIONS_ESI] : QUESTIONS_BASE;
+      qs.forEach(q => {
+        const avg = computeAvg(recs, q.key);
+        if (avg > 0) lines.push(`- ${q.label} : ${avg.toFixed(2)}/4`);
+      });
+    });
+    return lines.join('\n');
+  };
+
+  const buildCommentaires = () => {
+    return records
+      .filter(r => r.commentaires?.trim())
+      .map(r => `[${r.statut_etudiant.toUpperCase()} ${r.annee_etude}e année ${r.annee_scolaire}] "${r.commentaires}"`)
+      .join('\n');
+  };
+
+  const buildSuggestions = () => {
+    return records
+      .filter(r => r.suggestions?.trim())
+      .map(r => `[${r.statut_etudiant.toUpperCase()} ${r.annee_etude}e année ${r.annee_scolaire}] "${r.suggestions}"`)
+      .join('\n');
+  };
+
+  const handleGenerate = async () => {
+    if (records.length === 0) return;
+    setLoading(true);
+    setRapport('');
+    setError('');
+    try {
+      const filtres = [
+        filterStatut !== 'all' ? filterStatut.toUpperCase() : 'ESI + EAS',
+        filterAnnee  !== 'all' ? `Année scolaire ${filterAnnee}` : 'Toutes années scolaires',
+        `${records.length} questionnaire${records.length > 1 ? 's' : ''}`,
+      ].join(' · ');
+
+      const res = await fetch('/api/rapport-etudiants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stats: buildStats(),
+          commentaires: buildCommentaires(),
+          suggestions: buildSuggestions(),
+          filtres,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else setRapport(data.rapport ?? '');
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Rendu Markdown simple → HTML
+  const renderMarkdown = (md: string) => {
+    return md
+      .replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-slate-800 mt-6 mb-2 pb-1 border-b border-slate-200">$1</h2>')
+      .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-violet-700 mt-4 mb-1">$1</h3>')
+      .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-700">$1</li>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^(?!<[hli])(.+)$/gm, '<p class="text-slate-700 mb-2">$1</p>')
+      .replace(/<\/li>\n<li/g, '</li><li')
+      .replace(/(<li.*<\/li>)/gs, '<ul class="space-y-1 mb-3">$1</ul>');
+  };
+
+  const filtresLabel = [
+    filterStatut !== 'all' ? filterStatut.toUpperCase() : 'ESI + EAS',
+    filterAnnee  !== 'all' ? filterAnnee : 'Toutes années',
+  ].join(' · ');
+
+  return (
+    <div className="space-y-5">
+      {/* Paramètres */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+          <GraduationCap className="h-4 w-4 text-violet-600" />
+          Configurer le rapport
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Population</label>
+            <div className="flex gap-2">
+              {[['all', 'ESI + EAS'], ['esi', 'ESI uniquement'], ['eas', 'EAS uniquement']].map(([v, l]) => (
+                <button key={v} onClick={() => setFilterStatut(v as 'all' | 'esi' | 'eas')}
+                  className={cn('flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all',
+                    filterStatut === v ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300'
+                  )}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Période</label>
+            <select value={filterAnnee} onChange={e => setFilterAnnee(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 text-sm bg-white focus:outline-none focus:border-violet-400">
+              <option value="all">Toutes les années scolaires</option>
+              {anneesScolaires.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Résumé des données sélectionnées */}
+        <div className="flex items-center gap-3 p-3 bg-violet-50 border border-violet-200 rounded-xl mb-4 flex-wrap">
+          <span className="text-xs font-semibold text-violet-700">{filtresLabel}</span>
+          <span className="text-xs text-slate-500">—</span>
+          <span className="text-xs text-slate-600">{records.length} questionnaire{records.length !== 1 ? 's' : ''}</span>
+          {esiRecs.length > 0 && <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">ESI : {esiRecs.length} (moy. {computeGlobalAvg(esiRecs).toFixed(2)}/4)</span>}
+          {easRecs.length > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">EAS : {easRecs.length} (moy. {computeGlobalAvg(easRecs).toFixed(2)}/4)</span>}
+        </div>
+
+        <button
+          onClick={handleGenerate}
+          disabled={loading || records.length === 0}
+          className={cn(
+            'w-full py-3.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2',
+            loading || records.length === 0
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md hover:shadow-lg',
+          )}
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Génération en cours…
+            </>
+          ) : (
+            <>
+              ✨ Générer le rapport IA
+            </>
+          )}
+        </button>
+        {records.length === 0 && (
+          <p className="text-xs text-slate-400 text-center mt-2">Aucun questionnaire pour cette sélection</p>
+        )}
+      </div>
+
+      {/* Erreur */}
+      {error && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* Rapport généré */}
+      {rapport && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          {/* Header rapport */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-white">
+            <div>
+              <p className="font-bold text-slate-800 text-base flex items-center gap-2">
+                ✨ Rapport de satisfaction — {filtresLabel}
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Généré le {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} · {records.length} questionnaire{records.length !== 1 ? 's' : ''} analysé{records.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              <Printer className="h-4 w-4" /> Imprimer
+            </button>
+          </div>
+
+          {/* Corps du rapport */}
+          <div
+            id="rapport-print"
+            className="px-6 py-5 prose max-w-none"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(rapport) }}
+          />
+
+          {/* Graphiques récapitulatifs sous le rapport */}
+          <div className="px-6 pb-6 border-t border-slate-100 pt-4 space-y-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Données graphiques associées</p>
+            {/* Barres ESI vs EAS */}
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={QUESTIONS_BASE.map(q => ({
+                  label: RADAR_LABELS[q.key] ?? q.label,
+                  ...(esiRecs.length > 0 ? { ESI: parseFloat(computeAvg(esiRecs, q.key).toFixed(2)) } : {}),
+                  ...(easRecs.length > 0 ? { EAS: parseFloat(computeAvg(easRecs, q.key).toFixed(2)) } : {}),
+                }))}
+                margin={{ top: 5, right: 20, left: -10, bottom: 60 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0} height={70} />
+                <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v.toFixed(2)} / 4`, '']} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {esiRecs.length > 0 && <Bar dataKey="ESI" fill="#7c3aed" radius={[3, 3, 0, 0]} />}
+                {easRecs.length > 0 && <Bar dataKey="EAS" fill="#3b82f6" radius={[3, 3, 0, 0]} />}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
-type Tab = 'form' | 'history' | 'analyses' | 'graphiques';
+type Tab = 'form' | 'history' | 'analyses' | 'graphiques' | 'rapport';
 
 export default function QuestionnairesEtudiantsPage() {
   const qc = useQueryClient();
@@ -1111,7 +1350,8 @@ export default function QuestionnairesEtudiantsPage() {
     { id: 'form',       label: 'Formulaire',                    icon: <ClipboardList className="h-4 w-4" /> },
     { id: 'history',    label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
     { id: 'analyses',   label: 'Analyses',                      icon: <BarChart2 className="h-4 w-4" /> },
-    { id: 'graphiques', label: 'Analyses graphiques',           icon: <TrendingUp className="h-4 w-4" /> },
+    { id: 'graphiques', label: 'Graphiques',                    icon: <TrendingUp className="h-4 w-4" /> },
+    { id: 'rapport',    label: 'Rapport IA ✨',                 icon: <FileText className="h-4 w-4" /> },
   ];
 
   return (
@@ -1296,6 +1536,13 @@ export default function QuestionnairesEtudiantsPage() {
           isLoading
             ? <div className="py-12 text-center text-slate-400">Chargement…</div>
             : <GraphiquesView allRecords={records} />
+        )}
+
+        {/* ── Rapport IA ── */}
+        {tab === 'rapport' && (
+          isLoading
+            ? <div className="py-12 text-center text-slate-400">Chargement…</div>
+            : <RapportIAView allRecords={records} />
         )}
       </div>
 
