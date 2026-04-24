@@ -1582,7 +1582,18 @@ export default function QuestionnairesEtudiantsPage() {
 
         {/* ── Formulaire ── */}
         {tab === 'form' && (
-          success ? (
+          <>
+          {!success && (
+            <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+              <svg className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
+              </svg>
+              <p className="text-sm text-blue-700">
+                <span className="font-semibold">Confidentialité :</span> vos réponses sont anonymes. Les résultats ne seront consultables que par les tuteurs IDE et AS de l'établissement.
+              </p>
+            </div>
+          )}
+          {success ? (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 flex flex-col items-center text-center gap-4">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                 <CheckCircle2 className="h-8 w-8 text-green-600" />
@@ -1609,7 +1620,8 @@ export default function QuestionnairesEtudiantsPage() {
                 <QuestionnaireForm onSubmit={handleSubmit} />
               )}
             </div>
-          )
+          )}
+          </>
         )}
 
         {/* ── Historique ── */}
