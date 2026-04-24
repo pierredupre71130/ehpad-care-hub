@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Pencil, Check, X, Heart, Pill, Syringe, Sun, Moon,
-  AlertTriangle, Printer, Loader2, Lock, Unlock,
+  AlertTriangle, Printer, Loader2, Lock, Unlock, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -212,7 +213,7 @@ async function updateConsignes(id: string, consignes: string): Promise<void> {
 
 function ResidentRow({
   resident, niveauSoin, taDay, isEditing, onStartEdit, onSave, onCancel,
-  maxNameWidth, maxInfosWidth, fontSize,
+  maxNameWidth, maxInfosWidth, fontSize, readOnly,
 }: {
   resident: Resident;
   niveauSoin: NiveauSoinRecord | undefined;
@@ -224,6 +225,7 @@ function ResidentRow({
   maxNameWidth: number;
   maxInfosWidth: number;
   fontSize: number;
+  readOnly: boolean;
 }) {
   const [draft, setDraft] = useState(resident.consignes ?? '');
 
@@ -358,7 +360,7 @@ function ResidentRow({
       <td className="px-1 py-1 print:hidden align-top" style={{ border: '1px solid #475569' }}>
         {isEditing ? (
           <div className="flex gap-1 justify-center">
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={() => onSave(draft)}>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={() => onSave(draft)} disabled={readOnly}>
               <Check className="h-4 w-4" />
             </Button>
             <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400" onClick={onCancel}>
@@ -366,13 +368,15 @@ function ResidentRow({
             </Button>
           </div>
         ) : (
-          <Button
-            size="icon" variant="ghost"
-            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={onStartEdit}
-          >
-            <Pencil className="h-3.5 w-3.5 text-slate-400" />
-          </Button>
+          !readOnly && (
+            <Button
+              size="icon" variant="ghost"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={onStartEdit}
+            >
+              <Pencil className="h-3.5 w-3.5 text-slate-400" />
+            </Button>
+          )
         )}
       </td>
     </tr>
@@ -384,7 +388,7 @@ function ResidentRow({
 // ─────────────────────────────────────────────────────────────
 
 function SectionTable({
-  title, residents, niveauSoinMap, taOffset, fontSize, onUpdate,
+  title, residents, niveauSoinMap, taOffset, fontSize, onUpdate, readOnly,
 }: {
   title: string;
   residents: Resident[];
@@ -392,6 +396,7 @@ function SectionTable({
   taOffset: number;
   fontSize: number;
   onUpdate: (id: string, consignes: string) => Promise<void>;
+  readOnly: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -448,12 +453,13 @@ function SectionTable({
               niveauSoin={niveauSoinMap[r.id]}
               taDay={Math.ceil((taOffset + idx + 1) / 2)}
               isEditing={editingId === r.id}
-              onStartEdit={() => setEditingId(r.id)}
+              onStartEdit={() => !readOnly && setEditingId(r.id)}
               onSave={c => handleSave(r.id, c)}
               onCancel={() => setEditingId(null)}
               maxNameWidth={maxNameWidth}
               maxInfosWidth={maxInfosWidth}
               fontSize={fontSize}
+              readOnly={readOnly}
             />
           ))}
           {sorted.length === 0 && (
@@ -475,6 +481,8 @@ function SectionTable({
 
 export default function ConsignesPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('consignes');
+  const readOnly = access === 'read';
 
   const { data: colorOverrides = {} } = useQuery({
     queryKey: ['settings', 'module_colors'],
@@ -724,6 +732,12 @@ export default function ConsignesPage() {
         className="print-scale-wrapper max-w-6xl mx-auto px-4 py-6 print:px-2 print:py-2 print:max-w-none"
         style={{ zoom: `${localPrint.printScale}%` }}
       >
+        {readOnly && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium print:hidden">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        )}
         {/* Card écran */}
         <div className="bg-white rounded-2xl shadow-md border border-white/60 px-5 py-5 print:shadow-none print:rounded-none print:border-none print:px-0 print:py-0">
 
@@ -755,6 +769,7 @@ export default function ConsignesPage() {
               taOffset={0}
               fontSize={localPrint.fontSize}
               onUpdate={handleUpdate}
+              readOnly={readOnly}
             />
           </div>
 
@@ -770,6 +785,7 @@ export default function ConsignesPage() {
               taOffset={longSejourOffset}
               fontSize={localPrint.fontSize}
               onUpdate={handleUpdate}
+              readOnly={readOnly}
             />
 
             {/* Footer codes d'accès (impression uniquement) */}

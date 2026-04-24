@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed } from 'lucide-react';
+import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
@@ -203,6 +204,8 @@ function getKey(floor: string, repas: string) {
 
 export default function EtiquettesRepasPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('etiquettesRepas');
+  const readOnly = access === 'read';
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [activeRepas, setActiveRepas] = useState('midi');
   const [withPhoto, setWithPhoto] = useState(false);
@@ -378,6 +381,14 @@ export default function EtiquettesRepasPage() {
         </div>
 
         {/* ── Corps ── */}
+        {readOnly && (
+          <div className="screen-only max-w-5xl mx-auto px-4 pt-4">
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-700 font-medium">
+              <Eye className="h-4 w-4 flex-shrink-0" />
+              Vous consultez cette page en lecture seule.
+            </div>
+          </div>
+        )}
         <div className="screen-only max-w-5xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
 
           {/* Colonne gauche : sélection */}
@@ -401,11 +412,13 @@ export default function EtiquettesRepasPage() {
                   return (
                     <div
                       key={r.id}
-                      onClick={() => toggleSelect(r.id)}
+                      onClick={() => !readOnly && toggleSelect(r.id)}
                       role="button"
                       tabIndex={0}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleSelect(r.id); }}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-sm border cursor-pointer select-none ${
+                      onKeyDown={e => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) toggleSelect(r.id); }}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-sm border select-none ${
+                        readOnly ? 'cursor-default' : 'cursor-pointer'
+                      } ${
                         isSelected
                           ? 'bg-blue-50 border-blue-300 text-blue-800 font-semibold'
                           : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
@@ -437,15 +450,17 @@ export default function EtiquettesRepasPage() {
 
               <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
                 <button
-                  onClick={() => setSelected(() => floorResidents.map(r => r.id))}
-                  className="text-xs text-blue-600 hover:underline"
+                  onClick={() => !readOnly && setSelected(() => floorResidents.map(r => r.id))}
+                  disabled={readOnly}
+                  className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-default"
                 >
                   Tout sélectionner
                 </button>
                 <span className="text-slate-300">·</span>
                 <button
-                  onClick={() => setSelected(() => [])}
-                  className="text-xs text-red-400 hover:underline"
+                  onClick={() => !readOnly && setSelected(() => [])}
+                  disabled={readOnly}
+                  className="text-xs text-red-400 hover:underline disabled:opacity-40 disabled:cursor-default"
                 >
                   Tout retirer
                 </button>
@@ -492,13 +507,15 @@ export default function EtiquettesRepasPage() {
                       <span className="font-semibold text-blue-800 text-xs flex-1 truncate">
                         {r.title} {r.last_name?.toUpperCase()} {r.first_name}
                       </span>
-                      <button
-                        onClick={() => toggleSelect(r.id)}
-                        className="text-red-400 hover:text-red-600 shrink-0"
-                        title="Retirer"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => toggleSelect(r.id)}
+                          className="text-red-400 hover:text-red-600 shrink-0"
+                          title="Retirer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

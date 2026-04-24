@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus, Plus, Shield } from 'lucide-react';
+import { Loader2, Edit2, Trash2, AlertCircle, Clock, Printer, TableProperties, Upload, ImagePlus, Plus, Shield, Eye } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -232,6 +233,8 @@ const PG_EDGES: [number, number][] = (() => {
 
 export default function ContentionsPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('contentions');
+  const readOnly = access === 'read';
 
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
     queryKey: ['settings', 'module_colors'],
@@ -529,6 +532,16 @@ export default function ContentionsPage() {
           </div>
         </div>
 
+      {/* Lecture seule badge */}
+      {readOnly && (
+        <div className="px-8 pt-4">
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-0 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        </div>
+      )}
+
       {/* Alerts */}
       <div className="bg-white border-b border-slate-200 px-8 py-4">
         <div className="grid grid-cols-2 gap-6">
@@ -600,8 +613,8 @@ export default function ContentionsPage() {
                 {sortedResidents.map(r => (
                   <div
                     key={r.id}
-                    onClick={() => handleSelectResident(r)}
-                    className="p-3 hover:bg-blue-50 cursor-pointer transition-colors border-l-4 border-l-transparent hover:border-l-blue-500"
+                    onClick={() => !readOnly && handleSelectResident(r)}
+                    className={`p-3 transition-colors border-l-4 border-l-transparent ${readOnly ? 'cursor-default' : 'hover:bg-blue-50 cursor-pointer hover:border-l-blue-500'}`}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-bold text-blue-900 text-sm">Ch. {r.room}</span>
@@ -641,20 +654,24 @@ export default function ContentionsPage() {
           <div className="px-6 py-4 bg-gradient-to-r from-emerald-50 to-emerald-100 border-b border-slate-200 sticky top-0 z-10 flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-lg font-bold text-slate-900">Contentions — {activeFloor} ({fichersByFloor.length})</h2>
             <div className="flex gap-2 flex-wrap">
-              <Button onClick={() => {
-                setForm(EMPTY_FORM);
-                setActiveId(null);
-                setResidentLocked(false);
-                setShowModal(true);
-              }} size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Plus className="h-4 w-4" /> Ajouter manuellement
-              </Button>
-              <Button onClick={() => setShowImportImageModal(true)} size="sm" variant="outline" className="gap-2 border-blue-400 text-blue-700 hover:bg-blue-100">
-                <ImagePlus className="h-4 w-4" /> Prescription (image)
-              </Button>
-              <Button onClick={() => setShowImportModal(true)} size="sm" variant="outline" className="gap-2 border-amber-400 text-amber-700 hover:bg-amber-100">
-                <Upload className="h-4 w-4" /> Importer fichier
-              </Button>
+              {!readOnly && (
+                <>
+                  <Button onClick={() => {
+                    setForm(EMPTY_FORM);
+                    setActiveId(null);
+                    setResidentLocked(false);
+                    setShowModal(true);
+                  }} size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Plus className="h-4 w-4" /> Ajouter manuellement
+                  </Button>
+                  <Button onClick={() => setShowImportImageModal(true)} size="sm" variant="outline" className="gap-2 border-blue-400 text-blue-700 hover:bg-blue-100">
+                    <ImagePlus className="h-4 w-4" /> Prescription (image)
+                  </Button>
+                  <Button onClick={() => setShowImportModal(true)} size="sm" variant="outline" className="gap-2 border-amber-400 text-amber-700 hover:bg-amber-100">
+                    <Upload className="h-4 w-4" /> Importer fichier
+                  </Button>
+                </>
+              )}
               <Button onClick={() => setShowRecap(true)} size="sm" variant="outline" className="gap-2 border-emerald-400 text-emerald-700 hover:bg-emerald-100">
                 <TableProperties className="h-4 w-4" /> Récapitulatif
               </Button>
@@ -730,9 +747,11 @@ export default function ContentionsPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Button onClick={() => handleSelectContention(f)} size="sm" variant="ghost" className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 gap-1">
-                              <Edit2 className="h-4 w-4" /> Modifier
-                            </Button>
+                            {!readOnly && (
+                              <Button onClick={() => handleSelectContention(f)} size="sm" variant="ghost" className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 gap-1">
+                                <Edit2 className="h-4 w-4" /> Modifier
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -870,7 +889,7 @@ export default function ContentionsPage() {
                   value={form.nom_prenom}
                   onChange={(e) => setForm({ ...form, nom_prenom: e.target.value })}
                   className="mt-1"
-                  disabled={residentLocked}
+                  disabled={residentLocked || readOnly}
                 />
               </div>
               <div>
@@ -880,12 +899,12 @@ export default function ContentionsPage() {
                   value={form.chambre}
                   onChange={(e) => setForm({ ...form, chambre: e.target.value })}
                   className="mt-1"
-                  disabled={residentLocked}
+                  disabled={residentLocked || readOnly}
                 />
               </div>
               <div>
                 <Label className="text-sm font-semibold">Type de contention</Label>
-                <Select value={form.type_contention} onValueChange={(v) => setForm({ ...form, type_contention: v })}>
+                <Select value={form.type_contention} onValueChange={(v) => !readOnly && setForm({ ...form, type_contention: v })} disabled={readOnly}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {TYPES_CONTENTION.map(t => (
@@ -898,7 +917,7 @@ export default function ContentionsPage() {
 
             <div>
               <Label className="text-sm font-semibold">Cause</Label>
-              <Select value={form.cause} onValueChange={(v) => setForm({ ...form, cause: v })}>
+              <Select value={form.cause} onValueChange={(v) => !readOnly && setForm({ ...form, cause: v })} disabled={readOnly}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Sélectionner une cause..." /></SelectTrigger>
                 <SelectContent>
                   {CAUSES_CONTENTION.map(c => (
@@ -916,6 +935,7 @@ export default function ContentionsPage() {
                   value={form.date_prescription || ''}
                   onChange={(e) => setForm({ ...form, date_prescription: e.target.value })}
                   className="mt-1"
+                  disabled={readOnly}
                 />
               </div>
               <div>
@@ -925,6 +945,7 @@ export default function ContentionsPage() {
                   value={form.date_fin_prevue || ''}
                   onChange={(e) => setForm({ ...form, date_fin_prevue: e.target.value })}
                   className="mt-1"
+                  disabled={readOnly}
                 />
               </div>
             </div>
@@ -936,6 +957,7 @@ export default function ContentionsPage() {
                   checked={!!form.si_besoin}
                   onChange={(e) => setForm({ ...form, si_besoin: e.target.checked })}
                   className="w-4 h-4"
+                  disabled={readOnly}
                 />
                 <span className="text-sm font-semibold text-slate-700">Si besoin (à la demande)</span>
               </label>
@@ -945,6 +967,7 @@ export default function ContentionsPage() {
                   checked={!!form.famille_prevenue}
                   onChange={(e) => setForm({ ...form, famille_prevenue: e.target.checked })}
                   className="w-4 h-4 accent-teal-600"
+                  disabled={readOnly}
                 />
                 <span className="text-sm font-semibold text-teal-800">Famille prévenue</span>
               </label>
@@ -953,13 +976,13 @@ export default function ContentionsPage() {
             <div className="flex gap-2 pt-4 border-t border-slate-200">
               <Button
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || readOnly}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
               >
                 {isSaving ? 'Enregistrement...' : activeId ? 'Mettre à jour' : 'Enregistrer'}
               </Button>
               {activeId && (
-                <Button onClick={handleDelete} disabled={isSaving} variant="destructive" className="gap-2">
+                <Button onClick={handleDelete} disabled={isSaving || readOnly} variant="destructive" className="gap-2">
                   <Trash2 className="h-4 w-4" /> Supprimer
                 </Button>
               )}

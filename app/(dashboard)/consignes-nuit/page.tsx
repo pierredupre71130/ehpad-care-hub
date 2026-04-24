@@ -11,8 +11,9 @@ import { MODULES } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import {
   Lock, FolderOpen, Printer, Loader2, ChevronDown, X,
-  AlertTriangle, PhoneCall, Pill, Moon,
+  AlertTriangle, PhoneCall, Pill, Moon, Eye,
 } from 'lucide-react';
+import { useModuleAccess } from '@/lib/use-module-access';
 import { toast } from 'sonner';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -238,12 +239,13 @@ function isAfterLockTime(selectedDate: string): boolean {
 
 // ── ArchivesPanel ────────────────────────────────────────────────────────────
 
-function ArchivesPanel({ archivedDates, currentDate, onSelectDate, onDeleteDate, onClean }: {
+function ArchivesPanel({ archivedDates, currentDate, onSelectDate, onDeleteDate, onClean, readOnly }: {
   archivedDates: string[];
   currentDate: string;
   onSelectDate: (d: string) => void;
   onDeleteDate: (d: string) => void;
   onClean: () => void;
+  readOnly: boolean;
 }) {
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
 
@@ -267,9 +269,11 @@ function ArchivesPanel({ archivedDates, currentDate, onSelectDate, onDeleteDate,
         <h3 className="text-sm font-semibold text-slate-700">
           Archives — {archivedDates.length} date{archivedDates.length > 1 ? 's' : ''}
         </h3>
-        <button onClick={onClean} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100">
-          Nettoyer archives vides
-        </button>
+        {!readOnly && (
+          <button onClick={onClean} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100">
+            Nettoyer archives vides
+          </button>
+        )}
       </div>
       {archivedDates.length === 0 ? (
         <p className="text-sm text-slate-400">Aucune archive.</p>
@@ -301,13 +305,15 @@ function ArchivesPanel({ archivedDates, currentDate, onSelectDate, onDeleteDate,
                           <Lock className="h-3 w-3 text-amber-500 flex-shrink-0" />
                           <span>{new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}</span>
                         </button>
-                        <button
-                          onClick={() => onDeleteDate(d)}
-                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
-                          title="Supprimer"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                        {!readOnly && (
+                          <button
+                            onClick={() => onDeleteDate(d)}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
+                            title="Supprimer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -526,6 +532,8 @@ const EMPTY_CONSIGNES: ConsigneNuit[] = [];
 
 export default function ConsignesNuitPage() {
   const queryClient = useQueryClient();
+  const access = useModuleAccess('consignesNuit');
+  const readOnly = access === 'read';
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [activeFloor, setActiveFloor] = useState('RDC');
@@ -1216,7 +1224,7 @@ export default function ConsignesNuitPage() {
                 variant="ghost"
                 size="sm"
                 onClick={handlePrint}
-                disabled={isSaving}
+                disabled={isSaving || readOnly}
                 className="bg-white/20 hover:bg-white/30 text-white border border-white/30 gap-1.5 font-semibold"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
@@ -1263,6 +1271,16 @@ export default function ConsignesNuitPage() {
         </div>
       </div>
 
+      {/* ── Lecture seule badge ── */}
+      {readOnly && (
+        <div className="max-w-6xl mx-auto px-4 pt-4">
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-0 text-sm text-blue-700 font-medium">
+            <Eye className="h-4 w-4 flex-shrink-0" />
+            Vous consultez cette page en lecture seule.
+          </div>
+        </div>
+      )}
+
       {/* ── Archives panel ── */}
       {showArchives && (
         <div className="max-w-6xl mx-auto px-4 pt-4">
@@ -1272,6 +1290,7 @@ export default function ConsignesNuitPage() {
             onSelectDate={d => { setDate(d); setShowArchives(false); }}
             onDeleteDate={d => setDeleteConfirm({ date: d })}
             onClean={cleanEmptyArchives}
+            readOnly={readOnly}
           />
           <button onClick={() => setShowArchives(false)} className="mt-3 text-slate-400 hover:text-slate-700 text-xs underline">
             Fermer les archives
@@ -1289,7 +1308,7 @@ export default function ConsignesNuitPage() {
             </p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
-              <button onClick={handleDeleteArchive} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">Supprimer</button>
+              <button onClick={handleDeleteArchive} disabled={readOnly} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50">Supprimer</button>
             </div>
           </div>
         </div>
@@ -1310,7 +1329,7 @@ export default function ConsignesNuitPage() {
                   residents={mapadResidents}
                   notes={currentNotes}
                   onChangeNote={handleChangeNote}
-                  locked={isCurrentLocked}
+                  locked={isCurrentLocked || readOnly}
                   girData={girData}
                   contentionMap={contentionMap}
                 />
@@ -1324,7 +1343,7 @@ export default function ConsignesNuitPage() {
                   residents={longSejourResidents}
                   notes={currentNotes}
                   onChangeNote={handleChangeNote}
-                  locked={isCurrentLocked}
+                  locked={isCurrentLocked || readOnly}
                   girData={girData}
                   contentionMap={contentionMap}
                 />
@@ -1333,7 +1352,7 @@ export default function ConsignesNuitPage() {
                   <textarea
                     value={infosByFloor[activeFloor] ?? ''}
                     onChange={e => setInfosByFloor(prev => ({ ...prev, [activeFloor]: e.target.value }))}
-                    disabled={isCurrentLocked}
+                    disabled={isCurrentLocked || readOnly}
                     className="w-full text-sm border border-amber-200 rounded px-2 py-1.5 bg-white resize-none disabled:opacity-50"
                     rows={3}
                     placeholder="Informations importantes pour la nuit…"
