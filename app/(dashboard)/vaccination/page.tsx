@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2,
+  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2, Info,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
@@ -35,6 +35,16 @@ interface Vaccination {
   covid_inj3?: string | null;
   grippe_inj1?: string | null;
   infos?: string | null;
+}
+
+interface VaccinationLT {
+  id: string;
+  resident_id?: string;
+  resident_name: string;
+  archived?: boolean;
+  tetanos_date?: string | null;
+  pneumovax_date?: string | null;
+  notes?: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -73,6 +83,13 @@ async function fetchVaccinations(): Promise<Vaccination[]> {
   return (data ?? []) as Vaccination[];
 }
 
+async function fetchVaccinationsLT(): Promise<VaccinationLT[]> {
+  const sb = createClient();
+  const { data, error } = await sb.from('vaccination_long_terme').select('*').order('resident_name');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as VaccinationLT[];
+}
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 
 function normalizeDate(val: string): string {
@@ -109,6 +126,21 @@ function encodeInfos(covid: string, grippe: string): string | null {
   return parts.join('|') || null;
 }
 
+function nextTetanosDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return '—';
+  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '—';
+  return `${m[3]}/${m[2]}/${parseInt(m[1]) + 10}`;
+}
+
+function isTetanosOverdue(isoDate: string | null | undefined): boolean {
+  if (!isoDate) return false;
+  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const due = new Date(parseInt(m[1]) + 10, parseInt(m[2]) - 1, parseInt(m[3]));
+  return due < new Date();
+}
+
 // ── CellDisplay ───────────────────────────────────────────────────────────────
 
 function CellDisplay({ value }: { value: string | null | undefined }) {
@@ -129,11 +161,12 @@ function CellDisplay({ value }: { value: string | null | undefined }) {
 
 // ── EditableCell ──────────────────────────────────────────────────────────────
 
-function EditableCell({ value, field, recordId, onSaved }: {
+function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccination' }: {
   value: string | null | undefined;
   field: string;
   recordId: string;
   onSaved: () => void;
+  tableName?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value || '');
@@ -148,9 +181,9 @@ function EditableCell({ value, field, recordId, onSaved }: {
     setSaving(true);
     const toSave = normalizeDate(newVal) || null;
     const updates: Record<string, string | null> = { [field]: toSave, updated_at: new Date().toISOString() };
-    if (lotVal) updates.infos = `Lot: ${lotVal}`;
+    if (lotVal && tableName === 'vaccination') updates.infos = `Lot: ${lotVal}`;
     const sb = createClient();
-    const { error } = await sb.from('vaccination').update(updates).eq('id', recordId);
+    const { error } = await sb.from(tableName).update(updates).eq('id', recordId);
     setSaving(false);
     setEditing(false);
     setLot('');
@@ -181,16 +214,18 @@ function EditableCell({ value, field, recordId, onSaved }: {
                 className="w-full border border-green-400 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-green-400"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Numéro de lot (optionnel)</label>
-              <input
-                type="text"
-                value={lot}
-                onChange={e => setLot(e.target.value)}
-                placeholder="ex: AB12345"
-                className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-300"
-              />
-            </div>
+            {tableName === 'vaccination' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Numéro de lot (optionnel)</label>
+                <input
+                  type="text"
+                  value={lot}
+                  onChange={e => setLot(e.target.value)}
+                  placeholder="ex: AB12345"
+                  className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-300"
+                />
+              </div>
+            )}
           </div>
           <div className="flex gap-2 mt-4">
             <button
@@ -441,6 +476,79 @@ function BulkInjectModal({ column, label, records, onClose, onDone }: {
   );
 }
 
+// ── RecoPanel — recommandations médicales ─────────────────────────────────────
+
+function RecoPanel({ title, color, children }: { title: string; color: 'teal' | 'cyan'; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const cls = color === 'teal'
+    ? { bg: 'bg-teal-50', border: 'border-teal-200', title: 'text-teal-800', btn: 'text-teal-700 hover:bg-teal-100', icon: 'text-teal-500' }
+    : { bg: 'bg-cyan-50', border: 'border-cyan-200', title: 'text-cyan-800', btn: 'text-cyan-700 hover:bg-cyan-100', icon: 'text-cyan-500' };
+  return (
+    <div className={`${cls.bg} border ${cls.border} rounded-lg mb-3`}>
+      <button onClick={() => setOpen(o => !o)} className={`w-full flex items-center justify-between px-4 py-2.5 ${cls.btn} transition-colors rounded-lg`}>
+        <div className="flex items-center gap-2">
+          <Info className={`w-4 h-4 ${cls.icon}`} />
+          <span className={`text-sm font-semibold ${cls.title}`}>{title}</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+// ── VaccLTRow — ligne tétanos / pneumovax ─────────────────────────────────────
+
+function VaccLTRow({ resident, record, field, onSaved, onCreateRecord }: {
+  resident: Resident;
+  record?: VaccinationLT | null;
+  field: 'tetanos_date' | 'pneumovax_date';
+  onSaved: () => void;
+  onCreateRecord?: () => void;
+}) {
+  const value = record ? record[field] : null;
+  const displayName = `${(resident.last_name || '').toUpperCase()} ${resident.first_name || ''}`;
+  const showNext = field === 'tetanos_date';
+  const overdue = showNext ? isTetanosOverdue(value) : false;
+  const nextDate = showNext ? nextTetanosDate(value) : null;
+
+  return (
+    <tr className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+      <td className="px-3 py-2 sticky left-0 bg-white font-medium text-slate-800 text-sm whitespace-nowrap">
+        {displayName}
+        {resident.room && <span className="ml-2 text-xs text-slate-400">Ch. {resident.room}</span>}
+      </td>
+      <td className="px-2 py-1.5 text-center">
+        {record ? (
+          <EditableCell value={value} field={field} recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" />
+        ) : onCreateRecord ? (
+          <button onClick={onCreateRecord} className="text-xs text-green-600 hover:underline">+ Ajouter</button>
+        ) : (
+          <span className="text-slate-300 text-xs">—</span>
+        )}
+      </td>
+      {showNext && (
+        <td className="px-3 py-2 text-center text-xs">
+          {value ? (
+            <span className={overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}>
+              {nextDate} {overdue && '⚠️'}
+            </span>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+        </td>
+      )}
+      <td className="px-3 py-2 text-center">
+        {record ? (
+          <EditableCell value={record.notes} field="notes" recordId={record.id} onSaved={onSaved} tableName="vaccination_long_terme" />
+        ) : (
+          <span className="text-slate-300 text-xs">—</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 // ── VacRow ────────────────────────────────────────────────────────────────────
 
 function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord }: {
@@ -648,7 +756,26 @@ export default function VaccinationPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const loading = loadingResidents || loadingVac;
+  const { data: vaccinationsLT = [], isLoading: loadingLT } = useQuery({
+    queryKey: ['vaccinations_lt'],
+    queryFn: fetchVaccinationsLT,
+  });
+
+  const invalidateLT = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['vaccinations_lt'] });
+  }, [queryClient]);
+
+  const createMutationLT = useMutation({
+    mutationFn: async (data: Omit<VaccinationLT, 'id'>) => {
+      const sb = createClient();
+      const { error } = await sb.from('vaccination_long_terme').insert(data);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: invalidateLT,
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const loading = loadingResidents || loadingVac || loadingLT;
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -706,6 +833,13 @@ export default function VaccinationPage() {
     .filter(r => !r.archived)
     .map(r => getVaccinsForResident(r).find(v => v.year === CURRENT_YEAR))
     .filter(Boolean) as Vaccination[];
+
+  const getLTRecord = useCallback((resident: Resident): VaccinationLT | undefined => {
+    return vaccinationsLT.find(v =>
+      v.resident_id === resident.id ||
+      (v.resident_name || '').toLowerCase().trim() === `${resident.last_name} ${resident.first_name || ''}`.toLowerCase().trim()
+    );
+  }, [vaccinationsLT]);
 
   const isAccepteOrAttente = (v: string | null | undefined) =>
     !!v && (v.toLowerCase() === 'accepte' || v.toLowerCase() === 'en attente');
@@ -1001,6 +1135,107 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
             </div>
           </div>
         )}
+
+        {/* ── Section Tétanos ──────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-teal-200 overflow-hidden mb-4">
+          <div className="px-4 py-3 border-b border-teal-100 bg-teal-50 flex items-center gap-2">
+            <Syringe className="h-4 w-4 text-teal-600" />
+            <span className="font-semibold text-teal-800 text-sm">Tétanos — Suivi des rappels</span>
+            <span className="ml-auto text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">{activeResidents.length} résidents</span>
+          </div>
+          <div className="px-4 pt-3">
+            <RecoPanel title="Recommandations — Tétanos en EHPAD" color="teal">
+              <ul className="mt-2 space-y-1.5 text-xs text-teal-900">
+                <li className="flex gap-2"><span className="font-bold">🔁</span><span><strong>Rappel tous les 10 ans</strong> chez l&apos;adulte (vaccin dT ou dTP selon statut polio/coqueluche)</span></li>
+                <li className="flex gap-2"><span className="font-bold">📋</span><span>En EHPAD, si la date du dernier rappel est <strong>inconnue</strong> : administrer une dose, puis rappel dans 10 ans</span></li>
+                <li className="flex gap-2"><span className="font-bold">📅</span><span>Calendrier vaccinal français : rappel à 65 ans puis tous les 10 ans (75, 85…)</span></li>
+                <li className="flex gap-2"><span className="font-bold">⚠️</span><span>Les résidents ≥ 65 ans reçoivent le vaccin <strong>dT</strong> (diphtérie-tétanos, sans coqueluche)</span></li>
+                <li className="flex gap-2"><span className="font-bold">💊</span><span>Vaccins disponibles : Revaxis® (dTP), Imovax® Tétanos, DT Polio Merieux®</span></li>
+              </ul>
+            </RecoPanel>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-teal-50 text-xs text-teal-700 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left sticky left-0 bg-teal-50 z-10">Résident</th>
+                  <th className="px-3 py-2 text-center">Dernière injection</th>
+                  <th className="px-3 py-2 text-center">Prochain rappel (J+10 ans)</th>
+                  <th className="px-3 py-2 text-center">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeResidents.map(resident => {
+                  const ltRec = getLTRecord(resident);
+                  return (
+                    <VaccLTRow
+                      key={resident.id}
+                      resident={resident}
+                      record={ltRec}
+                      field="tetanos_date"
+                      onSaved={invalidateLT}
+                      onCreateRecord={!ltRec ? () => createMutationLT.mutate({
+                        resident_id: resident.id,
+                        resident_name: `${resident.last_name} ${resident.first_name || ''}`.trim(),
+                        archived: false,
+                      }) : undefined}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Section Pneumovax ────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-cyan-200 overflow-hidden mb-4">
+          <div className="px-4 py-3 border-b border-cyan-100 bg-cyan-50 flex items-center gap-2">
+            <Syringe className="h-4 w-4 text-cyan-600" />
+            <span className="font-semibold text-cyan-800 text-sm">Pneumovax — Vaccination antipneumococcique</span>
+            <span className="ml-auto text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full">{activeResidents.length} résidents</span>
+          </div>
+          <div className="px-4 pt-3">
+            <RecoPanel title="Recommandations — Pneumocoque en EHPAD" color="cyan">
+              <ul className="mt-2 space-y-1.5 text-xs text-cyan-900">
+                <li className="flex gap-2"><span className="font-bold">💉</span><span><strong>1 dose unique de Pneumovax 23</strong> (vaccin polysaccharidique) recommandée chez toute personne ≥ 65 ans</span></li>
+                <li className="flex gap-2"><span className="font-bold">🔁</span><span>Revaccination à <strong>5 ans</strong> uniquement si : splénectomie, asplénisme fonctionnel, immunodépression sévère, néphrose</span></li>
+                <li className="flex gap-2"><span className="font-bold">📋</span><span>En EHPAD : <strong>1 seule injection</strong> suffit pour la grande majorité des résidents (sauf cas particuliers)</span></li>
+                <li className="flex gap-2"><span className="font-bold">⏱️</span><span>Si non vacciné : possible de faire d&apos;abord <strong>Prevenar 13®</strong> (conjugué), puis Pneumovax 23 à 8 semaines minimum</span></li>
+                <li className="flex gap-2"><span className="font-bold">💊</span><span>Vaccin disponible : <strong>Pneumovax® 23</strong> (Valneva) — pris en charge à 100% pour les ≥ 65 ans</span></li>
+              </ul>
+            </RecoPanel>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-cyan-50 text-xs text-cyan-700 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left sticky left-0 bg-cyan-50 z-10">Résident</th>
+                  <th className="px-3 py-2 text-center">Date de vaccination</th>
+                  <th className="px-3 py-2 text-center">Notes / Observations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeResidents.map(resident => {
+                  const ltRec = getLTRecord(resident);
+                  return (
+                    <VaccLTRow
+                      key={resident.id}
+                      resident={resident}
+                      record={ltRec}
+                      field="pneumovax_date"
+                      onSaved={invalidateLT}
+                      onCreateRecord={!ltRec ? () => createMutationLT.mutate({
+                        resident_id: resident.id,
+                        resident_name: `${resident.last_name} ${resident.first_name || ''}`.trim(),
+                        archived: false,
+                      }) : undefined}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         {/* Résidents sortis */}
         <div className="flex justify-end mb-2">
