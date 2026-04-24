@@ -455,7 +455,12 @@ function NuitTable({ residents, notes, onChangeNote, locked, girData, contention
   girData: NiveauSoin[];
   contentionMap: Record<string, Array<{ type: string; siBesoin: boolean }>>;
 }) {
-  const sorted = [...residents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const sorted = [...residents].sort((a, b) => {
+    const na = parseInt(a.room ?? '0', 10);
+    const nb = parseInt(b.room ?? '0', 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
+  });
 
   return (
     <table style={{ borderCollapse: 'collapse', border: '1px solid #475569', width: '100%' }}>
@@ -733,7 +738,12 @@ export default function ConsignesNuitPage() {
   // ── Print ──────────────────────────────────────────────────────────────────
 
   const buildTableHTML = (residents: Resident[], notes: Record<string, string>) => {
-    const sorted = [...residents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    const sorted = [...residents].sort((a, b) => {
+      const na = parseInt(a.room ?? '0', 10);
+      const nb = parseInt(b.room ?? '0', 10);
+      if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+      return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
+    });
     const rows = sorted.map(r => {
       const note = notes[r.id] ?? '';
       const age = r.date_naissance ? calcAge(r.date_naissance) : null;
@@ -849,15 +859,23 @@ export default function ConsignesNuitPage() {
     return h;
   };
 
+  // Tri par numéro de chambre (numérique, puis alphabétique en fallback)
+  const sortByRoom = (a: Resident, b: Resident) => {
+    const na = parseInt(a.room ?? '0', 10);
+    const nb = parseInt(b.room ?? '0', 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
+  };
+
   const sendEmail = async (): Promise<boolean> => {
     const allConsignes: Array<{ room: string; nom: string; floor: string; note: string }> = [];
     const rdcResidents = residents.filter(r => r.floor === 'RDC');
     const erResidents = residents.filter(r => r.floor === '1ER');
-    [...rdcResidents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).forEach(r => {
+    [...rdcResidents].sort(sortByRoom).forEach(r => {
       const note = (notesByFloor['RDC'] ?? {})[r.id] ?? '';
       if (note.trim()) allConsignes.push({ room: r.room ?? '', nom: `${r.last_name} ${r.first_name ?? ''}`.trim(), floor: 'RDC', note });
     });
-    [...erResidents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).forEach(r => {
+    [...erResidents].sort(sortByRoom).forEach(r => {
       const note = (notesByFloor['1ER'] ?? {})[r.id] ?? '';
       if (note.trim()) allConsignes.push({ room: r.room ?? '', nom: `${r.last_name} ${r.first_name ?? ''}`.trim(), floor: '1ER', note });
     });
