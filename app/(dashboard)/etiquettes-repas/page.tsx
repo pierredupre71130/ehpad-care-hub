@@ -509,21 +509,21 @@ export default function EtiquettesRepasPage() {
                       <div className="relative flex-shrink-0">
                         <button
                           type="button"
-                          onClick={e => !readOnly && handleCameraClick(e, r.id)}
-                          title={r.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
+                          onClick={e => isAdmin && handleCameraClick(e, r.id)}
+                          title={isAdmin ? (r.photo_url ? 'Changer la photo' : 'Ajouter une photo') : undefined}
                           className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-all group relative block ${
                             r.photo_url
-                              ? 'border-slate-200 hover:border-blue-400'
-                              : 'border-dashed border-slate-300 hover:border-blue-400 bg-slate-50'
-                          } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                              ? 'border-slate-200' + (isAdmin ? ' hover:border-blue-400' : '')
+                              : 'border-dashed border-slate-300' + (isAdmin ? ' hover:border-blue-400 bg-slate-50' : ' bg-slate-50')
+                          } ${isAdmin ? 'cursor-pointer' : 'cursor-default'}`}
                         >
                           {r.photo_url
                             ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
                             : <div className="w-full h-full flex items-center justify-center">
-                                <Camera className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                <Camera className={`h-3.5 w-3.5 text-slate-400 ${isAdmin ? 'group-hover:text-blue-500' : ''} transition-colors`} />
                               </div>
                           }
-                          {r.photo_url && !readOnly && (
+                          {r.photo_url && isAdmin && (
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
                               <Camera className="h-3 w-3 text-white" />
                             </div>
