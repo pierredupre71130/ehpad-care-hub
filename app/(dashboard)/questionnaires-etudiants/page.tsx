@@ -1469,6 +1469,8 @@ export default function QuestionnairesEtudiantsPage() {
   const readOnly = access === 'read';
   const { profile } = useAuth();
   const isAdminOrIde = profile?.role === 'admin' || profile?.role === 'ide';
+  const isCadre      = profile?.role === 'cadre';
+  const canSeeStats  = isAdminOrIde || isCadre;
 
   const [tab, setTab]         = useState<Tab>('form');
   const [success, setSuccess] = useState(false);
@@ -1528,10 +1530,12 @@ export default function QuestionnairesEtudiantsPage() {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'form', label: 'Formulaire', icon: <ClipboardList className="h-4 w-4" /> },
-    ...(isAdminOrIde ? [
+    ...(canSeeStats ? [
       { id: 'history'    as Tab, label: `Historique (${records.length})`, icon: <Clock className="h-4 w-4" /> },
       { id: 'analyses'   as Tab, label: 'Analyses',                       icon: <BarChart2 className="h-4 w-4" /> },
       { id: 'graphiques' as Tab, label: 'Graphiques',                     icon: <TrendingUp className="h-4 w-4" /> },
+    ] : []),
+    ...(isAdminOrIde ? [
       { id: 'rapport'    as Tab, label: 'Rapport IA ✨',                  icon: <FileText className="h-4 w-4" /> },
     ] : []),
   ];
