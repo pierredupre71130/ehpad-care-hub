@@ -44,6 +44,42 @@ interface ServiceEntry {
 
 type Tab = 'lignes-directes' | 'services' | 'chpcb';
 
+// ── CHPCB Pôles ───────────────────────────────────────────────────────────────
+
+const CHPCB_POLES = [
+  { id: 'all',              label: 'Tous' },
+  { id: 'medico-technique', label: 'Médico-Technique' },
+  { id: 'medecine',         label: 'Médecine' },
+  { id: 'mere-enfant',      label: 'Mère & Enfant' },
+  { id: 'personnes-agees',  label: 'Pers. Âgées' },
+  { id: 'chirurgie',        label: 'Chirurgie' },
+  { id: 'administratif',    label: 'Administratif' },
+  { id: 'logistique',       label: 'Logistique' },
+  { id: 'autres',           label: 'Autres' },
+] as const;
+
+type ChpcbPole = typeof CHPCB_POLES[number]['id'];
+
+function getPole(section: string): ChpcbPole {
+  const s = section.toUpperCase();
+  if (s.includes('BRANCARDIER') || s.includes('IMAGERIE') || s.includes('CONSULTATIONS EXTERNES') ||
+      s.includes('BLOC OPERATOIRE') || s.includes('SURVEILLANCE CONTINUE') || s.includes('BANQUE DE SANG') ||
+      s.includes('PSYCHOLOGUE') || s.includes('PHARMACIE') || s.includes('STERILISATION') ||
+      s.includes('MORTUAIRE') || s.includes('DOULEUR')) return 'medico-technique';
+  if (s.includes('URGENCES') || s.includes('SMUR') || s.includes('COURTE DUREE') ||
+      s.includes('MEDECINE POLYVALENTE') || s.includes('SOINS PALLIATIFS')) return 'medecine';
+  if (s.includes('PLANIFICATION') || s.includes('OBSTETRICAL') || s.includes('ORTHOGENIE') ||
+      s.includes('MATERNITE') || s.includes('PEDIATRIE')) return 'mere-enfant';
+  if (s.includes('GERIATRIQUE') || s.includes('SERVICE SOCIAL')) return 'personnes-agees';
+  if (s.includes('CHIRURGIE') || s.includes('DIETETIQUE') || s.includes('KINESITHERAPIE')) return 'chirurgie';
+  if (s.includes('RESSOURCES HUMAINES') || s.includes('FINANCES') || s.includes('ADMISSION') ||
+      s.includes(' DIM') || s.includes('QUALITE') || s.includes('MEDECINE DU TRAVAIL')) return 'administratif';
+  if (s.includes('ECONOMIQUE') || s.includes('TECHNIQUES') || s.includes('PREVENTION') ||
+      s.includes('BIOMEDICAL') || s.includes('RESTAURATION') || s.includes('LINGERIE') ||
+      s.includes('INFORMATIQUE') || s.includes('ARCHIVES') || s.includes('STANDARD')) return 'logistique';
+  return 'autres';
+}
+
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 
 async function fetchAnnuaire(): Promise<AnnuaireEntry[]> {
@@ -138,6 +174,7 @@ export default function AnnuairePage() {
 
   // Tab 3 state
   const [chpcbSearch,  setChpcbSearch]  = useState('');
+  const [chpcbPole,    setChpcbPole]    = useState<ChpcbPole>('all');
   const [showAddChpcb, setShowAddChpcb] = useState(false);
   const [editChpcb,    setEditChpcb]    = useState<ServiceEntry | null>(null);
   const [deleteChpcb,  setDeleteChpcb]  = useState<ServiceEntry | null>(null);
@@ -181,16 +218,18 @@ export default function AnnuairePage() {
     );
   }, [services]);
 
-  // Sections groupées + filtre recherche (tab 3 CHPCB)
+  // Sections groupées + filtre recherche + filtre pôle (tab 3 CHPCB)
   const chpcbBySection = useMemo(() => {
     const q = chpcbSearch.trim().toLowerCase();
-    const filtered = q
-      ? chpcbEntries.filter(e =>
-          e.label.toLowerCase().includes(q) ||
-          e.phone_number.includes(q) ||
-          e.section.toLowerCase().includes(q)
-        )
-      : chpcbEntries;
+    const filtered = chpcbEntries.filter(e => {
+      if (chpcbPole !== 'all' && getPole(e.section) !== chpcbPole) return false;
+      if (q) return (
+        e.label.toLowerCase().includes(q) ||
+        e.phone_number.includes(q) ||
+        e.section.toLowerCase().includes(q)
+      );
+      return true;
+    });
     const map = new Map<string, ServiceEntry[]>();
     for (const s of filtered) {
       if (!map.has(s.section)) map.set(s.section, []);
@@ -199,7 +238,7 @@ export default function AnnuairePage() {
     return [...map.entries()].sort((a, b) =>
       Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
     );
-  }, [chpcbEntries, chpcbSearch]);
+  }, [chpcbEntries, chpcbSearch, chpcbPole]);
 
   // ── Filtrage tab 1 ────────────────────────────────────────────────────────
 
@@ -520,6 +559,21 @@ export default function AnnuairePage() {
         {/* ══ TAB 3 : CHPCB ══ */}
         {activeTab === 'chpcb' && (
           <>
+            {/* Sous-onglets pôles */}
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-none">
+              {CHPCB_POLES.map(pole => (
+                <button key={pole.id} onClick={() => setChpcbPole(pole.id)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors shrink-0',
+                    chpcbPole === pole.id
+                      ? 'bg-[#1a3560] text-white shadow-sm'
+                      : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                  )}>
+                  {pole.label}
+                </button>
+              ))}
+            </div>
+
             {/* Barre de recherche */}
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
