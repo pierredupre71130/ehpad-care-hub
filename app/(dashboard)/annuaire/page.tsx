@@ -38,13 +38,29 @@ interface AnnuaireEntry {
 
 async function fetchAnnuaire(): Promise<AnnuaireEntry[]> {
   const sb = createClient();
-  const { data, error } = await sb
+
+  // 1. Récupérer toutes les entrées annuaire
+  const { data: annRows, error: err1 } = await sb
     .from('annuaire_residents')
-    .select('id, resident_id, phone_number, ligne_active, created_at, residents(id,title,first_name,last_name,room,floor,archived)');
-  if (error) throw error;
-  return (data ?? [])
-    .filter(e => e.residents && !(e.residents as unknown as Resident).archived)
-    .map(e => ({ ...e, resident: e.residents as unknown as Resident })) as AnnuaireEntry[];
+    .select('id, resident_id, phone_number, ligne_active, created_at');
+  if (err1) throw err1;
+  if (!annRows || annRows.length === 0) return [];
+
+  // 2. Récupérer les résidents correspondants (non archivés)
+  const ids = annRows.map(r => r.resident_id).filter(Boolean);
+  const { data: resRows, error: err2 } = await sb
+    .from('residents')
+    .select('id,title,first_name,last_name,room,floor,archived')
+    .in('id', ids)
+    .eq('archived', false);
+  if (err2) throw err2;
+
+  const resMap = new Map((resRows ?? []).map(r => [r.id, r as Resident]));
+
+  // 3. Joindre — ignorer les entrées sans résident actif
+  return annRows
+    .filter(e => resMap.has(e.resident_id))
+    .map(e => ({ ...e, resident: resMap.get(e.resident_id)! })) as AnnuaireEntry[];
 }
 
 async function fetchResidents(): Promise<Resident[]> {
