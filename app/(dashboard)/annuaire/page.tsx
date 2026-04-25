@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookUser, ChevronRight, Phone, PhoneOff, Plus, Pencil, Trash2,
-  X, Check, Search, Wifi, WifiOff,
+  X, Check, Search, Wifi, WifiOff, Building2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -34,19 +34,26 @@ interface AnnuaireEntry {
   resident: Resident;
 }
 
+interface ServiceEntry {
+  id: string;
+  section: string;
+  label: string;
+  phone_number: string;
+  sort_order: number;
+}
+
+type Tab = 'lignes-directes' | 'services';
+
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 
 async function fetchAnnuaire(): Promise<AnnuaireEntry[]> {
   const sb = createClient();
-
-  // 1. Récupérer toutes les entrées annuaire
   const { data: annRows, error: err1 } = await sb
     .from('annuaire_residents')
     .select('id, resident_id, phone_number, ligne_active, created_at');
   if (err1) throw err1;
   if (!annRows || annRows.length === 0) return [];
 
-  // 2. Récupérer les résidents correspondants (non archivés)
   const ids = annRows.map(r => r.resident_id).filter(Boolean);
   const { data: resRows, error: err2 } = await sb
     .from('residents')
@@ -56,8 +63,6 @@ async function fetchAnnuaire(): Promise<AnnuaireEntry[]> {
   if (err2) throw err2;
 
   const resMap = new Map((resRows ?? []).map(r => [r.id, r as Resident]));
-
-  // 3. Joindre — ignorer les entrées sans résident actif
   return annRows
     .filter(e => resMap.has(e.resident_id))
     .map(e => ({ ...e, resident: resMap.get(e.resident_id)! })) as AnnuaireEntry[];
@@ -74,6 +79,16 @@ async function fetchResidents(): Promise<Resident[]> {
   return (data ?? []) as Resident[];
 }
 
+async function fetchServices(): Promise<ServiceEntry[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('annuaire_services')
+    .select('id, section, label, phone_number, sort_order')
+    .order('sort_order');
+  if (error) throw error;
+  return (data ?? []) as ServiceEntry[];
+}
+
 function roomNum(r?: string) {
   return parseInt((r ?? '').replace(/\D/g, '') || '0');
 }
@@ -81,7 +96,7 @@ function roomNum(r?: string) {
 function sortEntries(entries: AnnuaireEntry[]) {
   return [...entries].sort((a, b) => {
     const fa = a.resident.floor ?? '', fb = b.resident.floor ?? '';
-    if (fa !== fb) return fa < fb ? -1 : 1; // RDC avant 1ER
+    if (fa !== fb) return fa < fb ? -1 : 1;
     const ra = roomNum(a.resident.room), rb = roomNum(b.resident.room);
     if (ra !== rb) return ra - rb;
     return (a.resident.last_name ?? '').localeCompare(b.resident.last_name ?? '');
@@ -93,21 +108,27 @@ function sortEntries(entries: AnnuaireEntry[]) {
 export default function AnnuairePage() {
   const qc = useQueryClient();
   const { profile } = useAuth();
-  const access = useModuleAccess('annuaire');
+  useModuleAccess('annuaire');
   const isAdmin = profile?.role === 'admin';
 
+  const [activeTab, setActiveTab] = useState<Tab>('lignes-directes');
+
+  // Tab 1 state
   const [filterEtage, setFilterEtage] = useState<'all' | 'RDC' | '1ER'>('all');
   const [filterLigne, setFilterLigne] = useState<'all' | 'active' | 'inactive'>('all');
   const [search, setSearch]           = useState('');
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [editEntry,    setEditEntry]    = useState<AnnuaireEntry | null>(null);
+  const [deleteEntry,  setDeleteEntry]  = useState<AnnuaireEntry | null>(null);
 
-  // Modals
-  const [showAdd,  setShowAdd]   = useState(false);
-  const [editEntry, setEditEntry] = useState<AnnuaireEntry | null>(null);
-  const [deleteEntry, setDeleteEntry] = useState<AnnuaireEntry | null>(null);
+  // Tab 2 state
+  const [showAddSvc,   setShowAddSvc]   = useState(false);
+  const [editSvc,      setEditSvc]      = useState<ServiceEntry | null>(null);
+  const [deleteSvc,    setDeleteSvc]    = useState<ServiceEntry | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
-  const { data: entries = [], isLoading } = useQuery({
+  const { data: entries = [], isLoading: loadingEntries } = useQuery({
     queryKey: ['annuaire_residents'],
     queryFn: fetchAnnuaire,
   });
@@ -118,11 +139,28 @@ export default function AnnuairePage() {
     enabled: isAdmin,
   });
 
-  // Résidents pas encore dans l'annuaire
+  const { data: services = [], isLoading: loadingServices } = useQuery({
+    queryKey: ['annuaire_services'],
+    queryFn: fetchServices,
+  });
+
   const residentsInAnnuaire = new Set(entries.map(e => e.resident_id));
   const availableResidents  = allResidents.filter(r => !residentsInAnnuaire.has(r.id));
 
-  // ── Filtrage ──────────────────────────────────────────────────────────────
+  // Sections groupées (tab 2)
+  const servicesBySection = useMemo(() => {
+    const map = new Map<string, ServiceEntry[]>();
+    for (const s of services) {
+      if (!map.has(s.section)) map.set(s.section, []);
+      map.get(s.section)!.push(s);
+    }
+    // Trier les sections par le sort_order minimum de chacune
+    return [...map.entries()].sort((a, b) =>
+      Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
+    );
+  }, [services]);
+
+  // ── Filtrage tab 1 ────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -143,9 +181,9 @@ export default function AnnuairePage() {
     return e.ligne_active;
   }).length;
 
-  // ── Mutations ─────────────────────────────────────────────────────────────
+  // ── Mutations tab 1 ───────────────────────────────────────────────────────
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['annuaire_residents'] });
+  const invalidate1 = () => qc.invalidateQueries({ queryKey: ['annuaire_residents'] });
 
   const toggleMut = useMutation({
     mutationFn: async ({ id, current }: { id: string; current: boolean }) => {
@@ -155,7 +193,7 @@ export default function AnnuairePage() {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { invalidate(); toast.success('Ligne mise à jour'); },
+    onSuccess: () => { invalidate1(); toast.success('Ligne mise à jour'); },
     onError:   () => toast.error('Erreur de mise à jour'),
   });
 
@@ -165,11 +203,27 @@ export default function AnnuairePage() {
       const { error } = await sb.from('annuaire_residents').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => { invalidate(); setDeleteEntry(null); toast.success('Entrée supprimée'); },
+    onSuccess: () => { invalidate1(); setDeleteEntry(null); toast.success('Entrée supprimée'); },
     onError:   () => toast.error('Erreur de suppression'),
   });
 
-  if (isLoading) return (
+  // ── Mutations tab 2 ───────────────────────────────────────────────────────
+
+  const invalidate2 = () => qc.invalidateQueries({ queryKey: ['annuaire_services'] });
+
+  const deleteSvcMut = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_services').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { invalidate2(); setDeleteSvc(null); toast.success('Entrée supprimée'); },
+    onError:   () => toast.error('Erreur de suppression'),
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loadingEntries || loadingServices) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1a3560]" />
     </div>
@@ -193,11 +247,11 @@ export default function AnnuairePage() {
             </div>
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-white">Annuaire</h1>
-              <p className="text-white/70 text-sm">Numéros internes des résidents</p>
+              <p className="text-white/70 text-sm">Numéros internes</p>
             </div>
             {isAdmin && (
               <button
-                onClick={() => setShowAdd(true)}
+                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : setShowAddSvc(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <Plus className="h-4 w-4" /> Ajouter
@@ -208,10 +262,28 @@ export default function AnnuairePage() {
           {/* ── Onglets ── */}
           <div className="flex gap-1 mt-5 border-b border-white/20">
             <button
-              className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 border-white text-white transition-colors"
+              onClick={() => setActiveTab('lignes-directes')}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+                activeTab === 'lignes-directes'
+                  ? 'border-white text-white'
+                  : 'border-transparent text-white/50 hover:text-white/80'
+              )}
             >
               <Phone className="h-3.5 w-3.5" />
               Lignes Directes Chambres
+            </button>
+            <button
+              onClick={() => setActiveTab('services')}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+                activeTab === 'services'
+                  ? 'border-white text-white'
+                  : 'border-transparent text-white/50 hover:text-white/80'
+              )}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Numéros Internes
             </button>
           </div>
         </div>
@@ -220,195 +292,254 @@ export default function AnnuairePage() {
       {/* ── Corps ── */}
       <div className="max-w-5xl mx-auto px-4 py-6 pb-20">
 
-        {/* Filtres + recherche + stats */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          {/* Filtres */}
-          <div className="flex flex-wrap gap-2">
-            <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
-              {([['all','Tous'],['RDC','RDC'],['1ER','1er étage']] as const).map(([v,l]) => (
-                <button key={v} onClick={() => setFilterEtage(v)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
-                    filterEtage === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                  )}>{l}</button>
-              ))}
+        {/* ══ TAB 1 : Lignes Directes Chambres ══ */}
+        {activeTab === 'lignes-directes' && (
+          <>
+            {/* Filtres + recherche + stats */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="flex flex-wrap gap-2">
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
+                  {([['all','Tous'],['RDC','RDC'],['1ER','1er étage']] as const).map(([v,l]) => (
+                    <button key={v} onClick={() => setFilterEtage(v)}
+                      className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                        filterEtage === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                      )}>{l}</button>
+                  ))}
+                </div>
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
+                  {([['all','Toutes'],['active','Activée'],['inactive','Non activée']] as const).map(([v,l]) => (
+                    <button key={v} onClick={() => setFilterLigne(v)}
+                      className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                        filterLigne === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                      )}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-1 gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher un résident ou un numéro…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#0e6e80] shadow-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-600 bg-white rounded-xl px-4 py-2.5 border border-slate-200 shadow-sm whitespace-nowrap">
+                  <Wifi className="h-4 w-4 text-green-500" />
+                  <span className="font-semibold">{nbActive}</span>
+                  <span className="text-slate-300 mx-1">·</span>
+                  <span className="text-slate-400">{filtered.length} affiché{filtered.length > 1 ? 's' : ''}</span>
+                </div>
+              </div>
             </div>
-            <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
-              {([['all','Toutes'],['active','Activée'],['inactive','Non activée']] as const).map(([v,l]) => (
-                <button key={v} onClick={() => setFilterLigne(v)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
-                    filterLigne === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                  )}>{l}</button>
-              ))}
-            </div>
-          </div>
 
-          {/* Recherche + stats */}
-          <div className="flex flex-1 gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Rechercher un résident ou un numéro…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#0e6e80] shadow-sm"
-              />
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-white rounded-xl px-4 py-2.5 border border-slate-200 shadow-sm whitespace-nowrap">
-              <Wifi className="h-4 w-4 text-green-500" />
-              <span className="font-semibold">{nbActive}</span>
-              <span className="text-slate-300 mx-1">·</span>
-              <span className="text-slate-400">{filtered.length} affiché{filtered.length > 1 ? 's' : ''}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Liste */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="py-16 text-center text-slate-400">
-              <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Aucun résultat</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {filtered.map(e => {
-                const r = e.resident;
-                const name = [r.title, r.last_name?.toUpperCase(), r.first_name].filter(Boolean).join(' ');
-                return (
-                  <div key={e.id}
-                    className={cn(
-                      'flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors',
-                      e.ligne_active && 'bg-green-50/40 hover:bg-green-50/60'
-                    )}
-                  >
-                    {/* Étage badge */}
-                    <span className={cn(
-                      'text-[10px] font-bold px-2 py-1 rounded-lg flex-shrink-0 w-10 text-center',
-                      r.floor === 'RDC' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
-                    )}>{r.floor}</span>
-
-                    {/* Chambre */}
-                    <span className="text-xs font-mono text-slate-400 w-12 shrink-0">Ch.{r.room}</span>
-
-                    {/* Nom */}
-                    <span className="font-semibold text-slate-800 flex-1 truncate text-sm">{name}</span>
-
-                    {/* Numéro */}
-                    <span className={cn(
-                      'flex items-center gap-1.5 font-mono font-bold text-base px-3 py-1 rounded-xl shrink-0',
-                      e.ligne_active
-                        ? 'text-green-700 bg-green-100'
-                        : 'text-slate-500 bg-slate-100'
-                    )}>
-                      <Phone className="h-3.5 w-3.5" />
-                      {e.phone_number}
-                    </span>
-
-                    {/* Badge active */}
-                    <span className={cn(
-                      'text-[10px] font-bold px-2 py-1 rounded-full shrink-0 hidden sm:inline-flex items-center gap-1',
-                      e.ligne_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'
-                    )}>
-                      {e.ligne_active ? <><Wifi className="h-2.5 w-2.5" /> Activée</> : <><WifiOff className="h-2.5 w-2.5" /> Non activée</>}
-                    </span>
-
-                    {/* Actions admin */}
-                    {isAdmin && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => toggleMut.mutate({ id: e.id, current: e.ligne_active })}
-                          title={e.ligne_active ? 'Désactiver la ligne' : 'Activer la ligne'}
-                          className={cn(
-                            'p-1.5 rounded-lg transition-colors',
-                            e.ligne_active
-                              ? 'text-green-600 hover:bg-green-100'
-                              : 'text-slate-400 hover:bg-slate-100'
-                          )}
-                        >
-                          {e.ligne_active ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-                        </button>
-                        <button
-                          onClick={() => setEditEntry(e)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Modifier le numéro"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteEntry(e)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+            {/* Liste */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              {filtered.length === 0 ? (
+                <div className="py-16 text-center text-slate-400">
+                  <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Aucun résultat</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filtered.map(e => {
+                    const r = e.resident;
+                    const name = [r.title, r.last_name?.toUpperCase(), r.first_name].filter(Boolean).join(' ');
+                    return (
+                      <div key={e.id}
+                        className={cn(
+                          'flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors',
+                          e.ligne_active && 'bg-green-50/40 hover:bg-green-50/60'
+                        )}
+                      >
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-1 rounded-lg flex-shrink-0 w-10 text-center',
+                          r.floor === 'RDC' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
+                        )}>{r.floor}</span>
+                        <span className="text-xs font-mono text-slate-400 w-12 shrink-0">Ch.{r.room}</span>
+                        <span className="font-semibold text-slate-800 flex-1 truncate text-sm">{name}</span>
+                        <span className={cn(
+                          'flex items-center gap-1.5 font-mono font-bold text-base px-3 py-1 rounded-xl shrink-0',
+                          e.ligne_active ? 'text-green-700 bg-green-100' : 'text-slate-500 bg-slate-100'
+                        )}>
+                          <Phone className="h-3.5 w-3.5" />
+                          {e.phone_number}
+                        </span>
+                        <span className={cn(
+                          'text-[10px] font-bold px-2 py-1 rounded-full shrink-0 hidden sm:inline-flex items-center gap-1',
+                          e.ligne_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'
+                        )}>
+                          {e.ligne_active
+                            ? <><Wifi className="h-2.5 w-2.5" /> Activée</>
+                            : <><WifiOff className="h-2.5 w-2.5" /> Non activée</>}
+                        </span>
+                        {isAdmin && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => toggleMut.mutate({ id: e.id, current: e.ligne_active })}
+                              title={e.ligne_active ? 'Désactiver' : 'Activer'}
+                              className={cn('p-1.5 rounded-lg transition-colors',
+                                e.ligne_active ? 'text-green-600 hover:bg-green-100' : 'text-slate-400 hover:bg-slate-100'
+                              )}
+                            >
+                              {e.ligne_active ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                            </button>
+                            <button onClick={() => setEditEntry(e)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => setDeleteEntry(e)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {/* ══ TAB 2 : Numéros Internes ══ */}
+        {activeTab === 'services' && (
+          <div className="space-y-4">
+            {servicesBySection.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 text-center text-slate-400">
+                <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Aucun numéro interne</p>
+              </div>
+            ) : servicesBySection.map(([section, items]) => (
+              <div key={section} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                {/* En-tête de section */}
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{section}</span>
+                </div>
+                {/* Entrées */}
+                <div className="divide-y divide-slate-100">
+                  {items.map(svc => (
+                    <div key={svc.id}
+                      className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
+                      <span className="font-medium text-slate-800 flex-1 text-sm">{svc.label}</span>
+                      <span className="flex items-center gap-1.5 font-mono font-bold text-base px-3 py-1 rounded-xl bg-blue-50 text-blue-700 shrink-0">
+                        <Phone className="h-3.5 w-3.5" />
+                        {svc.phone_number}
+                      </span>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => setEditSvc(svc)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Modifier">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => setDeleteSvc(svc)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* ── Modal Ajouter ── */}
+      {/* ── Modals Tab 1 ── */}
       {showAdd && (
-        <AddModal
+        <AddResidentModal
           residents={availableResidents}
           onClose={() => setShowAdd(false)}
-          onSaved={() => { invalidate(); setShowAdd(false); }}
+          onSaved={() => { invalidate1(); setShowAdd(false); }}
         />
       )}
-
-      {/* ── Modal Modifier ── */}
       {editEntry && (
-        <EditModal
+        <EditResidentModal
           entry={editEntry}
           onClose={() => setEditEntry(null)}
-          onSaved={() => { invalidate(); setEditEntry(null); }}
+          onSaved={() => { invalidate1(); setEditEntry(null); }}
+        />
+      )}
+      {deleteEntry && (
+        <ConfirmModal
+          title="Supprimer cette entrée ?"
+          description={`${deleteEntry.resident.last_name?.toUpperCase()} ${deleteEntry.resident.first_name} — ${deleteEntry.phone_number}`}
+          onCancel={() => setDeleteEntry(null)}
+          onConfirm={() => deleteMut.mutate(deleteEntry.id)}
         />
       )}
 
-      {/* ── Modal Supprimer ── */}
-      {deleteEntry && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-          onClick={() => setDeleteEntry(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
-            onClick={e => e.stopPropagation()}>
-            <p className="font-bold text-slate-800 text-base mb-2">Supprimer cette entrée ?</p>
-            <p className="text-sm text-slate-500 mb-6">
-              {deleteEntry.resident.last_name?.toUpperCase()} {deleteEntry.resident.first_name} — {deleteEntry.phone_number}
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteEntry(null)}
-                className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
-                Annuler
-              </button>
-              <button onClick={() => deleteMut.mutate(deleteEntry.id)}
-                className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-colors">
-                Supprimer
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ── Modals Tab 2 ── */}
+      {showAddSvc && (
+        <AddServiceModal
+          existingSections={servicesBySection.map(([s]) => s)}
+          maxSortOrder={services.length > 0 ? Math.max(...services.map(s => s.sort_order)) : 0}
+          onClose={() => setShowAddSvc(false)}
+          onSaved={() => { invalidate2(); setShowAddSvc(false); }}
+        />
+      )}
+      {editSvc && (
+        <EditServiceModal
+          entry={editSvc}
+          existingSections={servicesBySection.map(([s]) => s)}
+          onClose={() => setEditSvc(null)}
+          onSaved={() => { invalidate2(); setEditSvc(null); }}
+        />
+      )}
+      {deleteSvc && (
+        <ConfirmModal
+          title="Supprimer cette entrée ?"
+          description={`${deleteSvc.label} — ${deleteSvc.phone_number}`}
+          onCancel={() => setDeleteSvc(null)}
+          onConfirm={() => deleteSvcMut.mutate(deleteSvc.id)}
+        />
       )}
     </div>
   );
 }
 
-// ── Modal Ajouter ─────────────────────────────────────────────────────────────
+// ── Modal Confirm générique ───────────────────────────────────────────────────
 
-function AddModal({ residents, onClose, onSaved }: {
-  residents: Resident[];
-  onClose: () => void;
-  onSaved: () => void;
+function ConfirmModal({ title, description, onCancel, onConfirm }: {
+  title: string; description: string; onCancel: () => void; onConfirm: () => void;
 }) {
-  const [search,      setSearch]      = useState('');
-  const [selectedId,  setSelectedId]  = useState('');
-  const [phone,       setPhone]       = useState('');
-  const [active,      setActive]      = useState(false);
-  const [saving,      setSaving]      = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <p className="font-bold text-slate-800 text-base mb-2">{title}</p>
+        <p className="text-sm text-slate-500 mb-6">{description}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
+            Annuler
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-colors">
+            Supprimer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Ajouter résident ────────────────────────────────────────────────────
+
+function AddResidentModal({ residents, onClose, onSaved }: {
+  residents: Resident[]; onClose: () => void; onSaved: () => void;
+}) {
+  const [search,     setSearch]     = useState('');
+  const [selectedId, setSelectedId] = useState('');
+  const [phone,      setPhone]      = useState('');
+  const [active,     setActive]     = useState(false);
+  const [saving,     setSaving]     = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -427,9 +558,7 @@ function AddModal({ residents, onClose, onSaved }: {
     try {
       const sb = createClient();
       const { error } = await sb.from('annuaire_residents').insert({
-        resident_id: selectedId,
-        phone_number: phone.trim(),
-        ligne_active: active,
+        resident_id: selectedId, phone_number: phone.trim(), ligne_active: active,
       });
       if (error) throw error;
       toast.success('Résident ajouté à l\'annuaire');
@@ -439,99 +568,58 @@ function AddModal({ residents, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <p className="font-bold text-slate-800">Ajouter un résident</p>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
-            <X className="h-4 w-4 text-slate-500" />
-          </button>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="h-4 w-4 text-slate-500" /></button>
         </div>
-
         <div className="overflow-y-auto p-5 space-y-4">
-          {/* Recherche résident */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Résident
-            </label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Résident</label>
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Rechercher par nom, chambre…"
-                value={search}
+              <input type="text" placeholder="Rechercher par nom, chambre…" value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]"
-              />
+                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]" />
             </div>
             <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
-              {filtered.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4">Aucun résident disponible</p>
-              ) : filtered.map(r => {
-                const name = [r.title, r.last_name?.toUpperCase(), r.first_name].filter(Boolean).join(' ');
-                return (
-                  <button key={r.id} onClick={() => setSelectedId(r.id)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors',
-                      selectedId === r.id ? 'bg-[#0e6e80]/10 text-[#0e6e80]' : 'hover:bg-slate-50 text-slate-700'
-                    )}
-                  >
-                    <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
-                      r.floor === 'RDC' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
-                    )}>{r.floor}</span>
-                    <span className="text-xs text-slate-400 font-mono w-8 shrink-0">Ch.{r.room}</span>
-                    <span className="font-medium flex-1 truncate">{name}</span>
-                    {selectedId === r.id && <Check className="h-4 w-4 shrink-0 text-[#0e6e80]" />}
-                  </button>
-                );
-              })}
+              {filtered.length === 0
+                ? <p className="text-sm text-slate-400 text-center py-4">Aucun résident disponible</p>
+                : filtered.map(r => {
+                  const name = [r.title, r.last_name?.toUpperCase(), r.first_name].filter(Boolean).join(' ');
+                  return (
+                    <button key={r.id} onClick={() => setSelectedId(r.id)}
+                      className={cn('w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors',
+                        selectedId === r.id ? 'bg-[#0e6e80]/10 text-[#0e6e80]' : 'hover:bg-slate-50 text-slate-700')}>
+                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0',
+                        r.floor === 'RDC' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700')}>{r.floor}</span>
+                      <span className="text-xs text-slate-400 font-mono w-8 shrink-0">Ch.{r.room}</span>
+                      <span className="font-medium flex-1 truncate">{name}</span>
+                      {selectedId === r.id && <Check className="h-4 w-4 shrink-0 text-[#0e6e80]" />}
+                    </button>
+                  );
+                })}
             </div>
           </div>
-
-          {/* Numéro */}
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Numéro interne
-            </label>
-            <input
-              type="text"
-              placeholder="ex : 85 96"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono"
-            />
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Numéro interne</label>
+            <input type="text" placeholder="ex : 85 96" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono" />
           </div>
-
-          {/* Ligne active */}
-          <button
-            onClick={() => setActive(v => !v)}
-            className={cn(
-              'w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-sm font-semibold',
-              active
-                ? 'bg-green-50 border-green-300 text-green-700'
-                : 'bg-slate-50 border-slate-200 text-slate-500'
-            )}
-          >
+          <button onClick={() => setActive(v => !v)}
+            className={cn('w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-sm font-semibold',
+              active ? 'bg-green-50 border-green-300 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500')}>
             {active ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
             {active ? 'Ligne activée' : 'Ligne non activée'}
           </button>
         </div>
-
         <div className="px-5 pb-5 flex gap-3">
           <button onClick={onClose}
-            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
-            Annuler
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!selectedId || !phone.trim() || saving}
-            className="flex-1 py-2.5 bg-[#1a3560] hover:bg-[#0e6e80] disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors"
-          >
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
+          <button onClick={handleSave} disabled={!selectedId || !phone.trim() || saving}
+            className="flex-1 py-2.5 bg-[#1a3560] hover:bg-[#0e6e80] disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors">
             {saving ? 'Ajout…' : 'Ajouter'}
           </button>
         </div>
@@ -540,17 +628,14 @@ function AddModal({ residents, onClose, onSaved }: {
   );
 }
 
-// ── Modal Modifier ────────────────────────────────────────────────────────────
+// ── Modal Modifier résident ───────────────────────────────────────────────────
 
-function EditModal({ entry, onClose, onSaved }: {
-  entry: AnnuaireEntry;
-  onClose: () => void;
-  onSaved: () => void;
+function EditResidentModal({ entry, onClose, onSaved }: {
+  entry: AnnuaireEntry; onClose: () => void; onSaved: () => void;
 }) {
   const [phone,  setPhone]  = useState(entry.phone_number);
   const [active, setActive] = useState(entry.ligne_active);
   const [saving, setSaving] = useState(false);
-
   const r = entry.resident;
   const name = [r.title, r.last_name?.toUpperCase(), r.first_name].filter(Boolean).join(' ');
 
@@ -570,50 +655,187 @@ function EditModal({ entry, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"
-        onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <p className="font-bold text-slate-800">Modifier</p>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg">
-            <X className="h-4 w-4 text-slate-500" />
-          </button>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="h-4 w-4 text-slate-500" /></button>
         </div>
-
-        <p className="text-sm font-semibold text-slate-700 mb-4">
-          {name} — Ch.{r.room}
-        </p>
-
+        <p className="text-sm font-semibold text-slate-700 mb-4">{name} — Ch.{r.room}</p>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Numéro interne</label>
-            <input
-              type="text"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono"
-            />
+            <input type="text" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono" />
           </div>
-
-          <button
-            onClick={() => setActive(v => !v)}
-            className={cn(
-              'w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-sm font-semibold',
-              active ? 'bg-green-50 border-green-300 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500'
-            )}
-          >
+          <button onClick={() => setActive(v => !v)}
+            className={cn('w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-sm font-semibold',
+              active ? 'bg-green-50 border-green-300 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-500')}>
             {active ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
             {active ? 'Ligne activée' : 'Ligne non activée'}
           </button>
         </div>
-
         <div className="flex gap-3 mt-5">
           <button onClick={onClose}
-            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
-            Annuler
-          </button>
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
           <button onClick={handleSave} disabled={!phone.trim() || saving}
+            className="flex-1 py-2.5 bg-[#1a3560] hover:bg-[#0e6e80] disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors">
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Ajouter service ─────────────────────────────────────────────────────
+
+function AddServiceModal({ existingSections, maxSortOrder, onClose, onSaved }: {
+  existingSections: string[]; maxSortOrder: number; onClose: () => void; onSaved: () => void;
+}) {
+  const [section, setSection] = useState(existingSections[0] ?? '');
+  const [newSection, setNewSection] = useState('');
+  const [useNewSection, setUseNewSection] = useState(false);
+  const [label, setLabel] = useState('');
+  const [phone, setPhone] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const finalSection = useNewSection ? newSection.trim() : section;
+
+  const handleSave = async () => {
+    if (!finalSection || !label.trim() || !phone.trim()) return;
+    setSaving(true);
+    try {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_services').insert({
+        section: finalSection,
+        label: label.trim(),
+        phone_number: phone.trim(),
+        sort_order: maxSortOrder + 10,
+      });
+      if (error) throw error;
+      toast.success('Entrée ajoutée');
+      onSaved();
+    } catch { toast.error('Erreur lors de l\'ajout'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <p className="font-bold text-slate-800">Ajouter un numéro interne</p>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="h-4 w-4 text-slate-500" /></button>
+        </div>
+        <div className="space-y-4">
+          {/* Section */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Section</label>
+            {!useNewSection ? (
+              <div className="flex gap-2">
+                <select value={section} onChange={e => setSection(e.target.value)}
+                  className="flex-1 px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]">
+                  {existingSections.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={() => setUseNewSection(true)}
+                  className="px-3 py-2.5 text-xs font-semibold text-[#0e6e80] border border-[#0e6e80]/30 rounded-xl hover:bg-[#0e6e80]/10 transition-colors whitespace-nowrap">
+                  + Nouvelle
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input type="text" placeholder="Nom de la section" value={newSection}
+                  onChange={e => setNewSection(e.target.value)}
+                  className="flex-1 px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]" />
+                <button onClick={() => setUseNewSection(false)}
+                  className="px-3 py-2.5 text-xs font-semibold text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                  Existante
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Label */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Intitulé</label>
+            <input type="text" placeholder="ex : Infirmière" value={label} onChange={e => setLabel(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]" />
+          </div>
+          {/* Numéro */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Numéro</label>
+            <input type="text" placeholder="ex : 85 53" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono" />
+          </div>
+        </div>
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
+          <button onClick={handleSave} disabled={!finalSection || !label.trim() || !phone.trim() || saving}
+            className="flex-1 py-2.5 bg-[#1a3560] hover:bg-[#0e6e80] disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors">
+            {saving ? 'Ajout…' : 'Ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Modifier service ────────────────────────────────────────────────────
+
+function EditServiceModal({ entry, existingSections, onClose, onSaved }: {
+  entry: ServiceEntry; existingSections: string[]; onClose: () => void; onSaved: () => void;
+}) {
+  const [section, setSection] = useState(entry.section);
+  const [label,   setLabel]   = useState(entry.label);
+  const [phone,   setPhone]   = useState(entry.phone_number);
+  const [saving,  setSaving]  = useState(false);
+
+  const handleSave = async () => {
+    if (!section.trim() || !label.trim() || !phone.trim()) return;
+    setSaving(true);
+    try {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_services')
+        .update({ section: section.trim(), label: label.trim(), phone_number: phone.trim(), updated_at: new Date().toISOString() })
+        .eq('id', entry.id);
+      if (error) throw error;
+      toast.success('Mis à jour');
+      onSaved();
+    } catch { toast.error('Erreur de mise à jour'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <p className="font-bold text-slate-800">Modifier</p>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="h-4 w-4 text-slate-500" /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Section</label>
+            <select value={section} onChange={e => setSection(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]">
+              {existingSections.map(s => <option key={s} value={s}>{s}</option>)}
+              {!existingSections.includes(section) && <option value={section}>{section}</option>}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Intitulé</label>
+            <input type="text" value={label} onChange={e => setLabel(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80]" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Numéro</label>
+            <input type="text" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-[#0e6e80] font-mono" />
+          </div>
+        </div>
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
+          <button onClick={handleSave} disabled={!section.trim() || !label.trim() || !phone.trim() || saving}
             className="flex-1 py-2.5 bg-[#1a3560] hover:bg-[#0e6e80] disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors">
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
