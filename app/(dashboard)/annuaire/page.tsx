@@ -52,7 +52,7 @@ async function fetchAnnuaire(): Promise<AnnuaireEntry[]> {
     .from('residents')
     .select('id,title,first_name,last_name,room,floor,archived')
     .in('id', ids)
-    .eq('archived', false);
+    .neq('archived', true);
   if (err2) throw err2;
 
   const resMap = new Map((resRows ?? []).map(r => [r.id, r as Resident]));
@@ -68,7 +68,7 @@ async function fetchResidents(): Promise<Resident[]> {
   const { data, error } = await sb
     .from('residents')
     .select('id,title,first_name,last_name,room,floor,archived')
-    .eq('archived', false)
+    .neq('archived', true)
     .order('last_name');
   if (error) throw error;
   return (data ?? []) as Resident[];
