@@ -49,6 +49,14 @@ interface PoidsMesure {
 interface ExamCalibration {
   id: string; exam_name: string; x: number; y: number;
 }
+interface DoctorConfig { name: string; color: string; }
+
+const DEFAULT_DOCTORS: DoctorConfig[] = [
+  { name: 'Dr Carrat',   color: '#ef4444' },
+  { name: 'Dr Benazet',  color: '#f9a8d4' },
+  { name: 'Dr Barreau',  color: '#22c55e' },
+  { name: 'Dr Sahraoui', color: '#cbd5e1' },
+];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -473,15 +481,18 @@ function CellEditorModal({ resident, mois, annee, existing, refs, specials, onSa
 
 // ─── Planning Grid ─────────────────────────────────────────────────────────────
 
-function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorChange, onCellSave, onCellDelete, onMonthClick }: {
+function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor, onFloorChange, onCellSave, onCellDelete, onMonthClick }: {
   residents: Resident[]; cells: PlanningBilanCell[];
   refs: BilanReferentiel[]; specials: BilanSpecial[];
+  doctors: DoctorConfig[];
   annee: number; floor: 'RDC' | '1ER';
   onFloorChange: (f: 'RDC' | '1ER') => void;
   onCellSave: (data: Omit<PlanningBilanCell, 'id'>, existingId?: string) => void;
   onCellDelete: (id: string) => void;
   onMonthClick: (mois: number) => void;
 }) {
+  const doctorColor = (name: string | null | undefined): string | null =>
+    doctors.find(d => d.name === name)?.color ?? null;
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ resident: Resident; mois: number; cellId: string | null } | null>(null);
 
@@ -526,7 +537,9 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
         const labels = monthCells.map(c => `<div style="font-size:9px;font-weight:600;">${cellLabel(c)}</div>`).join('');
         return `<td style="padding:3px;text-align:center;background:${bg};${isCur ? 'border-left:2px solid #3b82f6;border-right:2px solid #3b82f6;' : 'border-right:1px solid #e2e8f0;'}border-bottom:1px solid #e2e8f0;">${labels}</td>`;
       }).join('');
-      return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:4px 6px;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;"><span style="color:#94a3b8;margin-right:4px;">${r.room}</span>${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>${cellsHtml}</tr>`;
+      const dColor = doctorColor(r.medecin);
+      const pill = dColor ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dColor};border:1px solid #cbd5e1;margin-right:4px;vertical-align:middle;"></span>` : '';
+      return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:4px 6px;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;"><span style="color:#94a3b8;margin-right:4px;">${r.room}</span>${pill}${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>${cellsHtml}</tr>`;
     }).join('');
     const legend = `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:9px;align-items:center;"><span style="font-weight:600;color:#475569;">Légende :</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#dcfce7;border:1px solid #86efac;border-radius:2px;"></span> B3 Trimestriel</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#dbeafe;border:1px solid #93c5fd;border-radius:2px;"></span> B6 Semestriel</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#ffedd5;border:1px solid #fdba74;border-radius:2px;"></span> BC Complet</span></div>`;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planning bilans — ${floor} ${annee}</title><style>@page{size:A4 landscape;margin:8mm;}*{box-sizing:border-box;margin:0;padding:0;}body{font-family:system-ui,sans-serif;}table{width:100%;border-collapse:collapse;}h1{font-size:12px;font-weight:700;margin-bottom:6px;color:#1e293b;}</style></head><body><h1>Planning annuel des bilans sanguins — ${floor} — ${annee}</h1>${legend}<table><thead><tr><th style="background:#334155;color:white;padding:4px 8px;text-align:left;font-size:10px;border-right:1px solid #475569;min-width:120px;">Résident</th>${monthsHtml}</tr></thead><tbody>${rows}</tbody></table></body></html>`;
@@ -618,6 +631,13 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
               <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
                 <td className="sticky left-0 px-3 py-2 font-medium text-slate-700 border-r border-slate-200 bg-inherit whitespace-nowrap">
                   <span className="text-slate-400 mr-1.5 text-[11px]">{r.room}</span>
+                  {doctorColor(r.medecin) && (
+                    <span
+                      title={r.medecin ?? ''}
+                      className="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle border border-slate-300"
+                      style={{ backgroundColor: doctorColor(r.medecin) ?? undefined }}
+                    />
+                  )}
                   {(r.last_name || '').toUpperCase()} {r.first_name}
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
@@ -785,6 +805,15 @@ export default function BilansSanguinsPage() {
       if (error) throw new Error(error.message);
       return data as Resident[];
     },
+  });
+
+  const { data: doctors = DEFAULT_DOCTORS } = useQuery<DoctorConfig[]>({
+    queryKey: ['settings', 'doctors'],
+    queryFn: async () => {
+      const { data } = await supabase.from('settings').select('value').eq('key', 'doctors').maybeSingle();
+      return data ? (data.value as DoctorConfig[]) : DEFAULT_DOCTORS;
+    },
+    staleTime: 60_000,
   });
 
   const { data: refs = [] } = useQuery<BilanReferentiel[]>({
@@ -1049,6 +1078,7 @@ export default function BilansSanguinsPage() {
               </div>
               <PlanningGrid
                 residents={residents} cells={cells} refs={refs} specials={specials}
+                doctors={doctors}
                 annee={annee} floor={floor} onFloorChange={setFloor}
                 onCellSave={readOnly ? () => {} : (data, existingId) => saveCell.mutate({ data, existingId })}
                 onCellDelete={readOnly ? () => {} : id => deleteCell.mutate(id)}
