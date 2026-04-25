@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookUser, ChevronRight, Phone, PhoneOff, Plus, Pencil, Trash2,
-  X, Check, Search, Wifi, WifiOff, Building2, Hospital,
+  X, Check, Search, Wifi, WifiOff, Building2, Hospital, Ambulance,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -42,11 +42,15 @@ interface ServiceEntry {
   sort_order: number;
 }
 
+interface AmbulanceEntry extends ServiceEntry {
+  speed_dial?: string | null;
+}
+
 interface ChpcbEntry extends ServiceEntry {
   site: string;
 }
 
-type Tab = 'lignes-directes' | 'services' | 'chpcb';
+type Tab = 'lignes-directes' | 'services' | 'ambulances' | 'chpcb';
 
 // ── CHPCB Sites ───────────────────────────────────────────────────────────────
 
@@ -144,6 +148,16 @@ async function fetchServices(): Promise<ServiceEntry[]> {
   return (data ?? []) as ServiceEntry[];
 }
 
+async function fetchAmbulances(): Promise<AmbulanceEntry[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('annuaire_ambulances')
+    .select('id, section, label, phone_number, speed_dial, sort_order')
+    .order('sort_order');
+  if (error) throw error;
+  return (data ?? []) as AmbulanceEntry[];
+}
+
 async function fetchChpcb(): Promise<ChpcbEntry[]> {
   const sb = createClient();
   const { data, error } = await sb
@@ -191,6 +205,11 @@ export default function AnnuairePage() {
   const [editSvc,      setEditSvc]      = useState<ServiceEntry | null>(null);
   const [deleteSvc,    setDeleteSvc]    = useState<ServiceEntry | null>(null);
 
+  // Tab 3 ambulances state
+  const [showAddAmb,   setShowAddAmb]   = useState(false);
+  const [editAmb,      setEditAmb]      = useState<AmbulanceEntry | null>(null);
+  const [deleteAmb,    setDeleteAmb]    = useState<AmbulanceEntry | null>(null);
+
   // Tab 3 state
   const [chpcbSearch,  setChpcbSearch]  = useState('');
   const [chpcbSite,    setChpcbSite]    = useState<ChpcbSite>('all');
@@ -217,6 +236,11 @@ export default function AnnuairePage() {
     queryFn: fetchServices,
   });
 
+  const { data: ambulances = [], isLoading: loadingAmb } = useQuery<AmbulanceEntry[]>({
+    queryKey: ['annuaire_ambulances'],
+    queryFn: fetchAmbulances,
+  });
+
   const { data: chpcbEntries = [], isLoading: loadingChpcb } = useQuery<ChpcbEntry[]>({
     queryKey: ['annuaire_chpcb'],
     queryFn: fetchChpcb,
@@ -238,7 +262,19 @@ export default function AnnuairePage() {
     );
   }, [services]);
 
-  // Sections groupées + filtre site + filtre pôle + recherche (tab 3 CHPCB)
+  // Sections groupées ambulances (tab 3)
+  const ambulancesBySection = useMemo(() => {
+    const map = new Map<string, AmbulanceEntry[]>();
+    for (const s of ambulances) {
+      if (!map.has(s.section)) map.set(s.section, []);
+      map.get(s.section)!.push(s);
+    }
+    return [...map.entries()].sort((a, b) =>
+      Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
+    );
+  }, [ambulances]);
+
+  // Sections groupées + filtre site + filtre pôle + recherche (tab 4 CHPCB)
   const showPolePills = chpcbSite === 'all' || chpcbSite === 'SITE LES CHARMES';
 
   const chpcbBySection = useMemo(() => {
@@ -341,7 +377,19 @@ export default function AnnuairePage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (loadingEntries || loadingServices || loadingChpcb) return (
+  const invalidateAmb = () => qc.invalidateQueries({ queryKey: ['annuaire_ambulances'] });
+
+  const deleteAmbMut = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_ambulances').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { invalidateAmb(); setDeleteAmb(null); toast.success('Entrée supprimée'); },
+    onError:   () => toast.error('Erreur de suppression'),
+  });
+
+  if (loadingEntries || loadingServices || loadingAmb || loadingChpcb) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1a3560]" />
     </div>
@@ -369,7 +417,7 @@ export default function AnnuairePage() {
             </div>
             {isAdmin && (
               <button
-                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : activeTab === 'services' ? setShowAddSvc(true) : setShowAddChpcb(true)}
+                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : activeTab === 'services' ? setShowAddSvc(true) : activeTab === 'ambulances' ? setShowAddAmb(true) : setShowAddChpcb(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <Plus className="h-4 w-4" /> Ajouter
@@ -404,6 +452,18 @@ export default function AnnuairePage() {
               Numéros Internes
             </button>
             <button
+              onClick={() => setActiveTab('ambulances')}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+                activeTab === 'ambulances'
+                  ? 'border-white text-white'
+                  : 'border-transparent text-white/50 hover:text-white/80'
+              )}
+            >
+              <Ambulance className="h-3.5 w-3.5" />
+              Ambulances / VSL
+            </button>
+            <button
               onClick={() => setActiveTab('chpcb')}
               className={cn(
                 'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
@@ -420,7 +480,7 @@ export default function AnnuairePage() {
       </div>
 
       {/* ── Corps ── */}
-      <div className={cn('max-w-5xl mx-auto px-4', activeTab === 'services' ? 'py-3 pb-4' : 'py-6 pb-20')}>
+      <div className={cn('max-w-5xl mx-auto px-4', (activeTab === 'services' || activeTab === 'ambulances') ? 'py-3 pb-4' : 'py-6 pb-20')}>
 
         {/* ══ TAB 1 : Lignes Directes Chambres ══ */}
         {activeTab === 'lignes-directes' && (
@@ -580,7 +640,55 @@ export default function AnnuairePage() {
           </div>
         )}
 
-        {/* ══ TAB 3 : CHPCB ══ */}
+        {/* ══ TAB 3 : Ambulances / VSL ══ */}
+        {activeTab === 'ambulances' && (
+          <div className="columns-2 gap-3">
+            {ambulancesBySection.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 text-center text-slate-400">
+                <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Aucun numéro</p>
+              </div>
+            ) : ambulancesBySection.map(([section, items]) => (
+              <div key={section} className="break-inside-avoid mb-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100">
+                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{section}</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {items.map(amb => (
+                    <div key={amb.id}
+                      className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+                      <span className="text-slate-700 flex-1 text-sm leading-tight">{amb.label}</span>
+                      <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <span className="font-mono font-bold text-sm text-slate-700 tabular-nums">
+                          {amb.phone_number}
+                        </span>
+                        {amb.speed_dial && (
+                          <span className="font-mono text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                            {amb.speed_dial}
+                          </span>
+                        )}
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => setEditAmb(amb)}
+                            className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => setDeleteAmb(amb)}
+                            className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ══ TAB 4 : CHPCB ══ */}
         {activeTab === 'chpcb' && (
           <>
             {/* Filtre sites */}
@@ -717,7 +825,35 @@ export default function AnnuairePage() {
         />
       )}
 
-      {/* ── Modals Tab 3 CHPCB ── */}
+      {/* ── Modals Tab 3 Ambulances ── */}
+      {showAddAmb && (
+        <AddServiceModal
+          existingSections={ambulancesBySection.map(([s]) => s)}
+          maxSortOrder={ambulances.length > 0 ? Math.max(...ambulances.map(s => s.sort_order)) : 0}
+          tableName="annuaire_ambulances"
+          onClose={() => setShowAddAmb(false)}
+          onSaved={() => { invalidateAmb(); setShowAddAmb(false); }}
+        />
+      )}
+      {editAmb && (
+        <EditServiceModal
+          entry={editAmb}
+          existingSections={ambulancesBySection.map(([s]) => s)}
+          tableName="annuaire_ambulances"
+          onClose={() => setEditAmb(null)}
+          onSaved={() => { invalidateAmb(); setEditAmb(null); }}
+        />
+      )}
+      {deleteAmb && (
+        <ConfirmModal
+          title="Supprimer cette entrée ?"
+          description={`${deleteAmb.label} — ${deleteAmb.phone_number}`}
+          onCancel={() => setDeleteAmb(null)}
+          onConfirm={() => deleteAmbMut.mutate(deleteAmb.id)}
+        />
+      )}
+
+      {/* ── Modals Tab 4 CHPCB ── */}
       {showAddChpcb && (
         <AddServiceModal
           existingSections={[...new Set(chpcbEntries.map(e => e.section))]}
