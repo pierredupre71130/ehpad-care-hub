@@ -230,6 +230,18 @@ export const MODULES: ModuleConfig[] = [
     visibleRoles: null,
   },
   {
+    id: 'basDeContention',
+    label: 'Bas de Contention',
+    description: 'Calcul de taille et suivi des commandes de bas de contention',
+    href: '/bas-contention',
+    icon: Bandage,
+    cardFrom: '#0f766e',
+    cardTo: '#0891b2',
+    colorClass: 'border-teal-100 hover:border-teal-300 hover:bg-teal-50/60',
+    iconBg: 'bg-teal-100 text-teal-600',
+    visibleRoles: null,
+  },
+  {
     id: 'residents',
     label: 'Gestion des Résidents',
     description: 'Données, régimes et informations résidents',
