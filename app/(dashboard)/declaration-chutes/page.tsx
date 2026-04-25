@@ -864,6 +864,7 @@ export default function DeclarationChutesPage() {
   const { profile } = useAuth();
   const access   = useModuleAccess('declarationChutes');
   const readOnly = access === 'read';
+  const isAdmin  = profile?.role === 'admin';
 
   const [tab, setTab]               = useState<Tab>('declare');
   const [success, setSuccess]       = useState(false);
@@ -1127,7 +1128,7 @@ export default function DeclarationChutesPage() {
                     onView={() => setViewFall(f)}
                     onEdit={() => setEditFall(f)}
                     onDelete={() => setDeleteFall(f)}
-                    readOnly={readOnly}
+                    readOnly={!isAdmin}
                   />
                 ))}
               </div>
@@ -1150,7 +1151,7 @@ export default function DeclarationChutesPage() {
           onClose={() => setViewFall(null)}
           onEdit={() => { setEditFall(viewFall); setViewFall(null); }}
           onPharma={() => { setPharmaFall(viewFall); }}
-          readOnly={readOnly}
+          readOnly={!isAdmin}
         />
       )}
 
