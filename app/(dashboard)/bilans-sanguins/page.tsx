@@ -483,7 +483,7 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
   onMonthClick: (mois: number) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState<{ resident: Resident; mois: number } | null>(null);
+  const [editing, setEditing] = useState<{ resident: Resident; mois: number; cellId: string | null } | null>(null);
 
   const filtered = useMemo(() => {
     const base = residents.filter(r => r.floor === floor)
@@ -493,9 +493,12 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
     return base.filter(r => `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q));
   }, [residents, floor, search]);
 
-  const cellMap = useMemo(() => {
-    const map: Record<string, PlanningBilanCell> = {};
-    cells.forEach(c => { map[`${c.resident_id}_${c.mois}`] = c; });
+  const cellsMap = useMemo(() => {
+    const map: Record<string, PlanningBilanCell[]> = {};
+    cells.forEach(c => {
+      const key = `${c.resident_id}_${c.mois}`;
+      (map[key] ??= []).push(c);
+    });
     return map;
   }, [cells]);
 
@@ -516,11 +519,12 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
     }).join('');
     const rows = filtered.map((r, idx) => {
       const cellsHtml = Array.from({ length: 12 }, (_, i) => {
-        const cell = cellMap[`${r.id}_${i + 1}`];
+        const monthCells = cellsMap[`${r.id}_${i + 1}`] ?? [];
         const isCur = i + 1 === currentMonth;
-        if (!cell) return `<td style="padding:3px;text-align:center;${isCur ? 'background:#eff6ff;' : ''}border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;color:#cbd5e1;font-size:8px;">·</td>`;
-        const bg = refColors[cell.bilan_ref_code ?? ''] ?? '#f1f5f9';
-        return `<td style="padding:3px;text-align:center;background:${bg};${isCur ? 'border-left:2px solid #3b82f6;border-right:2px solid #3b82f6;' : 'border-right:1px solid #e2e8f0;'}border-bottom:1px solid #e2e8f0;"><div style="font-size:9px;font-weight:600;">${cellLabel(cell)}</div></td>`;
+        if (monthCells.length === 0) return `<td style="padding:3px;text-align:center;${isCur ? 'background:#eff6ff;' : ''}border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;color:#cbd5e1;font-size:8px;">·</td>`;
+        const bg = refColors[monthCells[0].bilan_ref_code ?? ''] ?? '#f1f5f9';
+        const labels = monthCells.map(c => `<div style="font-size:9px;font-weight:600;">${cellLabel(c)}</div>`).join('');
+        return `<td style="padding:3px;text-align:center;background:${bg};${isCur ? 'border-left:2px solid #3b82f6;border-right:2px solid #3b82f6;' : 'border-right:1px solid #e2e8f0;'}border-bottom:1px solid #e2e8f0;">${labels}</td>`;
       }).join('');
       return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:4px 6px;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;"><span style="color:#94a3b8;margin-right:4px;">${r.room}</span>${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>${cellsHtml}</tr>`;
     }).join('');
@@ -535,7 +539,7 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
     iframe.src = url;
   };
 
-  const editingCell = editing ? cellMap[`${editing.resident.id}_${editing.mois}`] ?? null : null;
+  const editingCell = editing && editing.cellId ? cells.find(c => c.id === editing.cellId) ?? null : null;
 
   return (
     <>
@@ -618,30 +622,41 @@ function PlanningGrid({ residents, cells, refs, specials, annee, floor, onFloorC
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const mois = i + 1;
-                  const cell = cellMap[`${r.id}_${mois}`];
+                  const monthCells = cellsMap[`${r.id}_${mois}`] ?? [];
                   const isCur = mois === currentMonth;
-                  if (!cell) return (
+                  if (monthCells.length === 0) return (
                     <td key={mois} className={`px-1 py-1 text-center ${isCur ? 'bg-red-50 border-x-2 border-red-300' : ''}`}>
-                      <button onClick={() => setEditing({ resident: r, mois })}
+                      <button onClick={() => setEditing({ resident: r, mois, cellId: null })}
                         className="w-full h-8 rounded-lg border border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors flex items-center justify-center">
                         <Plus className="h-3.5 w-3.5" />
                       </button>
                     </td>
                   );
-                  const c = refColor(cell.bilan_ref_code);
                   return (
                     <td key={mois} className={`px-1 py-1 text-center ${isCur ? 'border-x-2 border-red-400' : ''}`}>
-                      <button onClick={() => setEditing({ resident: r, mois })}
-                        className={`w-full px-1.5 py-1 rounded-lg border ${c.bg} ${c.border} hover:opacity-80 transition-opacity`}>
-                        <div className={`text-[11px] font-bold leading-tight ${c.text}`}>{cellLabel(cell)}</div>
-                        {cell.jours?.length > 0 ? (
-                          <div className={`text-[10px] font-medium leading-tight mt-0.5 ${c.text} opacity-80`}>
-                            {cell.jours.map((j: number) => `${j}`).join(' · ')}
-                          </div>
-                        ) : (
-                          <div className="text-[9px] text-slate-400 leading-tight mt-0.5">—</div>
-                        )}
-                      </button>
+                      <div className="flex flex-col gap-0.5">
+                        {monthCells.map(cell => {
+                          const c = refColor(cell.bilan_ref_code);
+                          return (
+                            <button key={cell.id} onClick={() => setEditing({ resident: r, mois, cellId: cell.id })}
+                              className={`w-full px-1.5 py-1 rounded-lg border ${c.bg} ${c.border} hover:opacity-80 transition-opacity`}>
+                              <div className={`text-[11px] font-bold leading-tight ${c.text}`}>{cellLabel(cell)}</div>
+                              {cell.jours?.length > 0 ? (
+                                <div className={`text-[10px] font-medium leading-tight mt-0.5 ${c.text} opacity-80`}>
+                                  {cell.jours.map((j: number) => `${j}`).join(' · ')}
+                                </div>
+                              ) : (
+                                <div className="text-[9px] text-slate-400 leading-tight mt-0.5">—</div>
+                              )}
+                            </button>
+                          );
+                        })}
+                        <button onClick={() => setEditing({ resident: r, mois, cellId: null })}
+                          title="Ajouter un autre bilan"
+                          className="w-full h-5 rounded border border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-300 hover:text-blue-400 transition-colors flex items-center justify-center">
+                          <Plus className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
                     </td>
                   );
                 })}
