@@ -640,9 +640,22 @@ export default function ConsignesNuitPage() {
     if (isAfterLockTime(date)) return;
     const sb = createClient();
     const ops: Array<() => Promise<unknown>> = [];
+    const savedIds = new Set(savedNotes.map(n => n.resident_id));
 
     for (const [residentId, contenu] of Object.entries(notes)) {
-      if (!contenu?.trim()) continue;
+      const trimmed = contenu?.trim() ?? '';
+      if (!trimmed) {
+        if (savedIds.has(residentId)) {
+          ops.push(async () =>
+            sb.from('consigne_nuit')
+              .delete()
+              .eq('date', date)
+              .eq('resident_id', residentId)
+              .eq('floor', floor)
+          );
+        }
+        continue;
+      }
       const id = residentId;
       const c = contenu;
       ops.push(async () =>
@@ -653,17 +666,26 @@ export default function ConsignesNuitPage() {
       );
     }
 
-    if (infos !== undefined && infos.trim()) {
-      ops.push(async () =>
-        sb.from('consigne_nuit').upsert(
-          { date, resident_id: '__infos__', floor, contenu: infos, ide_astreinte: ideAstreinte, updated_at: new Date().toISOString() },
-          { onConflict: 'date,resident_id,floor' }
-        )
-      );
+    if (infos !== undefined) {
+      if (infos.trim()) {
+        ops.push(async () =>
+          sb.from('consigne_nuit').upsert(
+            { date, resident_id: '__infos__', floor, contenu: infos, ide_astreinte: ideAstreinte, updated_at: new Date().toISOString() },
+            { onConflict: 'date,resident_id,floor' }
+          )
+        );
+      } else if (savedIds.has('__infos__')) {
+        ops.push(async () =>
+          sb.from('consigne_nuit')
+            .delete()
+            .eq('date', date)
+            .eq('resident_id', '__infos__')
+            .eq('floor', floor)
+        );
+      }
     }
 
     await Promise.all(ops.map(fn => fn()));
-    void savedNotes; // suppress unused warning
   };
 
   const handleChangeNote = (id: string, value: string) => {
