@@ -407,39 +407,38 @@ export default function AnnuairePage() {
 
         {/* ══ TAB 2 : Numéros Internes ══ */}
         {activeTab === 'services' && (
-          <div className="space-y-4">
+          <div className="columns-2 gap-4">
             {servicesBySection.length === 0 ? (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 text-center text-slate-400">
                 <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">Aucun numéro interne</p>
               </div>
             ) : servicesBySection.map(([section, items]) => (
-              <div key={section} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div key={section} className="break-inside-avoid mb-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 {/* En-tête de section */}
-                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{section}</span>
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{section}</span>
                 </div>
                 {/* Entrées */}
                 <div className="divide-y divide-slate-100">
                   {items.map(svc => (
                     <div key={svc.id}
-                      className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-                      <span className="font-medium text-slate-800 flex-1 text-sm">{svc.label}</span>
-                      <span className="flex items-center gap-1.5 font-mono font-bold text-base px-3 py-1 rounded-xl bg-blue-50 text-blue-700 shrink-0">
-                        <Phone className="h-3.5 w-3.5" />
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 transition-colors">
+                      <span className="font-medium text-slate-800 flex-1 text-sm leading-tight">{svc.label}</span>
+                      <span className="font-mono font-bold text-sm px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 shrink-0">
                         {svc.phone_number}
                       </span>
                       {isAdmin && (
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-0.5 shrink-0">
                           <button onClick={() => setEditSvc(svc)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Modifier">
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button onClick={() => setDeleteSvc(svc)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Supprimer">
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       )}
