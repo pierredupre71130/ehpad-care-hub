@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
@@ -83,7 +84,35 @@ interface Resident {
   regime_diabetique?: boolean;
   epargne_intestinale?: boolean;
   allergie_poisson?: boolean;
-  photo_url?: string;
+  photo_url?: string;   // URL signée pour l'affichage
+  photo_path?: string;  // Chemin brut dans le bucket (pour suppression)
+}
+
+// ── Compression image via canvas ──────────────────────────────────────────────
+
+function compressImage(file: File, maxSize = 400, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas non disponible')); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Compression échouée'));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
@@ -107,7 +136,9 @@ async function fetchResidents(): Promise<Resident[]> {
       const urlMap: Record<string, string> = {};
       signed.forEach(s => { if (s.signedUrl && s.path) urlMap[s.path] = s.signedUrl; });
       return residents.map(r =>
-        r.photo_url && urlMap[r.photo_url] ? { ...r, photo_url: urlMap[r.photo_url] } : r
+        r.photo_url && urlMap[r.photo_url]
+          ? { ...r, photo_path: r.photo_url, photo_url: urlMap[r.photo_url] }
+          : r
       );
     }
   }
@@ -206,6 +237,9 @@ export default function EtiquettesRepasPage() {
   const queryClient = useQueryClient();
   const access = useModuleAccess('etiquettesRepas');
   const readOnly = access === 'read';
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [activeRepas, setActiveRepas] = useState('midi');
   const [withPhoto, setWithPhoto] = useState(false);
@@ -217,15 +251,34 @@ export default function EtiquettesRepasPage() {
   useEffect(() => { uploadingIdRef.current = uploadingId; }, [uploadingId]);
 
   const uploadPhoto = useCallback(async (residentId: string, file: File) => {
+    toast.loading('Compression en cours…', { id: 'upload' });
+    let blob: Blob;
+    try {
+      blob = await compressImage(file);
+    } catch {
+      toast.error('Impossible de compresser l\'image', { id: 'upload' });
+      return;
+    }
+    const path = `${residentId}.jpg`; // toujours JPEG après compression
     const sb = createClient();
-    const ext = file.name.split('.').pop() ?? 'jpg';
-    const path = `${residentId}.${ext}`;
-    const { error: upErr } = await sb.storage.from('resident-photos').upload(path, file, { upsert: true });
-    if (upErr) { toast.error('Erreur upload : ' + upErr.message); return; }
+    const { error: upErr } = await sb.storage
+      .from('resident-photos')
+      .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+    if (upErr) { toast.error('Erreur upload : ' + upErr.message, { id: 'upload' }); return; }
     const { error: dbErr } = await sb.from('residents').update({ photo_url: path }).eq('id', residentId);
+    if (dbErr) { toast.error('Erreur mise à jour : ' + dbErr.message, { id: 'upload' }); return; }
+    queryClient.invalidateQueries({ queryKey: ['residents'] });
+    toast.success('Photo mise à jour !', { id: 'upload' });
+  }, [queryClient]);
+
+  const deletePhoto = useCallback(async (residentId: string, photoPath: string) => {
+    const sb = createClient();
+    const { error: storErr } = await sb.storage.from('resident-photos').remove([photoPath]);
+    if (storErr) { toast.error('Erreur suppression : ' + storErr.message); return; }
+    const { error: dbErr } = await sb.from('residents').update({ photo_url: null }).eq('id', residentId);
     if (dbErr) { toast.error('Erreur mise à jour : ' + dbErr.message); return; }
     queryClient.invalidateQueries({ queryKey: ['residents'] });
-    toast.success('Photo mise à jour !');
+    toast.success('Photo supprimée');
   }, [queryClient]);
 
   const handleCameraClick = useCallback((e: React.MouseEvent, residentId: string) => {
@@ -452,30 +505,57 @@ export default function EtiquettesRepasPage() {
                   return (
                     <div key={r.id} className="flex items-center gap-2">
 
-                      {/* Bouton photo — HORS du bloc sélectionnable */}
-                      <button
-                        type="button"
-                        onClick={e => !readOnly && handleCameraClick(e, r.id)}
-                        title={r.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
-                        className={`w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 transition-all group relative ${
-                          r.photo_url
-                            ? 'border-slate-200 hover:border-blue-400'
-                            : 'border-dashed border-slate-300 hover:border-blue-400 bg-slate-50'
-                        } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
-                      >
-                        {r.photo_url
-                          ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
-                          : <div className="w-full h-full flex items-center justify-center">
-                              <Camera className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                      {/* Bouton photo + suppression admin — HORS du bloc sélectionnable */}
+                      <div className="relative flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={e => !readOnly && handleCameraClick(e, r.id)}
+                          title={r.photo_url ? 'Changer la photo' : 'Ajouter une photo'}
+                          className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-all group relative block ${
+                            r.photo_url
+                              ? 'border-slate-200 hover:border-blue-400'
+                              : 'border-dashed border-slate-300 hover:border-blue-400 bg-slate-50'
+                          } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
+                        >
+                          {r.photo_url
+                            ? <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center">
+                                <Camera className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                              </div>
+                          }
+                          {r.photo_url && !readOnly && (
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
+                              <Camera className="h-3 w-3 text-white" />
                             </div>
-                        }
-                        {/* Overlay caméra au survol si photo existante */}
-                        {r.photo_url && !readOnly && (
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-full">
-                            <Camera className="h-3 w-3 text-white" />
-                          </div>
+                          )}
+                        </button>
+
+                        {/* Bouton suppression — admin seulement, photo présente */}
+                        {isAdmin && r.photo_url && r.photo_path && (
+                          confirmDeleteId === r.id ? (
+                            <div className="absolute -bottom-7 left-0 z-20 flex items-center gap-1 bg-white border border-red-200 rounded-lg px-1.5 py-1 shadow-lg whitespace-nowrap">
+                              <span className="text-[10px] text-red-600 font-semibold">Supprimer ?</span>
+                              <button
+                                onClick={async e => { e.stopPropagation(); setConfirmDeleteId(null); await deletePhoto(r.id, r.photo_path!); }}
+                                className="text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 px-1.5 py-0.5 rounded"
+                              >Oui</button>
+                              <button
+                                onClick={e => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                className="text-[10px] text-slate-500 hover:text-slate-700 px-1 py-0.5"
+                              >Non</button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setConfirmDeleteId(r.id); }}
+                              title="Supprimer la photo"
+                              className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow transition-colors"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          )
                         )}
-                      </button>
+                      </div>
 
                       {/* Bloc sélectionnable */}
                       <div
