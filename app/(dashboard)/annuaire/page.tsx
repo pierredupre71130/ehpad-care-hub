@@ -42,7 +42,26 @@ interface ServiceEntry {
   sort_order: number;
 }
 
+interface ChpcbEntry extends ServiceEntry {
+  site: string;
+}
+
 type Tab = 'lignes-directes' | 'services' | 'chpcb';
+
+// ── CHPCB Sites ───────────────────────────────────────────────────────────────
+
+const CHPCB_SITES = [
+  { id: 'all',              label: 'Tous les sites' },
+  { id: 'SITE LES CHARMES', label: 'Les Charmes' },
+  { id: 'SITE LA ROSERAIE', label: 'La Roseraie' },
+  { id: 'SITE LA COLLINE',  label: 'La Colline' },
+  { id: 'IFSI-IFAS',        label: 'IFSI-IFAS' },
+  { id: 'SITE CHAROLLES',   label: 'Charolles' },
+  { id: 'SITE LA CLAYETTE', label: 'La Clayette' },
+  { id: 'GCS',              label: 'GCS' },
+] as const;
+
+type ChpcbSite = typeof CHPCB_SITES[number]['id'];
 
 // ── CHPCB Pôles ───────────────────────────────────────────────────────────────
 
@@ -125,14 +144,14 @@ async function fetchServices(): Promise<ServiceEntry[]> {
   return (data ?? []) as ServiceEntry[];
 }
 
-async function fetchChpcb(): Promise<ServiceEntry[]> {
+async function fetchChpcb(): Promise<ChpcbEntry[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('annuaire_chpcb')
-    .select('id, section, label, phone_number, sort_order')
+    .select('id, site, section, label, phone_number, sort_order')
     .order('sort_order');
   if (error) throw error;
-  return (data ?? []) as ServiceEntry[];
+  return (data ?? []) as ChpcbEntry[];
 }
 
 function roomNum(r?: string) {
@@ -174,10 +193,11 @@ export default function AnnuairePage() {
 
   // Tab 3 state
   const [chpcbSearch,  setChpcbSearch]  = useState('');
+  const [chpcbSite,    setChpcbSite]    = useState<ChpcbSite>('all');
   const [chpcbPole,    setChpcbPole]    = useState<ChpcbPole>('all');
   const [showAddChpcb, setShowAddChpcb] = useState(false);
-  const [editChpcb,    setEditChpcb]    = useState<ServiceEntry | null>(null);
-  const [deleteChpcb,  setDeleteChpcb]  = useState<ServiceEntry | null>(null);
+  const [editChpcb,    setEditChpcb]    = useState<ChpcbEntry | null>(null);
+  const [deleteChpcb,  setDeleteChpcb]  = useState<ChpcbEntry | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -197,7 +217,7 @@ export default function AnnuairePage() {
     queryFn: fetchServices,
   });
 
-  const { data: chpcbEntries = [], isLoading: loadingChpcb } = useQuery({
+  const { data: chpcbEntries = [], isLoading: loadingChpcb } = useQuery<ChpcbEntry[]>({
     queryKey: ['annuaire_chpcb'],
     queryFn: fetchChpcb,
   });
@@ -218,11 +238,15 @@ export default function AnnuairePage() {
     );
   }, [services]);
 
-  // Sections groupées + filtre recherche + filtre pôle (tab 3 CHPCB)
+  // Sections groupées + filtre site + filtre pôle + recherche (tab 3 CHPCB)
+  const showPolePills = chpcbSite === 'all' || chpcbSite === 'SITE LES CHARMES';
+
   const chpcbBySection = useMemo(() => {
     const q = chpcbSearch.trim().toLowerCase();
+    const poleFilter = chpcbSite === 'all' || chpcbSite === 'SITE LES CHARMES';
     const filtered = chpcbEntries.filter(e => {
-      if (chpcbPole !== 'all' && getPole(e.section) !== chpcbPole) return false;
+      if (chpcbSite !== 'all' && e.site !== chpcbSite) return false;
+      if (poleFilter && chpcbPole !== 'all' && getPole(e.section) !== chpcbPole) return false;
       if (q) return (
         e.label.toLowerCase().includes(q) ||
         e.phone_number.includes(q) ||
@@ -230,7 +254,7 @@ export default function AnnuairePage() {
       );
       return true;
     });
-    const map = new Map<string, ServiceEntry[]>();
+    const map = new Map<string, ChpcbEntry[]>();
     for (const s of filtered) {
       if (!map.has(s.section)) map.set(s.section, []);
       map.get(s.section)!.push(s);
@@ -238,7 +262,7 @@ export default function AnnuairePage() {
     return [...map.entries()].sort((a, b) =>
       Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
     );
-  }, [chpcbEntries, chpcbSearch, chpcbPole]);
+  }, [chpcbEntries, chpcbSearch, chpcbSite, chpcbPole]);
 
   // ── Filtrage tab 1 ────────────────────────────────────────────────────────
 
@@ -559,20 +583,37 @@ export default function AnnuairePage() {
         {/* ══ TAB 3 : CHPCB ══ */}
         {activeTab === 'chpcb' && (
           <>
-            {/* Sous-onglets pôles */}
-            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-none">
-              {CHPCB_POLES.map(pole => (
-                <button key={pole.id} onClick={() => setChpcbPole(pole.id)}
+            {/* Filtre sites */}
+            <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1 scrollbar-none">
+              {CHPCB_SITES.map(site => (
+                <button key={site.id} onClick={() => { setChpcbSite(site.id); setChpcbPole('all'); }}
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors shrink-0',
-                    chpcbPole === pole.id
-                      ? 'bg-[#1a3560] text-white shadow-sm'
+                    chpcbSite === site.id
+                      ? 'bg-[#0e6e80] text-white shadow-sm'
                       : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                   )}>
-                  {pole.label}
+                  {site.label}
                 </button>
               ))}
             </div>
+
+            {/* Filtre pôles (seulement pour Les Charmes / Tous) */}
+            {showPolePills && (
+              <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1 scrollbar-none">
+                {CHPCB_POLES.map(pole => (
+                  <button key={pole.id} onClick={() => setChpcbPole(pole.id)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors shrink-0',
+                      chpcbPole === pole.id
+                        ? 'bg-[#1a3560] text-white shadow-sm'
+                        : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    )}>
+                    {pole.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Barre de recherche */}
             <div className="relative mb-3">
@@ -679,7 +720,7 @@ export default function AnnuairePage() {
       {/* ── Modals Tab 3 CHPCB ── */}
       {showAddChpcb && (
         <AddServiceModal
-          existingSections={chpcbBySection.map(([s]) => s)}
+          existingSections={[...new Set(chpcbEntries.map(e => e.section))]}
           maxSortOrder={chpcbEntries.length > 0 ? Math.max(...chpcbEntries.map(s => s.sort_order)) : 0}
           tableName="annuaire_chpcb"
           onClose={() => setShowAddChpcb(false)}
@@ -689,7 +730,7 @@ export default function AnnuairePage() {
       {editChpcb && (
         <EditServiceModal
           entry={editChpcb}
-          existingSections={chpcbBySection.map(([s]) => s)}
+          existingSections={[...new Set(chpcbEntries.map(e => e.section))]}
           tableName="annuaire_chpcb"
           onClose={() => setEditChpcb(null)}
           onSaved={() => { invalidate3(); setEditChpcb(null); }}
