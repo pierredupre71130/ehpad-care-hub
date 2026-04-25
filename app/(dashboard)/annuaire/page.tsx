@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookUser, ChevronRight, Phone, PhoneOff, Plus, Pencil, Trash2,
-  X, Check, Search, Wifi, WifiOff, Building2,
+  X, Check, Search, Wifi, WifiOff, Building2, Hospital,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -42,7 +42,7 @@ interface ServiceEntry {
   sort_order: number;
 }
 
-type Tab = 'lignes-directes' | 'services';
+type Tab = 'lignes-directes' | 'services' | 'chpcb';
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
 
@@ -89,6 +89,16 @@ async function fetchServices(): Promise<ServiceEntry[]> {
   return (data ?? []) as ServiceEntry[];
 }
 
+async function fetchChpcb(): Promise<ServiceEntry[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('annuaire_chpcb')
+    .select('id, section, label, phone_number, sort_order')
+    .order('sort_order');
+  if (error) throw error;
+  return (data ?? []) as ServiceEntry[];
+}
+
 function roomNum(r?: string) {
   return parseInt((r ?? '').replace(/\D/g, '') || '0');
 }
@@ -126,6 +136,12 @@ export default function AnnuairePage() {
   const [editSvc,      setEditSvc]      = useState<ServiceEntry | null>(null);
   const [deleteSvc,    setDeleteSvc]    = useState<ServiceEntry | null>(null);
 
+  // Tab 3 state
+  const [chpcbSearch,  setChpcbSearch]  = useState('');
+  const [showAddChpcb, setShowAddChpcb] = useState(false);
+  const [editChpcb,    setEditChpcb]    = useState<ServiceEntry | null>(null);
+  const [deleteChpcb,  setDeleteChpcb]  = useState<ServiceEntry | null>(null);
+
   // ── Data ──────────────────────────────────────────────────────────────────
 
   const { data: entries = [], isLoading: loadingEntries } = useQuery({
@@ -144,6 +160,11 @@ export default function AnnuairePage() {
     queryFn: fetchServices,
   });
 
+  const { data: chpcbEntries = [], isLoading: loadingChpcb } = useQuery({
+    queryKey: ['annuaire_chpcb'],
+    queryFn: fetchChpcb,
+  });
+
   const residentsInAnnuaire = new Set(entries.map(e => e.resident_id));
   const availableResidents  = allResidents.filter(r => !residentsInAnnuaire.has(r.id));
 
@@ -159,6 +180,26 @@ export default function AnnuairePage() {
       Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
     );
   }, [services]);
+
+  // Sections groupées + filtre recherche (tab 3 CHPCB)
+  const chpcbBySection = useMemo(() => {
+    const q = chpcbSearch.trim().toLowerCase();
+    const filtered = q
+      ? chpcbEntries.filter(e =>
+          e.label.toLowerCase().includes(q) ||
+          e.phone_number.includes(q) ||
+          e.section.toLowerCase().includes(q)
+        )
+      : chpcbEntries;
+    const map = new Map<string, ServiceEntry[]>();
+    for (const s of filtered) {
+      if (!map.has(s.section)) map.set(s.section, []);
+      map.get(s.section)!.push(s);
+    }
+    return [...map.entries()].sort((a, b) =>
+      Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
+    );
+  }, [chpcbEntries, chpcbSearch]);
 
   // ── Filtrage tab 1 ────────────────────────────────────────────────────────
 
@@ -221,9 +262,23 @@ export default function AnnuairePage() {
     onError:   () => toast.error('Erreur de suppression'),
   });
 
+  // ── Mutations tab 3 ───────────────────────────────────────────────────────
+
+  const invalidate3 = () => qc.invalidateQueries({ queryKey: ['annuaire_chpcb'] });
+
+  const deleteChpcbMut = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_chpcb').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { invalidate3(); setDeleteChpcb(null); toast.success('Entrée supprimée'); },
+    onError:   () => toast.error('Erreur de suppression'),
+  });
+
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (loadingEntries || loadingServices) return (
+  if (loadingEntries || loadingServices || loadingChpcb) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1a3560]" />
     </div>
@@ -251,7 +306,7 @@ export default function AnnuairePage() {
             </div>
             {isAdmin && (
               <button
-                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : setShowAddSvc(true)}
+                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : activeTab === 'services' ? setShowAddSvc(true) : setShowAddChpcb(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <Plus className="h-4 w-4" /> Ajouter
@@ -284,6 +339,18 @@ export default function AnnuairePage() {
             >
               <Building2 className="h-3.5 w-3.5" />
               Numéros Internes
+            </button>
+            <button
+              onClick={() => setActiveTab('chpcb')}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+                activeTab === 'chpcb'
+                  ? 'border-white text-white'
+                  : 'border-transparent text-white/50 hover:text-white/80'
+              )}
+            >
+              <Hospital className="h-3.5 w-3.5" />
+              CHPCB
             </button>
           </div>
         </div>
@@ -449,6 +516,60 @@ export default function AnnuairePage() {
             ))}
           </div>
         )}
+
+        {/* ══ TAB 3 : CHPCB ══ */}
+        {activeTab === 'chpcb' && (
+          <>
+            {/* Barre de recherche */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un service, un nom ou un numéro…"
+                value={chpcbSearch}
+                onChange={e => setChpcbSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#0e6e80] shadow-sm"
+              />
+            </div>
+            <div className="columns-3 gap-3">
+              {chpcbBySection.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 text-center text-slate-400">
+                  <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Aucun résultat</p>
+                </div>
+              ) : chpcbBySection.map(([section, items]) => (
+                <div key={section} className="break-inside-avoid mb-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{section}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {items.map(entry => (
+                      <div key={entry.id}
+                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors">
+                        <span className="text-slate-700 flex-1 text-xs leading-tight">{entry.label}</span>
+                        <span className="font-mono font-bold text-xs text-blue-700 shrink-0 tabular-nums">
+                          {entry.phone_number}
+                        </span>
+                        {isAdmin && (
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button onClick={() => setEditChpcb(entry)}
+                              className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button onClick={() => setDeleteChpcb(entry)}
+                              className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Modals Tab 1 ── */}
@@ -498,6 +619,34 @@ export default function AnnuairePage() {
           description={`${deleteSvc.label} — ${deleteSvc.phone_number}`}
           onCancel={() => setDeleteSvc(null)}
           onConfirm={() => deleteSvcMut.mutate(deleteSvc.id)}
+        />
+      )}
+
+      {/* ── Modals Tab 3 CHPCB ── */}
+      {showAddChpcb && (
+        <AddServiceModal
+          existingSections={chpcbBySection.map(([s]) => s)}
+          maxSortOrder={chpcbEntries.length > 0 ? Math.max(...chpcbEntries.map(s => s.sort_order)) : 0}
+          tableName="annuaire_chpcb"
+          onClose={() => setShowAddChpcb(false)}
+          onSaved={() => { invalidate3(); setShowAddChpcb(false); }}
+        />
+      )}
+      {editChpcb && (
+        <EditServiceModal
+          entry={editChpcb}
+          existingSections={chpcbBySection.map(([s]) => s)}
+          tableName="annuaire_chpcb"
+          onClose={() => setEditChpcb(null)}
+          onSaved={() => { invalidate3(); setEditChpcb(null); }}
+        />
+      )}
+      {deleteChpcb && (
+        <ConfirmModal
+          title="Supprimer cette entrée ?"
+          description={`${deleteChpcb.label} — ${deleteChpcb.phone_number}`}
+          onCancel={() => setDeleteChpcb(null)}
+          onConfirm={() => deleteChpcbMut.mutate(deleteChpcb.id)}
         />
       )}
     </div>
@@ -689,8 +838,8 @@ function EditResidentModal({ entry, onClose, onSaved }: {
 
 // ── Modal Ajouter service ─────────────────────────────────────────────────────
 
-function AddServiceModal({ existingSections, maxSortOrder, onClose, onSaved }: {
-  existingSections: string[]; maxSortOrder: number; onClose: () => void; onSaved: () => void;
+function AddServiceModal({ existingSections, maxSortOrder, tableName = 'annuaire_services', onClose, onSaved }: {
+  existingSections: string[]; maxSortOrder: number; tableName?: string; onClose: () => void; onSaved: () => void;
 }) {
   const [section, setSection] = useState(existingSections[0] ?? '');
   const [newSection, setNewSection] = useState('');
@@ -706,7 +855,7 @@ function AddServiceModal({ existingSections, maxSortOrder, onClose, onSaved }: {
     setSaving(true);
     try {
       const sb = createClient();
-      const { error } = await sb.from('annuaire_services').insert({
+      const { error } = await sb.from(tableName).insert({
         section: finalSection,
         label: label.trim(),
         phone_number: phone.trim(),
@@ -781,8 +930,8 @@ function AddServiceModal({ existingSections, maxSortOrder, onClose, onSaved }: {
 
 // ── Modal Modifier service ────────────────────────────────────────────────────
 
-function EditServiceModal({ entry, existingSections, onClose, onSaved }: {
-  entry: ServiceEntry; existingSections: string[]; onClose: () => void; onSaved: () => void;
+function EditServiceModal({ entry, existingSections, tableName = 'annuaire_services', onClose, onSaved }: {
+  entry: ServiceEntry; existingSections: string[]; tableName?: string; onClose: () => void; onSaved: () => void;
 }) {
   const [section, setSection] = useState(entry.section);
   const [label,   setLabel]   = useState(entry.label);
@@ -794,7 +943,7 @@ function EditServiceModal({ entry, existingSections, onClose, onSaved }: {
     setSaving(true);
     try {
       const sb = createClient();
-      const { error } = await sb.from('annuaire_services')
+      const { error } = await sb.from(tableName)
         .update({ section: section.trim(), label: label.trim(), phone_number: phone.trim(), updated_at: new Date().toISOString() })
         .eq('id', entry.id);
       if (error) throw error;
