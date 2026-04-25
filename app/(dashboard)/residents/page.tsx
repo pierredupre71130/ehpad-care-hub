@@ -14,6 +14,7 @@ import {
   Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home, Eye,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -491,6 +492,7 @@ function EditForm({
   saving, isNew,
   onArchive,
   onDelete,
+  isAdmin,
 }: {
   form: Partial<Resident>;
   patch: (u: Partial<Resident>) => void;
@@ -502,6 +504,7 @@ function EditForm({
   isNew: boolean;
   onArchive?: (dateSortie: string) => void;
   onDelete?: () => void;
+  isAdmin?: boolean;
 }) {
   const headerTitle = isNew
     ? 'Nouveau résident'
@@ -785,7 +788,7 @@ function EditForm({
         )}
 
         {/* Suppression définitive — admin uniquement */}
-        {!isNew && onDelete && (
+        {!isNew && onDelete && isAdmin && (
           <div className="pt-2 border-t border-slate-100">
             <button
               onClick={() => {
@@ -935,6 +938,8 @@ export default function ResidentsPage() {
   const queryClient = useQueryClient();
   const access = useModuleAccess('residents');
   const readOnly = access === 'read';
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
 
   const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
   const [search, setSearch]             = useState('');
@@ -1217,15 +1222,17 @@ export default function ResidentsPage() {
                 <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
               </div>
             </div>
-            <button
-              onClick={startCreate}
-              disabled={editingId !== null || readOnly}
-              className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Nouveau résident</span>
-              <span className="sm:hidden">+</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={startCreate}
+                disabled={editingId !== null || readOnly}
+                className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Nouveau résident</span>
+                <span className="sm:hidden">+</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -1316,7 +1323,7 @@ export default function ResidentsPage() {
             form={editForm}   patch={patch}
             roomUnlocked      onUnlockRoom={() => {}}
             onSave={handleSave} onCancel={cancelEdit}
-            saving={isSaving} isNew
+            saving={isSaving} isNew isAdmin={isAdmin}
           />
         )}
 
@@ -1381,6 +1388,7 @@ export default function ResidentsPage() {
                           },
                         })}
                         onDelete={() => deleteMutation.mutate(r.id)}
+                        isAdmin={isAdmin}
                       />
                     </div>
                   ) : (
