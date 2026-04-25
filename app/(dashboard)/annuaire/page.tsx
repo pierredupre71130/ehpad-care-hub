@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookUser, ChevronRight, Phone, PhoneOff, Plus, Pencil, Trash2,
-  X, Check, Search, Wifi, WifiOff, Building2, Hospital, Ambulance,
+  X, Check, Search, Wifi, WifiOff, Building2, Hospital, Ambulance, Hash,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -50,7 +50,7 @@ interface ChpcbEntry extends ServiceEntry {
   site: string;
 }
 
-type Tab = 'lignes-directes' | 'services' | 'ambulances' | 'chpcb';
+type Tab = 'lignes-directes' | 'services' | 'externes' | 'ambulances' | 'chpcb';
 
 // ── CHPCB Sites ───────────────────────────────────────────────────────────────
 
@@ -148,6 +148,16 @@ async function fetchServices(): Promise<ServiceEntry[]> {
   return (data ?? []) as ServiceEntry[];
 }
 
+async function fetchExternes(): Promise<AmbulanceEntry[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('annuaire_externes')
+    .select('id, section, label, phone_number, speed_dial, sort_order')
+    .order('sort_order');
+  if (error) throw error;
+  return (data ?? []) as AmbulanceEntry[];
+}
+
 async function fetchAmbulances(): Promise<AmbulanceEntry[]> {
   const sb = createClient();
   const { data, error } = await sb
@@ -205,7 +215,12 @@ export default function AnnuairePage() {
   const [editSvc,      setEditSvc]      = useState<ServiceEntry | null>(null);
   const [deleteSvc,    setDeleteSvc]    = useState<ServiceEntry | null>(null);
 
-  // Tab 3 ambulances state
+  // Tab 3 externes state
+  const [showAddExt,   setShowAddExt]   = useState(false);
+  const [editExt,      setEditExt]      = useState<AmbulanceEntry | null>(null);
+  const [deleteExt,    setDeleteExt]    = useState<AmbulanceEntry | null>(null);
+
+  // Tab 4 ambulances state
   const [showAddAmb,   setShowAddAmb]   = useState(false);
   const [editAmb,      setEditAmb]      = useState<AmbulanceEntry | null>(null);
   const [deleteAmb,    setDeleteAmb]    = useState<AmbulanceEntry | null>(null);
@@ -236,6 +251,11 @@ export default function AnnuairePage() {
     queryFn: fetchServices,
   });
 
+  const { data: externes = [], isLoading: loadingExt } = useQuery<AmbulanceEntry[]>({
+    queryKey: ['annuaire_externes'],
+    queryFn: fetchExternes,
+  });
+
   const { data: ambulances = [], isLoading: loadingAmb } = useQuery<AmbulanceEntry[]>({
     queryKey: ['annuaire_ambulances'],
     queryFn: fetchAmbulances,
@@ -262,7 +282,19 @@ export default function AnnuairePage() {
     );
   }, [services]);
 
-  // Sections groupées ambulances (tab 3)
+  // Sections groupées externes (tab 3)
+  const externesBySection = useMemo(() => {
+    const map = new Map<string, AmbulanceEntry[]>();
+    for (const s of externes) {
+      if (!map.has(s.section)) map.set(s.section, []);
+      map.get(s.section)!.push(s);
+    }
+    return [...map.entries()].sort((a, b) =>
+      Math.min(...a[1].map(x => x.sort_order)) - Math.min(...b[1].map(x => x.sort_order))
+    );
+  }, [externes]);
+
+  // Sections groupées ambulances (tab 4)
   const ambulancesBySection = useMemo(() => {
     const map = new Map<string, AmbulanceEntry[]>();
     for (const s of ambulances) {
@@ -377,6 +409,18 @@ export default function AnnuairePage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const invalidateExt = () => qc.invalidateQueries({ queryKey: ['annuaire_externes'] });
+
+  const deleteExtMut = useMutation({
+    mutationFn: async (id: string) => {
+      const sb = createClient();
+      const { error } = await sb.from('annuaire_externes').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { invalidateExt(); setDeleteExt(null); toast.success('Entrée supprimée'); },
+    onError:   () => toast.error('Erreur de suppression'),
+  });
+
   const invalidateAmb = () => qc.invalidateQueries({ queryKey: ['annuaire_ambulances'] });
 
   const deleteAmbMut = useMutation({
@@ -389,7 +433,7 @@ export default function AnnuairePage() {
     onError:   () => toast.error('Erreur de suppression'),
   });
 
-  if (loadingEntries || loadingServices || loadingAmb || loadingChpcb) return (
+  if (loadingEntries || loadingServices || loadingExt || loadingAmb || loadingChpcb) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1a3560]" />
     </div>
@@ -417,7 +461,7 @@ export default function AnnuairePage() {
             </div>
             {isAdmin && (
               <button
-                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : activeTab === 'services' ? setShowAddSvc(true) : activeTab === 'ambulances' ? setShowAddAmb(true) : setShowAddChpcb(true)}
+                onClick={() => activeTab === 'lignes-directes' ? setShowAdd(true) : activeTab === 'services' ? setShowAddSvc(true) : activeTab === 'externes' ? setShowAddExt(true) : activeTab === 'ambulances' ? setShowAddAmb(true) : setShowAddChpcb(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <Plus className="h-4 w-4" /> Ajouter
@@ -426,7 +470,7 @@ export default function AnnuairePage() {
           </div>
 
           {/* ── Onglets ── */}
-          <div className="flex gap-1 mt-5 border-b border-white/20">
+          <div className="flex gap-1 mt-5 border-b border-white/20 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab('lignes-directes')}
               className={cn(
@@ -452,9 +496,21 @@ export default function AnnuairePage() {
               Numéros Internes
             </button>
             <button
+              onClick={() => setActiveTab('externes')}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap',
+                activeTab === 'externes'
+                  ? 'border-white text-white'
+                  : 'border-transparent text-white/50 hover:text-white/80'
+              )}
+            >
+              <Hash className="h-3.5 w-3.5" />
+              N° Abrégés Ext.
+            </button>
+            <button
               onClick={() => setActiveTab('ambulances')}
               className={cn(
-                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors',
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap',
                 activeTab === 'ambulances'
                   ? 'border-white text-white'
                   : 'border-transparent text-white/50 hover:text-white/80'
@@ -480,7 +536,7 @@ export default function AnnuairePage() {
       </div>
 
       {/* ── Corps ── */}
-      <div className={cn('max-w-5xl mx-auto px-4', (activeTab === 'services' || activeTab === 'ambulances') ? 'py-3 pb-4' : 'py-6 pb-20')}>
+      <div className={cn('max-w-5xl mx-auto px-4', (activeTab === 'services' || activeTab === 'externes' || activeTab === 'ambulances') ? 'py-3 pb-4' : 'py-6 pb-20')}>
 
         {/* ══ TAB 1 : Lignes Directes Chambres ══ */}
         {activeTab === 'lignes-directes' && (
@@ -640,7 +696,53 @@ export default function AnnuairePage() {
           </div>
         )}
 
-        {/* ══ TAB 3 : Ambulances / VSL ══ */}
+        {/* ══ TAB 3 : N° Abrégés Extérieurs ══ */}
+        {activeTab === 'externes' && (
+          <div className="columns-2 gap-3">
+            {externesBySection.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-16 text-center text-slate-400">
+                <PhoneOff className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Aucun numéro</p>
+              </div>
+            ) : externesBySection.map(([section, items]) => (
+              <div key={section} className="break-inside-avoid mb-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100">
+                  <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{section}</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {items.map(ext => (
+                    <div key={ext.id}
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors">
+                      {ext.speed_dial && (
+                        <span className="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0 tabular-nums">
+                          {ext.speed_dial}
+                        </span>
+                      )}
+                      <span className="text-slate-700 flex-1 text-xs leading-tight">{ext.label}</span>
+                      <span className="font-mono font-bold text-xs text-slate-700 shrink-0 tabular-nums">
+                        {ext.phone_number}
+                      </span>
+                      {isAdmin && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => setEditExt(ext)}
+                            className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => setDeleteExt(ext)}
+                            className="p-1 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ══ TAB 4 : Ambulances / VSL ══ */}
         {activeTab === 'ambulances' && (
           <div className="columns-2 gap-3">
             {ambulancesBySection.length === 0 ? (
@@ -825,7 +927,35 @@ export default function AnnuairePage() {
         />
       )}
 
-      {/* ── Modals Tab 3 Ambulances ── */}
+      {/* ── Modals Tab 3 Externes ── */}
+      {showAddExt && (
+        <AddServiceModal
+          existingSections={externesBySection.map(([s]) => s)}
+          maxSortOrder={externes.length > 0 ? Math.max(...externes.map(s => s.sort_order)) : 0}
+          tableName="annuaire_externes"
+          onClose={() => setShowAddExt(false)}
+          onSaved={() => { invalidateExt(); setShowAddExt(false); }}
+        />
+      )}
+      {editExt && (
+        <EditServiceModal
+          entry={editExt}
+          existingSections={externesBySection.map(([s]) => s)}
+          tableName="annuaire_externes"
+          onClose={() => setEditExt(null)}
+          onSaved={() => { invalidateExt(); setEditExt(null); }}
+        />
+      )}
+      {deleteExt && (
+        <ConfirmModal
+          title="Supprimer cette entrée ?"
+          description={`${deleteExt.label} — ${deleteExt.phone_number}`}
+          onCancel={() => setDeleteExt(null)}
+          onConfirm={() => deleteExtMut.mutate(deleteExt.id)}
+        />
+      )}
+
+      {/* ── Modals Tab 4 Ambulances ── */}
       {showAddAmb && (
         <AddServiceModal
           existingSections={ambulancesBySection.map(([s]) => s)}
