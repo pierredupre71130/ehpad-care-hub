@@ -200,31 +200,19 @@ export default function AnnuairePage() {
                 onClick={() => setShowAdd(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-semibold transition-colors"
               >
-                <Plus className="h-4 w-4" /> Ajouter un résident
+                <Plus className="h-4 w-4" /> Ajouter
               </button>
             )}
           </div>
 
-          {/* Filtres dans le header */}
-          <div className="flex flex-wrap gap-3 mt-5">
-            {/* Étage */}
-            <div className="flex bg-black/20 rounded-xl p-1 gap-1">
-              {([['all','Tous'],['RDC','RDC'],['1ER','1er étage']] as const).map(([v,l]) => (
-                <button key={v} onClick={() => setFilterEtage(v)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
-                    filterEtage === v ? 'bg-white text-slate-800' : 'text-white/80 hover:text-white hover:bg-white/10'
-                  )}>{l}</button>
-              ))}
-            </div>
-            {/* Ligne */}
-            <div className="flex bg-black/20 rounded-xl p-1 gap-1">
-              {([['all','Toutes'],['active','Activée'],['inactive','Non activée']] as const).map(([v,l]) => (
-                <button key={v} onClick={() => setFilterLigne(v)}
-                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
-                    filterLigne === v ? 'bg-white text-slate-800' : 'text-white/80 hover:text-white hover:bg-white/10'
-                  )}>{l}</button>
-              ))}
-            </div>
+          {/* ── Onglets ── */}
+          <div className="flex gap-1 mt-5 border-b border-white/20">
+            <button
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 border-white text-white transition-colors"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              Lignes Directes Chambres
+            </button>
           </div>
         </div>
       </div>
@@ -232,23 +220,46 @@ export default function AnnuairePage() {
       {/* ── Corps ── */}
       <div className="max-w-5xl mx-auto px-4 py-6 pb-20">
 
-        {/* Barre de recherche + stats */}
+        {/* Filtres + recherche + stats */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher un résident ou un numéro…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#0e6e80] shadow-sm"
-            />
+          {/* Filtres */}
+          <div className="flex flex-wrap gap-2">
+            <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
+              {([['all','Tous'],['RDC','RDC'],['1ER','1er étage']] as const).map(([v,l]) => (
+                <button key={v} onClick={() => setFilterEtage(v)}
+                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                    filterEtage === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  )}>{l}</button>
+              ))}
+            </div>
+            <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-sm">
+              {([['all','Toutes'],['active','Activée'],['inactive','Non activée']] as const).map(([v,l]) => (
+                <button key={v} onClick={() => setFilterLigne(v)}
+                  className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+                    filterLigne === v ? 'bg-[#1a3560] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  )}>{l}</button>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-slate-600 bg-white rounded-xl px-4 py-2.5 border border-slate-200 shadow-sm whitespace-nowrap">
-            <Wifi className="h-4 w-4 text-green-500" />
-            <span className="font-semibold">{nbActive}</span> ligne{nbActive > 1 ? 's' : ''} activée{nbActive > 1 ? 's' : ''}
-            <span className="text-slate-300 mx-1">·</span>
-            <span className="text-slate-400">{filtered.length} affiché{filtered.length > 1 ? 's' : ''}</span>
+
+          {/* Recherche + stats */}
+          <div className="flex flex-1 gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un résident ou un numéro…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#0e6e80] shadow-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2 text-sm text-slate-600 bg-white rounded-xl px-4 py-2.5 border border-slate-200 shadow-sm whitespace-nowrap">
+              <Wifi className="h-4 w-4 text-green-500" />
+              <span className="font-semibold">{nbActive}</span>
+              <span className="text-slate-300 mx-1">·</span>
+              <span className="text-slate-400">{filtered.length} affiché{filtered.length > 1 ? 's' : ''}</span>
+            </div>
           </div>
         </div>
 
