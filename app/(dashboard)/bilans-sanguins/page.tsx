@@ -542,14 +542,12 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
       return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:4px 6px;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;"><span style="color:#94a3b8;margin-right:4px;">${r.room}</span>${pill}${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>${cellsHtml}</tr>`;
     }).join('');
     const legend = `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:9px;align-items:center;"><span style="font-weight:600;color:#475569;">Légende :</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#dcfce7;border:1px solid #86efac;border-radius:2px;"></span> B3 Trimestriel</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#dbeafe;border:1px solid #93c5fd;border-radius:2px;"></span> B6 Semestriel</span><span style="display:flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:#ffedd5;border:1px solid #fdba74;border-radius:2px;"></span> BC Complet</span></div>`;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planning bilans — ${floor} ${annee}</title><style>@page{size:A4 landscape;margin:8mm;}*{box-sizing:border-box;margin:0;padding:0;}body{font-family:system-ui,sans-serif;}table{width:100%;border-collapse:collapse;}h1{font-size:12px;font-weight:700;margin-bottom:6px;color:#1e293b;}</style></head><body><h1>Planning annuel des bilans sanguins — ${floor} — ${annee}</h1>${legend}<table><thead><tr><th style="background:#334155;color:white;padding:4px 8px;text-align:left;font-size:10px;border-right:1px solid #475569;min-width:120px;">Résident</th>${monthsHtml}</tr></thead><tbody>${rows}</tbody></table></body></html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;';
-    document.body.appendChild(iframe);
-    iframe.onload = () => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 2000); };
-    iframe.src = url;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planning bilans — ${floor} ${annee}</title><style>@page{size:A4 landscape;margin:8mm;}*{box-sizing:border-box;margin:0;padding:0;}body{font-family:system-ui,sans-serif;padding:0;}table{width:100%;border-collapse:collapse;}h1{font-size:12px;font-weight:700;margin-bottom:6px;color:#1e293b;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body><h1>Planning annuel des bilans sanguins — ${floor} — ${annee}</h1>${legend}<table><thead><tr><th style="background:#334155;color:white;padding:4px 8px;text-align:left;font-size:10px;border-right:1px solid #475569;min-width:120px;">Résident</th>${monthsHtml}</tr></thead><tbody>${rows}</tbody></table><script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},150);});</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   const editingCell = editing && editing.cellId ? cells.find(c => c.id === editing.cellId) ?? null : null;
