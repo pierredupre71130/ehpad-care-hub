@@ -242,7 +242,7 @@ export default function EtiquettesRepasPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [activeRepas, setActiveRepas] = useState('midi');
-  const [withPhoto, setWithPhoto] = useState(false);
+  const [withPhoto, setWithPhoto] = useState(true);
   const saveTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const fileInputRef  = useRef<HTMLInputElement>(null);
