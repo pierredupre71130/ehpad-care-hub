@@ -97,6 +97,82 @@ function tubeOf(s: BilanSpecial): string {
   return EXAM_TUBE[s.nom] ?? EXAM_TUBE[s.code] ?? 'autre';
 }
 
+function ExamCatalogPicker({ value, onChange }: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [extraInput, setExtraInput] = useState('');
+  const valueSet = new Set(value);
+  const toggle = (name: string) => {
+    if (valueSet.has(name)) onChange(value.filter(v => v !== name));
+    else onChange([...value, name]);
+  };
+  const addCustom = () => {
+    const v = extraInput.trim();
+    if (!v) return;
+    if (!valueSet.has(v)) onChange([...value, v]);
+    setExtraInput('');
+  };
+  const allCatalogNames = useMemo(
+    () => new Set(Object.values(EXAM_CATALOG_BY_TUBE).flat()),
+    []
+  );
+  const customs = value.filter(v => !allCatalogNames.has(v));
+
+  return (
+    <div className="space-y-2">
+      {Object.entries(TUBE_INFO).map(([tube, info]) => {
+        const items = EXAM_CATALOG_BY_TUBE[tube] || [];
+        if (items.length === 0) return null;
+        return (
+          <div key={tube}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`w-2 h-2 rounded-full border border-slate-300 ${info.dot}`} />
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{info.label}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {items.map(name => {
+                const selected = valueSet.has(name);
+                return (
+                  <button key={name} type="button" onClick={() => toggle(name)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selected ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'
+                    }`}>
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {customs.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="w-2 h-2 rounded-full bg-slate-300 border border-slate-300" />
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Personnalisés</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {customs.map(name => (
+              <button key={name} type="button" onClick={() => toggle(name)}
+                className="px-2.5 py-1 rounded-full text-xs font-medium border bg-purple-100 text-purple-800 border-purple-300">
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <Input value={extraInput} onChange={e => setExtraInput(e.target.value)} placeholder="Autre examen…" className="h-8 text-sm flex-1"
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} />
+        <button type="button" onClick={addCustom} className="px-3 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm transition-colors">
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SpecialsPicker({ specials, extras, onToggle }: {
   specials: BilanSpecial[];
   extras: string[];
@@ -251,7 +327,7 @@ function BilanReferentielSection({ refs, onCreate, onUpdate, onDelete }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<BilanReferentiel>>({});
   const [newCode, setNewCode] = useState(''); const [newLabel, setNewLabel] = useState('');
-  const [newFreq, setNewFreq] = useState(''); const [newExamens, setNewExamens] = useState('');
+  const [newFreq, setNewFreq] = useState(''); const [newExamens, setNewExamens] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
 
   const startEdit = (r: BilanReferentiel) => { setEditingId(r.id); setEditData({ ...r }); };
@@ -268,9 +344,13 @@ function BilanReferentielSection({ refs, onCreate, onUpdate, onDelete }: {
               <Input value={editData.label ?? ''} onChange={e => setEditData(d => ({ ...d, label: e.target.value }))} placeholder="Libellé" className="h-8 text-sm" />
               <Input value={editData.frequence ?? ''} onChange={e => setEditData(d => ({ ...d, frequence: e.target.value }))} placeholder="Fréquence" className="h-8 text-sm" />
             </div>
-            <Input value={(editData.examens ?? []).join(', ')}
-              onChange={e => setEditData(d => ({ ...d, examens: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
-              placeholder="Examens (séparés par des virgules)" className="h-8 text-sm" />
+            <div className="bg-white border border-slate-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Examens du référentiel</p>
+              <ExamCatalogPicker
+                value={editData.examens ?? []}
+                onChange={list => setEditData(d => ({ ...d, examens: list }))}
+              />
+            </div>
             <div className="flex gap-2">
               <button onClick={saveEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700"><Check className="h-3 w-3" /> Enregistrer</button>
               <button onClick={() => setEditingId(null)} className="px-3 py-1.5 rounded-lg bg-white border text-xs text-slate-600 hover:bg-slate-50">Annuler</button>
@@ -302,12 +382,15 @@ function BilanReferentielSection({ refs, onCreate, onUpdate, onDelete }: {
             <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Libellé" className="h-8 text-sm" />
             <Input value={newFreq} onChange={e => setNewFreq(e.target.value)} placeholder="Fréquence" className="h-8 text-sm" />
           </div>
-          <Input value={newExamens} onChange={e => setNewExamens(e.target.value)} placeholder="Examens séparés par des virgules" className="h-8 text-sm" />
+          <div className="bg-white border border-slate-200 rounded-lg p-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Examens du référentiel</p>
+            <ExamCatalogPicker value={newExamens} onChange={setNewExamens} />
+          </div>
           <div className="flex gap-2">
             <button onClick={() => {
               if (!newCode || !newLabel) return;
-              onCreate({ code: newCode, label: newLabel, frequence: newFreq || null, examens: newExamens.split(',').map(s => s.trim()).filter(Boolean) });
-              setNewCode(''); setNewLabel(''); setNewFreq(''); setNewExamens(''); setAdding(false);
+              onCreate({ code: newCode, label: newLabel, frequence: newFreq || null, examens: newExamens });
+              setNewCode(''); setNewLabel(''); setNewFreq(''); setNewExamens([]); setAdding(false);
             }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700"><Check className="h-3 w-3" /> Ajouter</button>
             <button onClick={() => setAdding(false)} className="px-3 py-1.5 rounded-lg bg-white border text-xs text-slate-600">Annuler</button>
           </div>
