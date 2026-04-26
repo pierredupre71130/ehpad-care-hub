@@ -260,16 +260,34 @@ function BilanReferentielSection({ refs, onCreate, onUpdate, onDelete }: {
 
 // ─── Bilans Spéciaux Section ──────────────────────────────────────────────────
 
-function BilanSpeciauxSection({ specials, onCreate, onDelete, isAdmin }: {
+function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin }: {
   specials: BilanSpecial[];
   onCreate: (d: Omit<BilanSpecial, 'id'>) => void;
+  onUpdate: (s: BilanSpecial) => void;
   onDelete: (id: string) => void;
   isAdmin: boolean;
 }) {
   const [newCode, setNewCode] = useState('');
   const [newNom, setNewNom] = useState('');
   const [newInd, setNewInd] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCode, setEditCode] = useState('');
+  const [editNom, setEditNom] = useState('');
+  const [editInd, setEditInd] = useState('');
   const existingCodes = useMemo(() => specials.map(s => s.code), [specials]);
+
+  const startEdit = (s: BilanSpecial) => {
+    setEditingId(s.id);
+    setEditCode(s.code);
+    setEditNom(s.nom);
+    setEditInd(s.indication ?? '');
+  };
+  const cancelEdit = () => { setEditingId(null); };
+  const commitEdit = () => {
+    if (!editingId || !editCode || !editNom) return;
+    onUpdate({ id: editingId, code: editCode, nom: editNom, indication: editInd || null });
+    setEditingId(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -289,11 +307,26 @@ function BilanSpeciauxSection({ specials, onCreate, onDelete, isAdmin }: {
       <div className="space-y-2">
         {specials.map(s => (
           <div key={s.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full w-16 text-center">{s.code}</span>
-            <span className="text-sm font-medium text-slate-700 flex-1">{s.nom}</span>
-            {s.indication && <span className="text-xs text-slate-400 italic">{s.indication}</span>}
-            {isAdmin && (
-              <button onClick={() => onDelete(s.id)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+            {isAdmin && editingId === s.id ? (
+              <>
+                <Input value={editCode} onChange={e => setEditCode(e.target.value.toUpperCase())} placeholder="Code" className="h-8 text-sm w-24" />
+                <Input value={editNom} onChange={e => setEditNom(e.target.value)} placeholder="Nom" className="h-8 text-sm w-40" />
+                <Input value={editInd} onChange={e => setEditInd(e.target.value)} placeholder="Indication" className="h-8 text-sm flex-1" />
+                <button onClick={commitEdit} className="p-1 rounded hover:bg-green-100 text-slate-400 hover:text-green-600 transition-colors" title="Enregistrer"><Check className="h-3.5 w-3.5" /></button>
+                <button onClick={cancelEdit} className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Annuler"><X className="h-3.5 w-3.5" /></button>
+              </>
+            ) : (
+              <>
+                <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full w-16 text-center">{s.code}</span>
+                <span className="text-sm font-medium text-slate-700 flex-1">{s.nom}</span>
+                {s.indication && <span className="text-xs text-slate-400 italic">{s.indication}</span>}
+                {isAdmin && (
+                  <>
+                    <button onClick={() => startEdit(s)} className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors" title="Modifier"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => onDelete(s.id)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </>
+                )}
+              </>
             )}
           </div>
         ))}
@@ -1147,6 +1180,11 @@ export default function BilansSanguinsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bilan_special'] }); toast.success('Bilan spécial ajouté'); },
     onError: (e: Error) => toast.error(e.message),
   });
+  const updateSpecial = useMutation({
+    mutationFn: async ({ id, ...d }: BilanSpecial) => { const { error } = await supabase.from('bilan_special').update(d).eq('id', id); if (error) throw error; },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bilan_special'] }); toast.success('Bilan spécial modifié'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const deleteSpecial = useMutation({
     mutationFn: async (id: string) => { const { error } = await supabase.from('bilan_special').delete().eq('id', id); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bilan_special'] }); toast.success('Bilan spécial supprimé'); },
@@ -1305,6 +1343,7 @@ export default function BilansSanguinsPage() {
               <BilanSpeciauxSection specials={specials}
                 isAdmin={isAdmin}
                 onCreate={readOnly || !isAdmin ? () => {} : d => createSpecial.mutate(d)}
+                onUpdate={readOnly || !isAdmin ? () => {} : s => updateSpecial.mutate(s)}
                 onDelete={readOnly || !isAdmin ? () => {} : id => deleteSpecial.mutate(id)} />
             </Section>
 
