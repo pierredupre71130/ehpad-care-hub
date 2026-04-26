@@ -76,6 +76,7 @@ const TUBE_INFO: Record<string, { label: string; bg: string; border: string; tex
   bleu:   { label: 'Tube bleu (coagulation)',             bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-800',   dot: 'bg-blue-500' },
   jaune:  { label: 'Tube jaune (vitamines / immuno)',     bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', dot: 'bg-yellow-400' },
   rouge:  { label: 'Tube rouge (sérologies / hormones)',  bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-800',    dot: 'bg-red-500' },
+  gris:   { label: 'Tube gris (glycémie)',                bg: 'bg-slate-100', border: 'border-slate-300',  text: 'text-slate-700',  dot: 'bg-slate-400' },
 };
 
 const EXAM_CATALOG_BY_TUBE: Record<string, string[]> = (() => {
