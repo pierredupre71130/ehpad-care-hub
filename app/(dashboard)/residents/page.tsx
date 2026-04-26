@@ -1002,18 +1002,25 @@ export default function ResidentsPage() {
         .eq('resident_id', id);
       // Recréer une ligne vide pour la chambre afin qu'elle reste visible dans les listes
       if (room) {
+        const newId = crypto.randomUUID();
         const { error: insErr } = await sb.from('residents').insert({
-          id: crypto.randomUUID(),
+          id: newId,
           room, floor, section, sort_order,
           title: 'Mme', first_name: '', last_name: '',
           archived: false,
         });
         if (insErr) throw new Error(insErr.message);
+        // Transférer les bilans planifiés au nouveau résident pour conserver
+        // la rangée du planning (l'utilisateur les ajustera manuellement)
+        await sb.from('planning_bilan_cell')
+          .update({ resident_id: newId })
+          .eq('resident_id', id);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['residents'] });
       queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
+      queryClient.invalidateQueries({ queryKey: ['planning_bilan_cell'] });
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
