@@ -93,6 +93,60 @@ const EXAM_CATALOG_BY_TUBE: Record<string, string[]> = (() => {
   return grouped;
 })();
 
+function tubeOf(s: BilanSpecial): string {
+  return EXAM_TUBE[s.nom] ?? EXAM_TUBE[s.code] ?? 'autre';
+}
+
+function SpecialsPicker({ specials, extras, onToggle }: {
+  specials: BilanSpecial[];
+  extras: string[];
+  onToggle: (code: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const g: Record<string, BilanSpecial[]> = {};
+    specials.forEach(s => { (g[tubeOf(s)] ??= []).push(s); });
+    Object.values(g).forEach(list => list.sort((a, b) => a.code.localeCompare(b.code, 'fr')));
+    return g;
+  }, [specials]);
+
+  const orderedTubes = [...Object.keys(TUBE_INFO), 'autre'];
+
+  return (
+    <div className="space-y-2">
+      {orderedTubes.map(tube => {
+        const items = grouped[tube] || [];
+        if (items.length === 0) return null;
+        const info = TUBE_INFO[tube];
+        return (
+          <div key={tube}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`w-2 h-2 rounded-full border border-slate-300 ${info?.dot ?? 'bg-slate-300'}`} />
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                {info?.label ?? 'Autres'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {items.map(s => {
+                const selected = extras.includes(s.code);
+                return (
+                  <button key={s.id} onClick={() => onToggle(s.code)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selected
+                        ? 'bg-purple-100 text-purple-800 border-purple-300'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'
+                    }`}>
+                    {s.code}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const JOURS_SEMAINE = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 const MOIS_FULL = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -469,16 +523,13 @@ function CellEditorModal({ resident, mois, annee, existing, refs, specials, onSa
           {/* Examens supplémentaires */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Examens supplémentaires</p>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {specials.map(s => (
-                <button key={s.code} onClick={() => extras.includes(s.code) ? removeExtra(s.code) : addExtra(s.code)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${extras.includes(s.code) ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
-                  {s.code}
-                </button>
-              ))}
-            </div>
+            <SpecialsPicker
+              specials={specials}
+              extras={extras}
+              onToggle={code => extras.includes(code) ? removeExtra(code) : addExtra(code)}
+            />
             {extras.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
+              <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
                 {extras.map(e => (
                   <span key={e} className="flex items-center gap-1 bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full">
                     {e}
@@ -487,7 +538,7 @@ function CellEditorModal({ resident, mois, annee, existing, refs, specials, onSa
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-2">
               <Input value={extraInput} onChange={e => setExtraInput(e.target.value.toUpperCase())}
                 placeholder="Autre examen..." className="h-8 text-sm flex-1"
                 onKeyDown={e => { if (e.key === 'Enter' && extraInput) { addExtra(extraInput); setExtraInput(''); } }} />
@@ -649,16 +700,13 @@ function MonthlyBilanModal({ resident, annee, refs, specials, existingMonths, on
           {/* Examens supplémentaires */}
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Examens supplémentaires</p>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {specials.map(s => (
-                <button key={s.code} onClick={() => extras.includes(s.code) ? removeExtra(s.code) : addExtra(s.code)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${extras.includes(s.code) ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
-                  {s.code}
-                </button>
-              ))}
-            </div>
+            <SpecialsPicker
+              specials={specials}
+              extras={extras}
+              onToggle={code => extras.includes(code) ? removeExtra(code) : addExtra(code)}
+            />
             {extras.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
+              <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
                 {extras.map(e => (
                   <span key={e} className="flex items-center gap-1 bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full">
                     {e}
@@ -667,7 +715,7 @@ function MonthlyBilanModal({ resident, annee, refs, specials, existingMonths, on
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-2">
               <Input value={extraInput} onChange={e => setExtraInput(e.target.value.toUpperCase())}
                 placeholder="Autre examen..." className="h-8 text-sm flex-1"
                 onKeyDown={e => { if (e.key === 'Enter' && extraInput) { addExtra(extraInput); setExtraInput(''); } }} />
