@@ -134,3 +134,8 @@
     @apply w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-colors bg-white;
   }
 }
+
+.bilans-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+.bilans-scroll::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 8px; }
+.bilans-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 2px solid #e2e8f0; }
+.bilans-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }

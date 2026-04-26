@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   TestTube2, ChevronDown, ChevronUp, Plus, X, Check, Loader2,
@@ -670,6 +670,25 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ resident: Resident; mois: number; cellId: string | null } | null>(null);
   const [monthlyEditing, setMonthlyEditing] = useState<Resident | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      const step = e.shiftKey ? 320 : 110;
+      if (e.key === 'ArrowRight') { el.scrollBy({ left: step, behavior: 'smooth' }); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft') { el.scrollBy({ left: -step, behavior: 'smooth' }); e.preventDefault(); }
+      else if (e.key === 'ArrowDown') { window.scrollBy({ top: e.shiftKey ? 240 : 80, behavior: 'smooth' }); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { window.scrollBy({ top: e.shiftKey ? -240 : -80, behavior: 'smooth' }); e.preventDefault(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const filtered = useMemo(() => {
     const base = residents.filter(r => r.floor === floor)
@@ -761,7 +780,8 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+      <div ref={scrollRef} tabIndex={0} className="overflow-x-scroll overflow-y-hidden rounded-xl border border-slate-200 shadow-sm bilans-scroll"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #e2e8f0' }}>
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr className="bg-slate-700 text-white">
