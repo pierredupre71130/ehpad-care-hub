@@ -317,7 +317,7 @@ function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin 
               </>
             ) : (
               <>
-                <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full w-16 text-center">{s.code}</span>
+                <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full min-w-16 text-center inline-block flex-shrink-0">{s.code}</span>
                 <span className="text-sm font-medium text-slate-700 flex-1">{s.nom}</span>
                 {s.indication && <span className="text-xs text-slate-400 italic">{s.indication}</span>}
                 {isAdmin && (

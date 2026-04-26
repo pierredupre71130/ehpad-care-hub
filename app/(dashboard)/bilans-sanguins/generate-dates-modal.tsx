@@ -359,7 +359,7 @@ export default function GenerateDatesModal({
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-medium">
+                    <span className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-medium max-w-[160px] truncate" title={cell.bilan_label ?? ''}>
                       {cell.bilan_label}
                     </span>
                     {days.length > 0 ? (
