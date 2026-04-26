@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import GenerateDatesModal from './generate-dates-modal';
-import { PdfCalibration, PDF_CALIBRATION_DEFAULTS, DEFAULT_CHECK_COORDS } from '@/lib/generate-bilan-pdf';
+import { PdfCalibration, PDF_CALIBRATION_DEFAULTS, DEFAULT_CHECK_COORDS, EXAM_TUBE } from '@/lib/generate-bilan-pdf';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
 
@@ -70,19 +70,27 @@ const DEFAULT_REFS = [
     examens: ['NFS', 'Ionogramme', 'Urée', 'Créatinine', 'Albuminémie', 'Bilirubine T', 'SGOT', 'SGPT', 'Gamma GT', 'PAL', 'Ferritine', 'Glycémie', 'TSH', 'Folates (Vit B9)', 'Vit B12', 'Vit D', 'Calcémie', 'EAL'] },
 ];
 
-const QUICK_SPECIALS_DEFAULT = [
-  { code: 'HBG', nom: 'HbA1c', indication: 'Diabète' },
-  { code: 'TSH', nom: 'TSH', indication: 'Dysthyroïdie' },
-  { code: 'PSA', nom: 'PSA', indication: 'Prostate' },
-  { code: 'VIT D', nom: 'Vit D', indication: 'Carence' },
-  { code: 'PTH', nom: 'PTH', indication: 'Parathyroïde' },
-  { code: 'INR', nom: 'INR/TP', indication: 'Anticoagulant' },
-  { code: 'AXIA', nom: 'Anti Xa', indication: 'HBPM' },
-  { code: 'DIG', nom: 'Digoxine', indication: 'Dosage' },
-  { code: 'LIT', nom: 'Lithiémie', indication: 'Lithium' },
-  { code: 'FERR', nom: 'Ferritine', indication: 'Carence fer' },
-  { code: 'CRP', nom: 'CRP', indication: 'Inflammation' },
-];
+const TUBE_INFO: Record<string, { label: string; bg: string; border: string; text: string; dot: string }> = {
+  vert:   { label: 'Tube vert (biochimie / enzymologie)', bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-800',  dot: 'bg-green-500' },
+  violet: { label: 'Tube violet (hématologie)',           bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', dot: 'bg-purple-500' },
+  bleu:   { label: 'Tube bleu (coagulation)',             bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-800',   dot: 'bg-blue-500' },
+  jaune:  { label: 'Tube jaune (vitamines / immuno)',     bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', dot: 'bg-yellow-400' },
+  rouge:  { label: 'Tube rouge (sérologies / hormones)',  bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-800',    dot: 'bg-red-500' },
+};
+
+const EXAM_CATALOG_BY_TUBE: Record<string, string[]> = (() => {
+  const grouped: Record<string, string[]> = {};
+  const seen = new Set<string>();
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  Object.entries(EXAM_TUBE).forEach(([name, tube]) => {
+    const k = norm(name);
+    if (seen.has(k)) return;
+    seen.add(k);
+    (grouped[tube] ??= []).push(name);
+  });
+  Object.values(grouped).forEach(list => list.sort((a, b) => a.localeCompare(b, 'fr')));
+  return grouped;
+})();
 
 const JOURS_SEMAINE = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -267,14 +275,12 @@ function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin 
   onDelete: (id: string) => void;
   isAdmin: boolean;
 }) {
-  const [newCode, setNewCode] = useState('');
-  const [newNom, setNewNom] = useState('');
-  const [newInd, setNewInd] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCode, setEditCode] = useState('');
   const [editNom, setEditNom] = useState('');
   const [editInd, setEditInd] = useState('');
-  const existingCodes = useMemo(() => specials.map(s => s.code), [specials]);
+  const [search, setSearch] = useState('');
+  const existingCodes = useMemo(() => new Set(specials.map(s => s.code)), [specials]);
 
   const startEdit = (s: BilanSpecial) => {
     setEditingId(s.id);
@@ -289,22 +295,16 @@ function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin 
     setEditingId(null);
   };
 
+  const stripDiacritics = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const filterTerm = stripDiacritics(search.trim());
+  const matchSearch = (name: string) => !filterTerm || stripDiacritics(name).includes(filterTerm);
+
   return (
     <div className="space-y-4">
-      {isAdmin && (
-        <div>
-          <p className="text-xs text-slate-500 mb-2 font-medium">Ajout rapide :</p>
-          <div className="flex flex-wrap gap-2">
-            {QUICK_SPECIALS_DEFAULT.filter(q => !existingCodes.includes(q.code)).map(q => (
-              <button key={q.code} onClick={() => onCreate({ code: q.code, nom: q.nom, indication: q.indication })}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-blue-100 border border-slate-200 hover:border-blue-300 text-xs text-slate-700 hover:text-blue-700 transition-colors">
-                <Plus className="h-3 w-3" /> {q.code} <span className="text-slate-400">— {q.indication}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="space-y-2">
+        {specials.length === 0 && (
+          <p className="text-sm text-slate-400 italic">Aucun bilan spécial ajouté.</p>
+        )}
         {specials.map(s => (
           <div key={s.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             {isAdmin && editingId === s.id ? (
@@ -331,18 +331,45 @@ function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin 
           </div>
         ))}
       </div>
+
       {isAdmin && (
-        <div className="flex gap-2 pt-1">
-          <Input value={newCode} onChange={e => setNewCode(e.target.value.toUpperCase())} placeholder="Code" className="h-8 text-sm w-24" />
-          <Input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Nom" className="h-8 text-sm w-40" />
-          <Input value={newInd} onChange={e => setNewInd(e.target.value)} placeholder="Indication" className="h-8 text-sm flex-1" />
-          <button onClick={() => {
-            if (!newCode || !newNom) return;
-            onCreate({ code: newCode, nom: newNom, indication: newInd || null });
-            setNewCode(''); setNewNom(''); setNewInd('');
-          }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 flex-shrink-0">
-            <Plus className="h-3 w-3" /> Ajouter
-          </button>
+        <div className="border-t border-slate-200 pt-4">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Ajouter depuis le catalogue</p>
+          <div className="relative mb-3">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un examen…" className="pl-9 h-9 text-sm" />
+          </div>
+          <div className="space-y-3">
+            {Object.entries(TUBE_INFO).map(([tube, info]) => {
+              const items = (EXAM_CATALOG_BY_TUBE[tube] || []).filter(matchSearch);
+              if (items.length === 0) return null;
+              return (
+                <div key={tube}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`w-3 h-3 rounded-full ${info.dot} border border-slate-300`} />
+                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{info.label}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map(name => {
+                      const added = existingCodes.has(name);
+                      return (
+                        <button
+                          key={name}
+                          disabled={added}
+                          onClick={() => onCreate({ code: name, nom: name, indication: null })}
+                          title={added ? 'Déjà ajouté' : `Ajouter ${name}`}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${info.bg} ${info.border} ${info.text} ${added ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        >
+                          {added ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                          {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
