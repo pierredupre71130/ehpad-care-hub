@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   TestTube2, ChevronDown, ChevronUp, Plus, X, Check, Loader2,
   Printer, ChevronLeft, ChevronRight, Search, Pencil, Trash2, Save,
-  Calendar, Lock, Eye,
+  Calendar, Lock, Eye, Repeat,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -479,9 +479,182 @@ function CellEditorModal({ resident, mois, annee, existing, refs, specials, onSa
   );
 }
 
+// ─── Monthly Bilan Modal ──────────────────────────────────────────────────────
+
+function MonthlyBilanModal({ resident, annee, refs, specials, existingMonths, onSave, onClose }: {
+  resident: Resident; annee: number;
+  refs: BilanReferentiel[]; specials: BilanSpecial[];
+  existingMonths: Set<number>;
+  onSave: (rows: Omit<PlanningBilanCell, 'id'>[]) => void;
+  onClose: () => void;
+}) {
+  const [refCode, setRefCode] = useState<string | null>(null);
+  const [extras, setExtras] = useState<string[]>([]);
+  const [periodicite, setPeriodicite] = useState(1);
+  const [jourInputs, setJourInputs] = useState<string[]>(['']);
+  const [extraInput, setExtraInput] = useState('');
+
+  useEffect(() => {
+    const count = periodicite > 1 ? periodicite : 1;
+    setJourInputs(prev => {
+      const next = [...prev];
+      while (next.length < count) next.push('');
+      return next.slice(0, count);
+    });
+  }, [periodicite]);
+
+  const addExtra = (code: string) => { if (!extras.includes(code)) setExtras(e => [...e, code]); };
+  const removeExtra = (code: string) => setExtras(e => e.filter(x => x !== code));
+
+  const handleSave = () => {
+    const joursNum = jourInputs.map(j => parseInt(j)).filter(j => !isNaN(j) && j >= 1 && j <= 31);
+    const parts: string[] = [];
+    if (refCode) parts.push(refCode);
+    parts.push(...extras.map(e => e.length > 5 ? e.slice(0, 3).toUpperCase() : e.toUpperCase()));
+    let label = parts.join('+');
+    if (periodicite > 1) label += `×${periodicite}`;
+    const rows: Omit<PlanningBilanCell, 'id'>[] = [];
+    for (let mois = 1; mois <= 12; mois++) {
+      rows.push({
+        resident_id: resident.id, annee, mois,
+        bilan_ref_code: refCode, extra_examens: extras,
+        bilan_label: label, periodicite: periodicite > 1 ? periodicite : null,
+        jour: joursNum[0] ?? null, jours: joursNum,
+      });
+    }
+    onSave(rows);
+  };
+
+  const c = refColor(refCode);
+  const conflictMonths = Array.from(existingMonths).sort((a, b) => a - b);
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Repeat className="h-4 w-4 text-blue-600" />
+            {resident.title} {resident.last_name} {resident.first_name}
+            <span className="text-slate-400 font-normal">— Tous les mois {annee}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          <div className="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            Ce bilan sera ajouté pour les <span className="font-semibold">12 mois</span> de l&apos;année.
+            {conflictMonths.length > 0 && (
+              <> Les mois {conflictMonths.map(m => MOIS[m - 1]).join(', ')} contiennent déjà un bilan : il sera <span className="font-semibold">conservé</span> et celui-ci sera ajouté en plus.</>
+            )}
+          </div>
+
+          {/* Référentiel */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Référentiel</p>
+            <div className="flex flex-wrap gap-2">
+              {refs.map(r => {
+                const rc = refColor(r.code);
+                const selected = refCode === r.code;
+                return (
+                  <button key={r.code} onClick={() => setRefCode(selected ? null : r.code)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition-all ${selected ? `${rc.bg} ${rc.text} ${rc.border} ring-2 ring-offset-1` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                    {r.code}
+                    <span className="font-normal text-xs ml-1 opacity-70">{r.examens.length} ex.</span>
+                  </button>
+                );
+              })}
+              <button onClick={() => setRefCode(null)}
+                className={`px-3 py-1.5 rounded-lg border text-sm transition-all ${refCode === null ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
+                Aucun
+              </button>
+            </div>
+            {refCode && (() => {
+              const r = refs.find(r => r.code === refCode);
+              return r ? (
+                <div className={`mt-2 px-3 py-2 rounded-lg ${c.bg} text-xs text-slate-600`}>
+                  {r.examens.join(' · ')}
+                </div>
+              ) : null;
+            })()}
+          </div>
+
+          {/* Examens supplémentaires */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Examens supplémentaires</p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {specials.map(s => (
+                <button key={s.code} onClick={() => extras.includes(s.code) ? removeExtra(s.code) : addExtra(s.code)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${extras.includes(s.code) ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
+                  {s.code}
+                </button>
+              ))}
+            </div>
+            {extras.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {extras.map(e => (
+                  <span key={e} className="flex items-center gap-1 bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full">
+                    {e}
+                    <button onClick={() => removeExtra(e)}><X className="h-3 w-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input value={extraInput} onChange={e => setExtraInput(e.target.value.toUpperCase())}
+                placeholder="Autre examen..." className="h-8 text-sm flex-1"
+                onKeyDown={e => { if (e.key === 'Enter' && extraInput) { addExtra(extraInput); setExtraInput(''); } }} />
+              <button onClick={() => { if (extraInput) { addExtra(extraInput); setExtraInput(''); } }}
+                className="px-3 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm transition-colors">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Périodicité */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Périodicité par mois</p>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4].map(n => (
+                <button key={n} onClick={() => setPeriodicite(n)}
+                  className={`px-4 py-1.5 rounded-lg border text-sm font-medium transition-colors ${periodicite === n ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}>
+                  {n === 1 ? '1×' : `${n}×/mois`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Jours */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+              {periodicite > 1 ? `${periodicite} jours dans le mois` : 'Jour dans le mois (optionnel)'}
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              {jourInputs.map((j, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  {periodicite > 1 && <span className="text-xs text-slate-400">J{i + 1}</span>}
+                  <Input type="number" min={1} max={31} value={j}
+                    onChange={e => setJourInputs(prev => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                    placeholder="j" className="h-8 w-16 text-sm text-center" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-sm text-slate-600 hover:bg-slate-50 transition-colors">Annuler</button>
+          <button onClick={handleSave}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors">
+            <Check className="h-4 w-4" /> Planifier sur 12 mois
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Planning Grid ─────────────────────────────────────────────────────────────
 
-function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor, onFloorChange, onCellSave, onCellDelete, onMonthClick }: {
+function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor, onFloorChange, onCellSave, onCellDelete, onMonthlyAdd, onMonthClick }: {
   residents: Resident[]; cells: PlanningBilanCell[];
   refs: BilanReferentiel[]; specials: BilanSpecial[];
   doctors: DoctorConfig[];
@@ -489,12 +662,14 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
   onFloorChange: (f: 'RDC' | '1ER') => void;
   onCellSave: (data: Omit<PlanningBilanCell, 'id'>, existingId?: string) => void;
   onCellDelete: (id: string) => void;
+  onMonthlyAdd: (rows: Omit<PlanningBilanCell, 'id'>[]) => void;
   onMonthClick: (mois: number) => void;
 }) {
   const doctorColor = (name: string | null | undefined): string | null =>
     doctors.find(d => d.name === name)?.color ?? null;
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ resident: Resident; mois: number; cellId: string | null } | null>(null);
+  const [monthlyEditing, setMonthlyEditing] = useState<Resident | null>(null);
 
   const filtered = useMemo(() => {
     const base = residents.filter(r => r.floor === floor)
@@ -619,11 +794,14 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
                   </th>
                 );
               })}
+              <th className="px-1 py-1.5 text-center min-w-[44px]" title="Planifier le même bilan tous les mois">
+                <Repeat className="h-3.5 w-3.5 inline-block" />
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.length === 0 && (
-              <tr><td colSpan={13} className="text-center py-8 text-slate-400 text-sm italic">Aucun résident trouvé</td></tr>
+              <tr><td colSpan={14} className="text-center py-8 text-slate-400 text-sm italic">Aucun résident trouvé</td></tr>
             )}
             {filtered.map((r, idx) => (
               <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
@@ -678,11 +856,34 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
                     </td>
                   );
                 })}
+                <td className="px-1 py-1 text-center">
+                  <button
+                    onClick={() => setMonthlyEditing(r)}
+                    title="Planifier le même bilan tous les mois"
+                    className="w-full h-8 rounded-lg border border-dashed border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center"
+                  >
+                    <Repeat className="h-3.5 w-3.5" />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {monthlyEditing && (
+        <MonthlyBilanModal
+          resident={monthlyEditing}
+          annee={annee}
+          refs={refs}
+          specials={specials}
+          existingMonths={new Set(
+            cells.filter(c => c.resident_id === monthlyEditing.id).map(c => c.mois)
+          )}
+          onSave={rows => { onMonthlyAdd(rows); setMonthlyEditing(null); }}
+          onClose={() => setMonthlyEditing(null)}
+        />
+      )}
 
       {editing && (
         <CellEditorModal
@@ -942,6 +1143,16 @@ export default function BilansSanguinsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['planning_bilan_cell', annee] }); toast.success('Bilan supprimé'); },
     onError: (e: Error) => toast.error(e.message),
   });
+  const insertCellsBulk = useMutation({
+    mutationFn: async (rows: Omit<PlanningBilanCell, 'id'>[]) => {
+      if (rows.length === 0) return 0;
+      const { error } = await supabase.from('planning_bilan_cell').insert(rows);
+      if (error) throw error;
+      return rows.length;
+    },
+    onSuccess: (n) => { qc.invalidateQueries({ queryKey: ['planning_bilan_cell', annee] }); toast.success(`${n} bilan(s) planifié(s)`); },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   // ── Modal handlers ──
   const handleModalSave = async (results: { cellId: string; jours: number[] }[]) => {
@@ -1080,6 +1291,7 @@ export default function BilansSanguinsPage() {
                 annee={annee} floor={floor} onFloorChange={setFloor}
                 onCellSave={readOnly ? () => {} : (data, existingId) => saveCell.mutate({ data, existingId })}
                 onCellDelete={readOnly ? () => {} : id => deleteCell.mutate(id)}
+                onMonthlyAdd={readOnly ? () => {} : rows => insertCellsBulk.mutate(rows)}
                 onMonthClick={mois => setGenerateModal({ mois })}
               />
             </div>
