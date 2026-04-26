@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import GenerateDatesModal from './generate-dates-modal';
 import { PdfCalibration, PDF_CALIBRATION_DEFAULTS, DEFAULT_CHECK_COORDS } from '@/lib/generate-bilan-pdf';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useAuth } from '@/lib/auth-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -259,10 +260,11 @@ function BilanReferentielSection({ refs, onCreate, onUpdate, onDelete }: {
 
 // ─── Bilans Spéciaux Section ──────────────────────────────────────────────────
 
-function BilanSpeciauxSection({ specials, onCreate, onDelete }: {
+function BilanSpeciauxSection({ specials, onCreate, onDelete, isAdmin }: {
   specials: BilanSpecial[];
   onCreate: (d: Omit<BilanSpecial, 'id'>) => void;
   onDelete: (id: string) => void;
+  isAdmin: boolean;
 }) {
   const [newCode, setNewCode] = useState('');
   const [newNom, setNewNom] = useState('');
@@ -271,39 +273,45 @@ function BilanSpeciauxSection({ specials, onCreate, onDelete }: {
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-xs text-slate-500 mb-2 font-medium">Ajout rapide :</p>
-        <div className="flex flex-wrap gap-2">
-          {QUICK_SPECIALS_DEFAULT.filter(q => !existingCodes.includes(q.code)).map(q => (
-            <button key={q.code} onClick={() => onCreate({ code: q.code, nom: q.nom, indication: q.indication })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-blue-100 border border-slate-200 hover:border-blue-300 text-xs text-slate-700 hover:text-blue-700 transition-colors">
-              <Plus className="h-3 w-3" /> {q.code} <span className="text-slate-400">— {q.indication}</span>
-            </button>
-          ))}
+      {isAdmin && (
+        <div>
+          <p className="text-xs text-slate-500 mb-2 font-medium">Ajout rapide :</p>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_SPECIALS_DEFAULT.filter(q => !existingCodes.includes(q.code)).map(q => (
+              <button key={q.code} onClick={() => onCreate({ code: q.code, nom: q.nom, indication: q.indication })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-blue-100 border border-slate-200 hover:border-blue-300 text-xs text-slate-700 hover:text-blue-700 transition-colors">
+                <Plus className="h-3 w-3" /> {q.code} <span className="text-slate-400">— {q.indication}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-2">
         {specials.map(s => (
           <div key={s.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full w-16 text-center">{s.code}</span>
             <span className="text-sm font-medium text-slate-700 flex-1">{s.nom}</span>
             {s.indication && <span className="text-xs text-slate-400 italic">{s.indication}</span>}
-            <button onClick={() => onDelete(s.id)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+            {isAdmin && (
+              <button onClick={() => onDelete(s.id)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+            )}
           </div>
         ))}
       </div>
-      <div className="flex gap-2 pt-1">
-        <Input value={newCode} onChange={e => setNewCode(e.target.value.toUpperCase())} placeholder="Code" className="h-8 text-sm w-24" />
-        <Input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Nom" className="h-8 text-sm w-40" />
-        <Input value={newInd} onChange={e => setNewInd(e.target.value)} placeholder="Indication" className="h-8 text-sm flex-1" />
-        <button onClick={() => {
-          if (!newCode || !newNom) return;
-          onCreate({ code: newCode, nom: newNom, indication: newInd || null });
-          setNewCode(''); setNewNom(''); setNewInd('');
-        }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 flex-shrink-0">
-          <Plus className="h-3 w-3" /> Ajouter
-        </button>
-      </div>
+      {isAdmin && (
+        <div className="flex gap-2 pt-1">
+          <Input value={newCode} onChange={e => setNewCode(e.target.value.toUpperCase())} placeholder="Code" className="h-8 text-sm w-24" />
+          <Input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Nom" className="h-8 text-sm w-40" />
+          <Input value={newInd} onChange={e => setNewInd(e.target.value)} placeholder="Indication" className="h-8 text-sm flex-1" />
+          <button onClick={() => {
+            if (!newCode || !newNom) return;
+            onCreate({ code: newCode, nom: newNom, indication: newInd || null });
+            setNewCode(''); setNewNom(''); setNewInd('');
+          }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-700 flex-shrink-0">
+            <Plus className="h-3 w-3" /> Ajouter
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -983,6 +991,8 @@ export default function BilansSanguinsPage() {
   const supabase = createClient();
   const access = useModuleAccess('bilansSanguins');
   const readOnly = access === 'read';
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
@@ -1293,8 +1303,9 @@ export default function BilansSanguinsPage() {
 
             <Section title="Bilans spéciaux" icon={<TestTube2 className="h-4 w-4" />}>
               <BilanSpeciauxSection specials={specials}
-                onCreate={readOnly ? () => {} : d => createSpecial.mutate(d)}
-                onDelete={readOnly ? () => {} : id => deleteSpecial.mutate(id)} />
+                isAdmin={isAdmin}
+                onCreate={readOnly || !isAdmin ? () => {} : d => createSpecial.mutate(d)}
+                onDelete={readOnly || !isAdmin ? () => {} : id => deleteSpecial.mutate(id)} />
             </Section>
 
             {/* Planning annuel */}
