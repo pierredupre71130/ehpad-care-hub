@@ -16,6 +16,7 @@ import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { fetchRolePermissions } from '@/lib/role-permissions';
+import { fetchRoleModuleSizes, getModuleSize } from '@/lib/module-sizes';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -202,6 +203,12 @@ export default function DashboardPage() {
   const { data: rolePermissions } = useQuery({
     queryKey: ['settings', 'role_permissions'],
     queryFn: fetchRolePermissions,
+  });
+
+  // Tailles de modules par rôle (Grand / Petit)
+  const { data: roleModuleSizes } = useQuery({
+    queryKey: ['settings', 'role_module_sizes'],
+    queryFn: fetchRoleModuleSizes,
   });
 
   const handleRoleChange = (role: string) => {
@@ -393,10 +400,39 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {viewMode === 'bento' && !isAdminMode
-          ? <BentoDashboardGrid modules={visibleModules} />
-          : <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />
-        }
+        {(() => {
+          if (isAdminMode) {
+            return <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />;
+          }
+          if (viewMode === 'bento') {
+            return <BentoDashboardGrid modules={visibleModules} />;
+          }
+          // Vue classique : split selon la config Grand/Petit du rôle effectif
+          const sizesForRole = roleModuleSizes && effectiveRole && effectiveRole !== 'all'
+            ? roleModuleSizes
+            : null;
+          const largeModules = sizesForRole
+            ? visibleModules.filter(m => getModuleSize(sizesForRole, effectiveRole as string, m.id) === 'large')
+            : visibleModules;
+          const smallModules = sizesForRole
+            ? visibleModules.filter(m => getModuleSize(sizesForRole, effectiveRole as string, m.id) === 'small')
+            : [];
+          return (
+            <>
+              {largeModules.length > 0 && (
+                <DashboardGrid modules={largeModules} isAdminMode={false} />
+              )}
+              {smallModules.length > 0 && (
+                <div className={largeModules.length > 0 ? 'mt-6' : ''}>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                    Accès rapide
+                  </p>
+                  <BentoDashboardGrid modules={smallModules} />
+                </div>
+              )}
+            </>
+          );
+        })()}
       </main>
 
       {/* ── Barre de navigation bas ── */}
