@@ -3,8 +3,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser } from 'lucide-react';
+import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser, LayoutGrid, Layers } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
+import { BentoDashboardGrid } from '@/components/dashboard/bento-dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
@@ -170,6 +171,10 @@ export default function DashboardPage() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [showRgpdModal, setShowRgpdModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'classic' | 'bento'>(() => {
+    if (typeof window === 'undefined') return 'classic';
+    return (localStorage.getItem('dashboard_view_mode') as 'classic' | 'bento') ?? 'classic';
+  });
 
   // Redirection si non authentifié
   useEffect(() => {
@@ -354,7 +359,44 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />
+        {/* View toggle — caché en mode admin (le drag-and-drop nécessite la vue classique) */}
+        {!isAdminMode && visibleModules.length > 0 && (
+          <div className="flex justify-end mb-3">
+            <div className="flex items-center gap-0.5 bg-white/10 rounded-xl p-0.5">
+              <button
+                onClick={() => { setViewMode('classic'); localStorage.setItem('dashboard_view_mode', 'classic'); }}
+                title="Vue classique"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  viewMode === 'classic'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-white/60 hover:text-white'
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Classique</span>
+              </button>
+              <button
+                onClick={() => { setViewMode('bento'); localStorage.setItem('dashboard_view_mode', 'bento'); }}
+                title="Vue par catégories"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  viewMode === 'bento'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-white/60 hover:text-white'
+                )}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Catégories</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'bento' && !isAdminMode
+          ? <BentoDashboardGrid modules={visibleModules} />
+          : <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />
+        }
       </main>
 
       {/* ── Barre de navigation bas ── */}
