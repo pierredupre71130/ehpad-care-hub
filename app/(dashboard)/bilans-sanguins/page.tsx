@@ -446,37 +446,59 @@ function BilanSpeciauxSection({ specials, onCreate, onUpdate, onDelete, isAdmin 
   const filterTerm = stripDiacritics(search.trim());
   const matchSearch = (name: string) => !filterTerm || stripDiacritics(name).includes(filterTerm);
 
+  const grouped = useMemo(() => {
+    const g: Record<string, BilanSpecial[]> = {};
+    specials.forEach(s => { (g[tubeOf(s)] ??= []).push(s); });
+    return g;
+  }, [specials]);
+
+  const orderedTubes = [...Object.keys(TUBE_INFO), 'autre'];
+
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
+      <div className="space-y-3">
         {specials.length === 0 && (
           <p className="text-sm text-slate-400 italic">Aucun bilan spécial ajouté.</p>
         )}
-        {specials.map(s => (
-          <div key={s.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            {isAdmin && editingId === s.id ? (
-              <>
-                <Input value={editCode} onChange={e => setEditCode(e.target.value.toUpperCase())} placeholder="Code" className="h-8 text-sm w-24" />
-                <Input value={editNom} onChange={e => setEditNom(e.target.value)} placeholder="Nom" className="h-8 text-sm w-40" />
-                <Input value={editInd} onChange={e => setEditInd(e.target.value)} placeholder="Indication" className="h-8 text-sm flex-1" />
-                <button onClick={commitEdit} className="p-1 rounded hover:bg-green-100 text-slate-400 hover:text-green-600 transition-colors" title="Enregistrer"><Check className="h-3.5 w-3.5" /></button>
-                <button onClick={cancelEdit} className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Annuler"><X className="h-3.5 w-3.5" /></button>
-              </>
-            ) : (
-              <>
-                <span className="font-bold text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full min-w-16 text-center inline-block flex-shrink-0">{s.code}</span>
-                <span className="text-sm font-medium text-slate-700 flex-1">{s.nom}</span>
-                {s.indication && <span className="text-xs text-slate-400 italic">{s.indication}</span>}
-                {isAdmin && (
-                  <>
-                    <button onClick={() => startEdit(s)} className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors" title="Modifier"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button onClick={() => onDelete(s.id)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+        {orderedTubes.map(tube => {
+          const items = grouped[tube];
+          if (!items?.length) return null;
+          const info = TUBE_INFO[tube];
+          return (
+            <div key={tube}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info?.dot ?? 'bg-slate-400'} border border-slate-300`} />
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{info?.label ?? 'Autre'}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {items.map(s => (
+                  <div key={s.id}>
+                    {isAdmin && editingId === s.id ? (
+                      <div className="flex items-center gap-1.5 bg-white border border-blue-300 rounded-lg px-2 py-1 shadow-sm">
+                        <Input value={editCode} onChange={e => setEditCode(e.target.value.toUpperCase())} placeholder="Code" className="h-7 text-xs w-20" />
+                        <Input value={editNom} onChange={e => setEditNom(e.target.value)} placeholder="Nom" className="h-7 text-xs w-36" />
+                        <Input value={editInd} onChange={e => setEditInd(e.target.value)} placeholder="Indication" className="h-7 text-xs w-28" />
+                        <button onClick={commitEdit} className="p-1 rounded hover:bg-green-100 text-slate-400 hover:text-green-600 transition-colors" title="Enregistrer"><Check className="h-3.5 w-3.5" /></button>
+                        <button onClick={cancelEdit} className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Annuler"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-medium ${info?.bg ?? 'bg-slate-50'} ${info?.border ?? 'border-slate-200'} ${info?.text ?? 'text-slate-700'}`}>
+                        <span className="font-semibold">{s.nom}</span>
+                        {s.indication && <span className="text-[10px] opacity-60 italic">· {s.indication}</span>}
+                        {isAdmin && (
+                          <>
+                            <button onClick={() => startEdit(s)} className="ml-1 p-0.5 rounded hover:bg-white/70 text-current opacity-50 hover:opacity-100 transition-opacity" title="Modifier"><Pencil className="h-3 w-3" /></button>
+                            <button onClick={() => onDelete(s.id)} className="p-0.5 rounded hover:bg-red-100 text-current opacity-50 hover:opacity-100 hover:text-red-600 transition-opacity" title="Supprimer"><Trash2 className="h-3 w-3" /></button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {isAdmin && (
