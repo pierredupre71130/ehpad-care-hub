@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import {
   Lock, FolderOpen, Printer, Loader2, ChevronDown, X,
   AlertTriangle, PhoneCall, Pill, Moon, Eye,
@@ -540,7 +541,7 @@ export default function ConsignesNuitPage() {
   const access = useModuleAccess('consignesNuit');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useEffectiveRole() === 'admin';
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [notesByFloor, setNotesByFloor] = useState<Record<string, Record<string, string>>>({ RDC: {}, '1ER': {} });
   const [infosByFloor, setInfosByFloor] = useState<Record<string, string>>({ RDC: '', '1ER': '' });

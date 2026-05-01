@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import Link from 'next/link';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -939,7 +940,7 @@ export default function ResidentsPage() {
   const access = useModuleAccess('residents');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useEffectiveRole() === 'admin';
 
   const [floorFilter, setFloorFilter]   = useState<FloorFilter>('TOUS');
   const [search, setSearch]             = useState('');

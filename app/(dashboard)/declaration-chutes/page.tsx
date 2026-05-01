@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { FallFormWizard } from '@/components/declaration-chutes/fall-form-wizard';
 import {
   type ChuteRecord, type ChuteFormData,
@@ -862,9 +863,10 @@ type Tab = 'declare' | 'history' | 'stats';
 export default function DeclarationChutesPage() {
   const qc = useQueryClient();
   const { profile } = useAuth();
+  const effectiveRole = useEffectiveRole();
   const access   = useModuleAccess('declarationChutes');
   const readOnly = access === 'read';
-  const isAdmin  = profile?.role === 'admin';
+  const isAdmin  = effectiveRole === 'admin';
 
   const [tab, setTab]               = useState<Tab>('declare');
   const [success, setSuccess]       = useState(false);

@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth-context';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -226,7 +227,7 @@ export default function BasContentionPage() {
   const qc = useQueryClient();
   const { profile } = useAuth();
   useModuleAccess('basDeContention');
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useEffectiveRole() === 'admin';
 
   const [tab, setTab] = useState<Tab>('ajouter');
 

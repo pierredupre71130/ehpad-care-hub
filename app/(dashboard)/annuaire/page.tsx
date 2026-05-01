@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth-context';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -198,7 +199,7 @@ export default function AnnuairePage() {
   const qc = useQueryClient();
   const { profile } = useAuth();
   useModuleAccess('annuaire');
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useEffectiveRole() === 'admin';
 
   const [activeTab, setActiveTab] = useState<Tab>('lignes-directes');
 

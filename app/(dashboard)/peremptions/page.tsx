@@ -8,6 +8,7 @@ import {
   RefreshCw, Search, ChevronsUpDown, Info, Package, Eye,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -657,7 +658,7 @@ type SortDir = 'asc' | 'desc';
 export default function PeremptionsPage() {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
-  const isAppAdmin = profile?.role === 'admin';
+  const isAppAdmin = useEffectiveRole() === 'admin';
   const access = useModuleAccess('peremptions');
   const readOnly = access === 'read';
 

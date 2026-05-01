@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import {
   type QuestionnaireRecord, type QuestionnaireFormData, type AnalyseRecord, type RatingPoint, type RapportIARecord,
   QUESTIONS_BASE, QUESTIONS_ESI, SCALE, DEFAULT_FORM,
@@ -1468,8 +1469,9 @@ export default function QuestionnairesEtudiantsPage() {
   const access   = useModuleAccess('questionnairesEtudiants');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isAdminOrIde = profile?.role === 'admin' || profile?.role === 'ide';
-  const isCadre      = profile?.role === 'cadre';
+  const effectiveRole = useEffectiveRole();
+  const isAdminOrIde = effectiveRole === 'admin' || effectiveRole === 'ide';
+  const isCadre      = effectiveRole === 'cadre';
   const canSeeStats  = isAdminOrIde || isCadre;
 
   const [tab, setTab]         = useState<Tab>('form');

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
@@ -238,7 +239,7 @@ export default function EtiquettesRepasPage() {
   const access = useModuleAccess('etiquettesRepas');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useEffectiveRole() === 'admin';
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [activeRepas, setActiveRepas] = useState('midi');
