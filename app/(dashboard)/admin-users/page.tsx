@@ -9,7 +9,13 @@ import {
   Wand2, Copy, ClipboardCheck, AlertTriangle,
 } from 'lucide-react';
 import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
-import { CONFIGURABLE_ROLES } from '@/lib/role-permissions';
+import { CONFIGURABLE_ROLES, fetchRolePermissions } from '@/lib/role-permissions';
+import {
+  fetchRoleModuleSizes, saveRoleModuleSizes, getModuleSize,
+  type ModuleSize, type RoleModuleSizes,
+} from '@/lib/module-sizes';
+import { MODULES, ROLE_MODULES } from '@/components/dashboard/module-config';
+import { LayoutGrid, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Password generator ────────────────────────────────────────────────────────
@@ -467,6 +473,9 @@ function AdminUsersContent() {
                 </div>
               )}
             </div>
+
+            {/* Module sizes per role */}
+            <ModuleSizesPanel />
           </>
         )}
       </main>
@@ -689,6 +698,144 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// ── Module sizes panel ───────────────────────────────────────────────────────
+
+function ModuleSizesPanel() {
+  const qc = useQueryClient();
+  const [activeRole, setActiveRole] = useState<string>(CONFIGURABLE_ROLES[0].value);
+
+  const { data: sizes, isLoading } = useQuery({
+    queryKey: ['admin', 'role_module_sizes'],
+    queryFn: fetchRoleModuleSizes,
+  });
+
+  const { data: perms } = useQuery({
+    queryKey: ['admin', 'role_permissions'],
+    queryFn: fetchRolePermissions,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: saveRoleModuleSizes,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'role_module_sizes'] }),
+  });
+
+  const accessibleModules = (() => {
+    if (!perms) {
+      const defaultAllowed = ROLE_MODULES[activeRole];
+      const ids = (defaultAllowed === null || defaultAllowed === undefined)
+        ? MODULES.map(m => m.id)
+        : defaultAllowed;
+      return MODULES.filter(m => ids.includes(m.id));
+    }
+    const roleAccess = perms[activeRole] ?? {};
+    return MODULES.filter(m => !!roleAccess[m.id]);
+  })();
+
+  const setSize = (moduleId: string, size: ModuleSize) => {
+    const current: RoleModuleSizes = sizes ?? {};
+    const next: RoleModuleSizes = {
+      ...current,
+      [activeRole]: { ...(current[activeRole] ?? {}), [moduleId]: size },
+    };
+    saveMutation.mutate(next);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-6">
+      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+          style={{ background: '#eef4ff' }}>
+          <LayoutGrid className="h-4.5 w-4.5" style={{ color: '#3b72d8' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold text-slate-900">Disposition des modules par rôle</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Choisissez Grand (carte standard) ou Petit (tuile compacte) pour chaque module accessible.
+          </p>
+        </div>
+        {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+      </div>
+
+      {/* Role tabs */}
+      <div className="px-4 sm:px-6 pt-4 flex gap-2 overflow-x-auto">
+        {CONFIGURABLE_ROLES.map(r => (
+          <button
+            key={r.value}
+            onClick={() => setActiveRole(r.value)}
+            className={cn(
+              'px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors',
+              activeRole === r.value
+                ? 'text-white'
+                : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+            )}
+            style={activeRole === r.value ? { background: r.color } : undefined}
+          >
+            {r.shortLabel}
+          </button>
+        ))}
+      </div>
+
+      {/* Module list */}
+      <div className="p-4 sm:p-6">
+        {isLoading ? (
+          <div className="py-8 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+          </div>
+        ) : accessibleModules.length === 0 ? (
+          <div className="py-8 text-center text-sm text-slate-400">
+            Ce rôle n'a accès à aucun module.
+          </div>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {accessibleModules.map(m => {
+              const Icon = m.icon;
+              const size = getModuleSize(sizes ?? {}, activeRole, m.id);
+              return (
+                <div key={m.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: m.cardFrom + '20' }}>
+                    <Icon className="h-4 w-4" style={{ color: m.cardFrom }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-slate-800 truncate">{m.label}</div>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setSize(m.id, 'large')}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-colors',
+                        size === 'large'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      )}
+                      title="Carte standard"
+                    >
+                      <Maximize2 className="h-3 w-3" /> Grand
+                    </button>
+                    <button
+                      onClick={() => setSize(m.id, 'small')}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-colors',
+                        size === 'small'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      )}
+                      title="Tuile compacte"
+                    >
+                      <Minimize2 className="h-3 w-3" /> Petit
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
