@@ -87,7 +87,7 @@ export const EXAM_TUBE: Record<string, string> = {
   'NFS': 'violet', 'Numération formule': 'violet', 'Plaquettes': 'violet',
   'Réticulocytes': 'violet', 'Vitesse de sédimentation': 'violet', 'VS': 'violet',
   'Groupe sanguin': 'violet', 'Coombs direct': 'violet', 'RAI': 'violet',
-  'HbA1c': 'violet', 'Hémoglobine glyquée': 'violet', 'HBA1C': 'violet',
+  'Hémoglobine glyquée': 'violet',
   'Glycémie': 'gris', 'Glycémie à jeun': 'gris', 'Cycle glycémique': 'gris',
   'TP/INR': 'bleu', 'INR': 'bleu', 'TCK': 'bleu', 'Fibrinogène': 'bleu',
   'D-dimères': 'bleu', 'Anti Xa': 'bleu', 'PDF': 'bleu', 'TCA': 'bleu',
@@ -139,8 +139,8 @@ export const DEFAULT_CHECK_COORDS: Record<string, [number, number]> = {
   'NFS': [18, 369], 'Numération formule': [18, 369], 'Plaquettes': [18, 367],
   'Réticulocytes': [120, 380], 'Vitesse de sédimentation': [120, 367], 'VS': [120, 367],
   'Groupe sanguin': [18, 407], 'Coombs direct': [120, 407], 'RAI': [120, 394],
-  // === VIOLET - HbA1c ===
-  'HbA1c': [18, 347], 'Hémoglobine glyquée': [18, 347], 'HBA1C': [18, 347],
+  // === VIOLET - Hémoglobine glyquée ===
+  'Hémoglobine glyquée': [18, 347],
   // === GRIS ===
   'Glycémie à jeun': [18, 312], 'Cycle glycémique': [140, 299],
   // === BLEU - HEMOSTASE ===
@@ -181,7 +181,7 @@ export const EXAM_ALIASES: Record<string, string> = {
   'β-HCG': 'BHCG',
   'Phosphatases alcalines': 'PAL',
   'Albuminémie': 'Albumine',
-  'HBG': 'HbA1c',
+  'HBG': 'Hémoglobine glyquée', 'HbA1c': 'Hémoglobine glyquée', 'HBA1C': 'Hémoglobine glyquée',
   'Calcémie': 'Calcium',
   'Vit B12': 'Vitamine B12', 'Vitamine B12': 'Vitamine B12',
   'Vit D': 'Vitamine D',
@@ -330,7 +330,7 @@ export async function generateBilanPDF(params: GeneratePdfParams): Promise<Uint8
     if (tubeColor === 'violet') {
       if (['Groupe sanguin', 'Coombs direct', 'RAI'].includes(resolved)) tubesUsed.add('violet_gs');
       else if (['NFS', 'Numération formule', 'Réticulocytes', 'Plaquettes', 'Vitesse de sédimentation', 'VS'].includes(resolved)) tubesUsed.add('violet_nfs');
-      else if (['HbA1c', 'Hémoglobine glyquée', 'HBA1C'].includes(resolved)) tubesUsed.add('violet_hba1c');
+      else if (resolved === 'Hémoglobine glyquée') tubesUsed.add('violet_hba1c');
     } else {
       tubesUsed.add(tubeColor);
     }
