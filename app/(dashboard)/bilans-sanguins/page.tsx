@@ -1223,7 +1223,18 @@ export default function BilansSanguinsPage() {
   const access = useModuleAccess('bilansSanguins');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const isRealAdmin = profile?.role === 'admin';
+  const { data: simulatedRole } = useQuery<string>({
+    queryKey: ['settings', 'dashboard_role'],
+    queryFn: async () => {
+      const sb = createClient();
+      const { data } = await sb.from('settings').select('value').eq('key', 'dashboard_role').maybeSingle();
+      return (data?.value as string) ?? 'all';
+    },
+    enabled: isRealAdmin,
+    staleTime: 0,
+  });
+  const isAdmin = isRealAdmin && (simulatedRole === 'all' || !simulatedRole);
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
