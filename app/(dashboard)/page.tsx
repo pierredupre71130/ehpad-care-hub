@@ -378,7 +378,7 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={() => { setViewMode('bento'); localStorage.setItem('dashboard_view_mode', 'bento'); }}
-                title="Vue par catégories"
+                title="Vue compacte"
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                   viewMode === 'bento'
@@ -387,7 +387,7 @@ export default function DashboardPage() {
                 )}
               >
                 <Layers className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Catégories</span>
+                <span className="hidden sm:inline">Compact</span>
               </button>
             </div>
           </div>
