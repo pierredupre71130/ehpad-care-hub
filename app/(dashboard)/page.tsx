@@ -331,7 +331,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Widget Entrées — cadre de santé (et admin en simulation cadre) */}
+        {/* Widget Entrées — cadre de santé (désactivé — décommenter pour réactiver)
         {effectiveRole === 'cadre' && !isAdminMode && (
           <div className="mb-6">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
@@ -340,6 +340,7 @@ export default function DashboardPage() {
             <EntreesWidget isAdmin={isAdmin} />
           </div>
         )}
+        */}
 
         {/* Résumé des droits — admin en simulation d'un rôle spécifique */}
         {isAdmin && currentRole !== 'all' && !isAdminMode && rolePermissions && (
