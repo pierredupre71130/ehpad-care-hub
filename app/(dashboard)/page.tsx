@@ -9,6 +9,7 @@ import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
 import { EntreesWidget } from '@/components/dashboard/entrees-widget';
+import { RoleSummaryPanel } from '@/components/dashboard/role-summary-panel';
 import { MessagingHeaderButton } from '@/components/dashboard/messaging-header-button';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
@@ -338,6 +339,11 @@ export default function DashboardPage() {
             </p>
             <EntreesWidget isAdmin={isAdmin} />
           </div>
+        )}
+
+        {/* Résumé des droits — admin en simulation d'un rôle spécifique */}
+        {isAdmin && currentRole !== 'all' && !isAdminMode && rolePermissions && (
+          <RoleSummaryPanel role={currentRole} permissions={rolePermissions} />
         )}
 
         {isAdminMode && (
