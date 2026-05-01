@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
+import { MixedDashboardGrid } from '@/components/dashboard/mixed-dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
@@ -13,6 +14,7 @@ import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { fetchRolePermissions } from '@/lib/role-permissions';
+import { fetchModuleSizes, type ModuleSizeConfig } from '@/lib/module-sizes';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -197,13 +199,25 @@ export default function DashboardPage() {
     queryFn: fetchRolePermissions,
   });
 
+  // Pour les non-admins : toujours filtrer par le rôle réel du profil,
+  // jamais par currentRole qui peut être en retard (race condition au chargement)
+  const effectiveRoleForSizes = isAdmin
+    ? (currentRole !== 'all' ? currentRole : null)
+    : (profile?.role ?? null);
+
+  // Tailles des modules configurées par l'admin pour ce rôle
+  const { data: moduleSizes = {} } = useQuery<ModuleSizeConfig>({
+    queryKey: ['settings', 'module_sizes', effectiveRoleForSizes],
+    queryFn: () => fetchModuleSizes(effectiveRoleForSizes!),
+    enabled: !!effectiveRoleForSizes,
+    staleTime: 30000,
+  });
+
   const handleRoleChange = (role: string) => {
     setCurrentRole(role);
     saveRole(role);
   };
 
-  // Pour les non-admins : toujours filtrer par le rôle réel du profil,
-  // jamais par currentRole qui peut être en retard (race condition au chargement)
   const effectiveRole = isAdmin ? currentRole : (profile?.role ?? null);
 
   // Modules filtrés selon permissions dynamiques (hors bottom-nav)
@@ -336,7 +350,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />
+        {isAdminMode
+          ? <DashboardGrid modules={visibleModules} isAdminMode={isAdminMode} />
+          : <MixedDashboardGrid modules={visibleModules} sizeConfig={moduleSizes} />
+        }
       </main>
 
       {/* ── Barre de navigation bas ── */}

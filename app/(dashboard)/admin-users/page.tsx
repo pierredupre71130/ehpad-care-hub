@@ -1,15 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Users, Home, UserPlus, Trash2, Pencil, Eye, EyeOff,
   Loader2, Check, X, ShieldAlert, KeyRound, ChevronDown,
-  Wand2, Copy, ClipboardCheck, AlertTriangle,
+  Wand2, Copy, ClipboardCheck, AlertTriangle, LayoutGrid,
 } from 'lucide-react';
 import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
-import { CONFIGURABLE_ROLES } from '@/lib/role-permissions';
+import { CONFIGURABLE_ROLES, fetchRolePermissions } from '@/lib/role-permissions';
+import { MODULES } from '@/components/dashboard/module-config';
+import { fetchModuleSizes, saveModuleSizes, type ModuleSizeConfig } from '@/lib/module-sizes';
 import { cn } from '@/lib/utils';
 
 // ── Password generator ────────────────────────────────────────────────────────
@@ -467,6 +469,9 @@ function AdminUsersContent() {
                 </div>
               )}
             </div>
+
+            {/* Module sizes configuration */}
+            <ModuleSizesPanel />
           </>
         )}
       </main>
@@ -664,6 +669,129 @@ function EditUserModal({ user, onClose, onSaved }: { user: AppUser; onClose: () 
         </div>
       </form>
     </ModalOverlay>
+  );
+}
+
+// ── Module sizes panel ────────────────────────────────────────────────────────
+
+function ModuleSizesPanel() {
+  const qc = useQueryClient();
+  const [selectedRole, setSelectedRole] = useState(CONFIGURABLE_ROLES[0].value);
+
+  const { data: rolePermissions } = useQuery({
+    queryKey: ['settings', 'role_permissions'],
+    queryFn: fetchRolePermissions,
+  });
+
+  const { data: sizeConfig = {} } = useQuery<ModuleSizeConfig>({
+    queryKey: ['settings', 'module_sizes', selectedRole],
+    queryFn: () => fetchModuleSizes(selectedRole),
+  });
+
+  const accessibleModules = useMemo(() => {
+    if (!rolePermissions) return [];
+    const allowed = rolePermissions[selectedRole] ?? {};
+    return MODULES.filter(m => m.id in allowed);
+  }, [selectedRole, rolePermissions]);
+
+  const handleToggle = async (moduleId: string, size: 'large' | 'small') => {
+    const next: ModuleSizeConfig = { ...sizeConfig, [moduleId]: size };
+    qc.setQueryData(['settings', 'module_sizes', selectedRole], next);
+    await saveModuleSizes(selectedRole, next);
+  };
+
+  const selectedRoleInfo = CONFIGURABLE_ROLES.find(r => r.value === selectedRole);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-6">
+      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+          <LayoutGrid className="h-4 w-4 text-blue-600" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Disposition des modules par rôle</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Choisissez quels modules s&apos;affichent en grand ou en petit pour chaque rôle</p>
+        </div>
+      </div>
+
+      {/* Role tabs */}
+      <div className="px-4 pt-3 pb-3 flex gap-1.5 flex-wrap border-b border-slate-100">
+        {CONFIGURABLE_ROLES.map(role => (
+          <button
+            key={role.value}
+            onClick={() => setSelectedRole(role.value)}
+            className={cn(
+              'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors',
+              selectedRole === role.value
+                ? 'text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            )}
+            style={selectedRole === role.value ? { background: role.color } : {}}
+          >
+            {role.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Module list */}
+      <div className="px-4 py-4">
+        {accessibleModules.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">
+            {rolePermissions ? 'Aucun module accessible pour ce rôle.' : 'Chargement…'}
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500 mb-3">
+              <span className="font-semibold" style={{ color: selectedRoleInfo?.color }}>{selectedRoleInfo?.label}</span>
+              {' '}— {accessibleModules.length} module{accessibleModules.length > 1 ? 's' : ''} accessibles
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {accessibleModules.map(mod => {
+                const size = sizeConfig[mod.id] ?? 'large';
+                const ModIcon = mod.icon;
+                return (
+                  <div key={mod.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: mod.cardFrom + '25' }}
+                      >
+                        <ModIcon className="h-3.5 w-3.5" style={{ color: mod.cardFrom }} strokeWidth={1.5} />
+                      </div>
+                      <span className="text-xs font-medium text-slate-700 truncate">{mod.label}</span>
+                    </div>
+                    <div className="flex items-center gap-0.5 bg-slate-200 rounded-lg p-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleToggle(mod.id, 'large')}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all',
+                          size === 'large'
+                            ? 'bg-white text-slate-800 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Grand
+                      </button>
+                      <button
+                        onClick={() => handleToggle(mod.id, 'small')}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all',
+                          size === 'small'
+                            ? 'bg-white text-slate-800 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Petit
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
