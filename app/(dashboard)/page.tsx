@@ -366,8 +366,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* View toggle — caché en mode admin (le drag-and-drop nécessite la vue classique) */}
-        {!isAdminMode && visibleModules.length > 0 && (
+        {/* View toggle — admin uniquement, caché en mode admin (drag-and-drop nécessite la vue classique) */}
+        {isAdmin && !isAdminMode && visibleModules.length > 0 && (
           <div className="flex justify-end mb-3">
             <div className="flex items-center gap-0.5 bg-white/10 rounded-xl p-0.5">
               <button
