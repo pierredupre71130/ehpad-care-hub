@@ -563,7 +563,7 @@ function CellEditorModal({ resident, mois, annee, existing, refs, specials, onSa
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[min(96vw,1280px)] sm:!max-w-[min(96vw,1280px)] w-[96vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <TestTube2 className="h-4 w-4 text-red-500" />
@@ -733,7 +733,7 @@ function MonthlyBilanModal({ resident, annee, refs, specials, existingMonths, on
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[min(96vw,1280px)] sm:!max-w-[min(96vw,1280px)] w-[96vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Repeat className="h-4 w-4 text-blue-600" />
