@@ -244,6 +244,15 @@ function cellLabel(cell: PlanningBilanCell): string {
   return lbl || '?';
 }
 
+function cellLabelParts(cell: PlanningBilanCell): { parts: string[]; suffix: string } {
+  const parts: string[] = [];
+  if (cell.bilan_ref_code) parts.push(cell.bilan_ref_code);
+  const extras = (cell.extra_examens || []).map(e => e.length > 5 ? e.slice(0, 3).toUpperCase() : e.toUpperCase());
+  parts.push(...extras);
+  const suffix = cell.periodicite && cell.periodicite > 1 ? `×${cell.periodicite}` : '';
+  return { parts: parts.length === 0 ? ['?'] : parts, suffix };
+}
+
 // ─── Collapsible Section ───────────────────────────────────────────────────────
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -1053,10 +1062,18 @@ function PlanningGrid({ residents, cells, refs, specials, doctors, annee, floor,
                       <div className="flex flex-col gap-0.5">
                         {monthCells.map(cell => {
                           const c = refColor(cell.bilan_ref_code);
+                          const { parts, suffix } = cellLabelParts(cell);
+                          const splitAt = parts.length > 3 ? Math.ceil(parts.length / 2) : parts.length;
+                          const line1 = parts.slice(0, splitAt).join('+');
+                          const line2 = parts.slice(splitAt).join('+');
                           return (
                             <button key={cell.id} onClick={() => setEditing({ resident: r, mois, cellId: cell.id })}
+                              title={parts.join('+') + suffix}
                               className={`w-full px-1.5 py-1 rounded-lg border ${c.bg} ${c.border} hover:opacity-80 transition-opacity`}>
-                              <div className={`text-[11px] font-bold leading-tight ${c.text}`}>{cellLabel(cell)}</div>
+                              <div className={`text-[11px] font-bold leading-tight ${c.text} break-words`}>
+                                {line1}{line2 ? '+' : ''}{suffix && !line2 ? suffix : ''}
+                                {line2 && <><br />{line2}{suffix}</>}
+                              </div>
                               {cell.jours?.length > 0 ? (
                                 <div className={`text-[10px] font-medium leading-tight mt-0.5 ${c.text} opacity-80`}>
                                   {cell.jours.map((j: number) => `${j}`).join(' · ')}
