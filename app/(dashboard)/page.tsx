@@ -8,6 +8,7 @@ import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
+import { EntreesWidget } from '@/components/dashboard/entrees-widget';
 import { MessagingHeaderButton } from '@/components/dashboard/messaging-header-button';
 import { MODULES, BOTTOM_NAV_IDS } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
@@ -326,6 +327,16 @@ export default function DashboardPage() {
               Tableau de bord PAP
             </p>
             <PapStatsWidget />
+          </div>
+        )}
+
+        {/* Widget Entrées — cadre de santé (et admin en simulation cadre) */}
+        {effectiveRole === 'cadre' && !isAdminMode && (
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+              Activité de l&apos;établissement
+            </p>
+            <EntreesWidget isAdmin={isAdmin} />
           </div>
         )}
 
