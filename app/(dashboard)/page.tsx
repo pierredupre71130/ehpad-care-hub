@@ -420,7 +420,7 @@ export default function DashboardPage() {
           return (
             <>
               {largeModules.length > 0 && (
-                <DashboardGrid modules={largeModules} isAdminMode={false} />
+                <DashboardGrid modules={largeModules} isAdminMode={false} maxCols={4} />
               )}
               {smallModules.length > 0 && (
                 <div className={largeModules.length > 0 ? 'mt-6' : ''}>
