@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X, Printer, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -295,9 +296,10 @@ export default function GIRNiveauSoinPage() {
   const { profile } = useAuth();
   const access = useModuleAccess('girNiveauSoin');
   const readOnly = access === 'read';
+  const effectiveRole = useEffectiveRole();
 
-  // Restriction par champ selon le rôle
-  const allowedFields = profile?.role ? (ROLE_ALLOWED_FIELDS[profile.role] ?? null) : null;
+  // Restriction par champ selon le rôle effectif (tient compte du rôle simulé par l'admin)
+  const allowedFields = effectiveRole ? (ROLE_ALLOWED_FIELDS[effectiveRole] ?? null) : null;
   const canEdit = useCallback((field: string): boolean => {
     if (readOnly) return false;
     if (allowedFields === null) return true; // tous les champs autorisés
@@ -551,8 +553,8 @@ export default function GIRNiveauSoinPage() {
       {!readOnly && allowedFields !== null && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mx-4 mb-2 mt-4 text-sm text-amber-700 font-medium print:hidden">
           <Eye className="h-4 w-4 flex-shrink-0" />
-          {(profile?.role === 'secretaire' || profile?.role === 'cadre') && 'Vous pouvez modifier le GIR, l\'appel de nuit et les pompes funèbres. Le niveau de soin est réservé au médecin.'}
-          {profile?.role === 'medecin' && 'Vous pouvez modifier uniquement le niveau de soin. Les autres champs sont gérés par l\'équipe soignante.'}
+          {(effectiveRole === 'secretaire' || effectiveRole === 'cadre') && 'Vous pouvez modifier le GIR, l\'appel de nuit et les pompes funèbres. Le niveau de soin est réservé au médecin.'}
+          {effectiveRole === 'medecin' && 'Vous pouvez modifier uniquement le niveau de soin. Les autres champs sont gérés par l\'équipe soignante.'}
         </div>
       )}
 

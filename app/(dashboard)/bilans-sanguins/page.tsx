@@ -19,6 +19,7 @@ import GenerateDatesModal from './generate-dates-modal';
 import { PdfCalibration, PDF_CALIBRATION_DEFAULTS, DEFAULT_CHECK_COORDS, EXAM_TUBE } from '@/lib/generate-bilan-pdf';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1223,18 +1224,8 @@ export default function BilansSanguinsPage() {
   const access = useModuleAccess('bilansSanguins');
   const readOnly = access === 'read';
   const { profile } = useAuth();
-  const isRealAdmin = profile?.role === 'admin';
-  const { data: simulatedRole } = useQuery<string>({
-    queryKey: ['settings', 'dashboard_role'],
-    queryFn: async () => {
-      const sb = createClient();
-      const { data } = await sb.from('settings').select('value').eq('key', 'dashboard_role').maybeSingle();
-      return (data?.value as string) ?? 'all';
-    },
-    enabled: isRealAdmin,
-    staleTime: 0,
-  });
-  const isAdmin = isRealAdmin && (simulatedRole === 'all' || !simulatedRole);
+  const effectiveRole = useEffectiveRole();
+  const isAdmin = effectiveRole === 'admin';
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
