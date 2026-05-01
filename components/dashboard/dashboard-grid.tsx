@@ -46,9 +46,10 @@ async function saveLayout(order: string[]): Promise<void> {
 interface DashboardGridProps {
   modules: ModuleConfig[];
   isAdminMode: boolean;
+  maxCols?: 4 | 5;
 }
 
-export function DashboardGrid({ modules, isAdminMode }: DashboardGridProps) {
+export function DashboardGrid({ modules, isAdminMode, maxCols = 5 }: DashboardGridProps) {
   const queryClient = useQueryClient();
 
   const { data: order = modules.map(m => m.id) } = useQuery({
@@ -84,7 +85,7 @@ export function DashboardGrid({ modules, isAdminMode }: DashboardGridProps) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={order} strategy={rectSortingStrategy}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+        <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 ${maxCols === 5 ? 'xl:grid-cols-5' : ''} gap-3 sm:gap-4`}>
           {orderedModules.map((module) => (
             <ModuleCard
               key={module.id}

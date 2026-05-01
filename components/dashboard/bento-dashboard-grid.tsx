@@ -32,7 +32,12 @@ export function BentoDashboardGrid({ modules }: { modules: ModuleConfig[] }) {
   });
 
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+    <div
+      className="grid gap-2"
+      style={{
+        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+      }}
+    >
       {modules.map(mod => {
         const ov = colorOverrides[mod.id];
         const from = ov?.from ?? mod.cardFrom;
