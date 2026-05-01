@@ -11,10 +11,32 @@ async function fetchEntreesData(year: number) {
   const sb = createClient();
   const yearStr = String(year);
 
+  // 1. Get or initialize the baseline timestamp.
+  // Only residents created after this baseline are counted automatically,
+  // so the widget starts at 0 the moment it is first loaded.
+  let { data: baselineRow } = await sb
+    .from('settings')
+    .select('value')
+    .eq('key', `entrees_baseline_${yearStr}`)
+    .maybeSingle();
+
+  let baseline: string;
+  if (baselineRow?.value) {
+    baseline = baselineRow.value as string;
+  } else {
+    baseline = new Date().toISOString();
+    await sb.from('settings').upsert(
+      { key: `entrees_baseline_${yearStr}`, value: baseline, updated_at: new Date().toISOString() },
+      { onConflict: 'key', ignoreDuplicates: true }
+    );
+  }
+
+  // 2. Count residents created after baseline, with date_entree in current year.
   const [{ count: autoCount }, { data: offsetRow }] = await Promise.all([
     sb
       .from('residents')
       .select('id', { count: 'exact', head: true })
+      .gte('created_at', baseline)
       .gte('date_entree', `${yearStr}-01-01`)
       .lte('date_entree', `${yearStr}-12-31`),
     sb
