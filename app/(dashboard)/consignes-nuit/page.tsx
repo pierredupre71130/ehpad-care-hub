@@ -444,13 +444,13 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
             </span>
           ))}
           {resident.chaussettes_de_contention && (
-            <span title="Chaussettes de contention" style={{ fontSize: 10, lineHeight: 1 }}>🧦</span>
+            <span title="Chaussettes de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
           )}
           {resident.bas_de_contention && (
-            <span title="Bas de contention" style={{ fontSize: 10, lineHeight: 1 }}>🦵</span>
+            <span title="Bas de contention" style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
           )}
           {resident.bande_de_contention && (
-            <span title="Bande de contention" style={{ fontSize: 10, lineHeight: 1 }}>🧻</span>
+            <span title="Bande de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
           )}
         </div>
       </td>
@@ -535,6 +535,9 @@ function Legend() {
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>BG</span><span>Barrière G</span></div>
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>BD</span><span>Barrière D</span></div>
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>B2</span><span>BarX2</span></div>
+        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🧦</span><span>Chaussettes</span></div>
+        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🦵</span><span>Bas</span></div>
+        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🧻</span><span>Bande</span></div>
         <div className="flex items-center gap-1">
           <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: 'white', border: '2px dashed #000', fontWeight: 'bold', fontSize: 10 }}>L</span><span>Si besoin</span>
         </div>
@@ -817,9 +820,9 @@ export default function ConsignesNuitPage() {
       }).join(' ');
 
       const contentionEmojis = [
-        r.chaussettes_de_contention ? `<span title="Chaussettes de contention" style="font-size:10px;line-height:1">🧦</span>` : '',
-        r.bas_de_contention         ? `<span title="Bas de contention"         style="font-size:10px;line-height:1">🦵</span>` : '',
-        r.bande_de_contention       ? `<span title="Bande de contention"       style="font-size:10px;line-height:1">🧻</span>` : '',
+        r.chaussettes_de_contention ? `<span title="Chaussettes de contention" style="font-size:14px;line-height:1">🧦</span>` : '',
+        r.bas_de_contention         ? `<span title="Bas de contention"         style="font-size:14px;line-height:1">🦵</span>` : '',
+        r.bande_de_contention       ? `<span title="Bande de contention"       style="font-size:14px;line-height:1">🧻</span>` : '',
       ].filter(Boolean).join(' ');
 
       const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
@@ -878,6 +881,9 @@ export default function ConsignesNuitPage() {
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>BG</span> <span>BG</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>BD</span> <span>BD</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>B2</span> <span>BarX2</span></div>
+        <div><span style='font-size:14px;line-height:1'>🧦</span> <span>Chaussettes</span></div>
+        <div><span style='font-size:14px;line-height:1'>🦵</span> <span>Bas</span></div>
+        <div><span style='font-size:14px;line-height:1'>🧻</span> <span>Bande</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:white;border:1.5px dashed #000;font-weight:bold;font-size:9px'>L</span> <span>Si besoin</span></div>
       </div></div>${infosBox}` : '';
 

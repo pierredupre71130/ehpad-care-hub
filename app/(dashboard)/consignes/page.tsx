@@ -943,6 +943,42 @@ export default function ConsignesPage() {
                   }}>A</span>
                   Niveau de soins (A à D)
                 </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #93c5fd', background: '#dbeafe', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>L</span>
+                  Lit
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #c4b5fd', background: '#f3e8ff', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>F</span>
+                  Fauteuil
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #d97706', background: '#fef3c7', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>BG</span>
+                  Barrière G
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #d97706', background: '#fef3c7', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>BD</span>
+                  Barrière D
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #d97706', background: '#fef3c7', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>B2</span>
+                  Barrière x2
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1.5px dashed #94a3b8', background: 'white', fontSize: 7, fontWeight: 700, color: '#1e293b' }}>L</span>
+                  Si besoin
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
+                  Chaussettes
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
+                  Bas
+                </span>
+                <span className="flex items-center gap-1">
+                  <span style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
+                  Bande
+                </span>
               </div>
             </div>
           </div>
