@@ -41,6 +41,9 @@ interface Resident {
   traitement_ecrase?: boolean;
   anticoagulants?: boolean;
   appel_nuit?: boolean;
+  chaussettes_de_contention?: boolean;
+  bas_de_contention?: boolean;
+  bande_de_contention?: boolean;
   date_naissance?: string;
   medecin?: string;
 }
@@ -440,6 +443,15 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
               {CONTENTION_ICONS[type]}
             </span>
           ))}
+          {resident.chaussettes_de_contention && (
+            <span title="Chaussettes de contention" style={{ fontSize: 10, lineHeight: 1 }}>🧦</span>
+          )}
+          {resident.bas_de_contention && (
+            <span title="Bas de contention" style={{ fontSize: 10, lineHeight: 1 }}>🦵</span>
+          )}
+          {resident.bande_de_contention && (
+            <span title="Bande de contention" style={{ fontSize: 10, lineHeight: 1 }}>🧻</span>
+          )}
         </div>
       </td>
     </tr>
@@ -804,6 +816,12 @@ export default function ConsignesNuitPage() {
         return `<span style="${style}" title="${f.traitement}">${labelMap[f.traitement] ?? '?'}</span>`;
       }).join(' ');
 
+      const contentionEmojis = [
+        r.chaussettes_de_contention ? `<span title="Chaussettes de contention" style="font-size:10px;line-height:1">🧦</span>` : '',
+        r.bas_de_contention         ? `<span title="Bas de contention"         style="font-size:10px;line-height:1">🦵</span>` : '',
+        r.bande_de_contention       ? `<span title="Bande de contention"       style="font-size:10px;line-height:1">🧻</span>` : '',
+      ].filter(Boolean).join(' ');
+
       const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
 
       return `<tr>
@@ -818,7 +836,7 @@ export default function ConsignesNuitPage() {
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${annotationsText}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:11px;white-space:pre-wrap;word-break:break-word">${note}</td>
-        <td style="border:1px solid #475569;padding:2px 4px;font-size:8px;text-align:center">${contentionBadges}</td>
+        <td style="border:1px solid #475569;padding:2px 4px;font-size:8px;text-align:center"><div style="display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center">${contentionBadges}${contentionEmojis ? ' ' + contentionEmojis : ''}</div></td>
       </tr>`;
     }).join('');
 
