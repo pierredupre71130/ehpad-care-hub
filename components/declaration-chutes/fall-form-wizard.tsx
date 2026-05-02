@@ -573,8 +573,16 @@ export function FallFormWizard({
   const handleSubmit = async () => {
     if (submitting) return;
     setSubmit(true);
-    try { await onSubmit(form); }
-    finally { setSubmit(false); }
+    setErrors([]);
+    try {
+      await onSubmit(form);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrors([`Échec de l'enregistrement : ${msg}`]);
+      console.error('[FallFormWizard] submit error:', err);
+    } finally {
+      setSubmit(false);
+    }
   };
 
   const StepComp = [Step1, Step2, Step3, Step4, Step5][step];
