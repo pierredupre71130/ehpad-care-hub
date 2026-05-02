@@ -112,6 +112,7 @@ interface Resident {
   insuline_soir: boolean;
   anticoagulants: boolean;
   appel_nuit: boolean;
+  chaussettes_de_contention: boolean;
   bas_de_contention: boolean;
   bande_de_contention: boolean;
   // Sortie
@@ -174,9 +175,10 @@ const TRAITEMENT_BADGES = [
   { key: 'insuline_matin'    as keyof Resident, label: 'Insuline ☀',  cls: 'bg-cyan-100   text-cyan-700   border-cyan-300'   },
   { key: 'insuline_soir'     as keyof Resident, label: 'Insuline 🌙', cls: 'bg-cyan-100   text-cyan-700   border-cyan-300'   },
   { key: 'anticoagulants'    as keyof Resident, label: 'Anticoag.',   cls: 'bg-rose-100   text-rose-700   border-rose-300'   },
-  { key: 'appel_nuit'         as keyof Resident, label: 'Appel nuit',          cls: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
-  { key: 'bas_de_contention'  as keyof Resident, label: 'Bas de contention',   cls: 'bg-sky-100    text-sky-700    border-sky-300'    },
-  { key: 'bande_de_contention' as keyof Resident, label: 'Bande de contention', cls: 'bg-sky-100    text-sky-700    border-sky-300'    },
+  { key: 'appel_nuit'              as keyof Resident, label: 'Appel nuit',             cls: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
+  { key: 'chaussettes_de_contention' as keyof Resident, label: 'Chaussettes de contention', cls: 'bg-sky-100    text-sky-700    border-sky-300'    },
+  { key: 'bas_de_contention'       as keyof Resident, label: 'Bas de contention',      cls: 'bg-slate-200  text-slate-800  border-slate-400'  },
+  { key: 'bande_de_contention'     as keyof Resident, label: 'Bande de contention',    cls: 'bg-amber-100  text-amber-700  border-amber-300'  },
 ];
 
 const EMPTY_FORM: Omit<Resident, 'id'> = {
@@ -188,7 +190,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   epargne_intestinale: false, allergie_poisson: false,
   traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
   anticoagulants: false, appel_nuit: false,
-  bas_de_contention: false, bande_de_contention: false,
+  chaussettes_de_contention: false, bas_de_contention: false, bande_de_contention: false,
   archived: false, date_sortie: '',
 };
 
@@ -734,6 +736,12 @@ function EditForm({
               label="Anticoagulants"
               checked={form.anticoagulants ?? false}
               onChange={v => patch({ anticoagulants: v })}
+            />
+            <CheckField
+              id="f_chaussettes_de_contention"
+              label="Chaussettes de contention"
+              checked={form.chaussettes_de_contention ?? false}
+              onChange={v => patch({ chaussettes_de_contention: v })}
             />
             <CheckField
               id="f_bas_de_contention"
