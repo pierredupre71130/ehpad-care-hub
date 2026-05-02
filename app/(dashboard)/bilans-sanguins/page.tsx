@@ -1226,6 +1226,7 @@ export default function BilansSanguinsPage() {
   const { profile } = useAuth();
   const effectiveRole = useEffectiveRole();
   const isAdmin = effectiveRole === 'admin';
+  const canEditSpecials = isAdmin || effectiveRole === 'ide';
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [floor, setFloor] = useState<'RDC' | '1ER'>('RDC');
   const [generateModal, setGenerateModal] = useState<{ mois: number } | null>(null);
@@ -1541,10 +1542,10 @@ export default function BilansSanguinsPage() {
 
             <Section title="Bilans spéciaux" icon={<TestTube2 className="h-4 w-4" />}>
               <BilanSpeciauxSection specials={specials}
-                isAdmin={isAdmin}
-                onCreate={readOnly || !isAdmin ? () => {} : d => createSpecial.mutate(d)}
-                onUpdate={readOnly || !isAdmin ? () => {} : s => updateSpecial.mutate(s)}
-                onDelete={readOnly || !isAdmin ? () => {} : id => deleteSpecial.mutate(id)} />
+                isAdmin={canEditSpecials}
+                onCreate={readOnly || !canEditSpecials ? () => {} : d => createSpecial.mutate(d)}
+                onUpdate={readOnly || !canEditSpecials ? () => {} : s => updateSpecial.mutate(s)}
+                onDelete={readOnly || !canEditSpecials ? () => {} : id => deleteSpecial.mutate(id)} />
             </Section>
 
             {/* Planning annuel */}
