@@ -167,6 +167,18 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
   if (resident.epargne_intestinale) diets.push({ label: 'Épargne intestinale', color: '#15803d' });
   if (resident.allergie_poisson)    diets.push({ label: '⚠ Allergie poisson', color: '#dc2626' });
 
+  // Police adaptative pour le nom : réduit progressivement selon la longueur
+  // afin d'éviter la troncature quand le régime prend de la place.
+  const nameLen = name.length;
+  const nameFontSize =
+    nameLen <= 14 ? 32 :
+    nameLen <= 18 ? 28 :
+    nameLen <= 22 ? 24 :
+    nameLen <= 28 ? 20 : 18;
+
+  const firstNameFontSize = Math.max(16, Math.round(nameFontSize * 0.78));
+  const roomFontSize = nameLen <= 18 ? 32 : 26;
+
   return (
     <div
       className="etiquette-item"
@@ -197,28 +209,41 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
         />
       )}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 32, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{
+          fontSize: nameFontSize, fontWeight: 900, color: '#0f172a', lineHeight: 1.1,
+          whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word',
+        }}>
           {name}
         </div>
         {resident.first_name && (
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#1e293b', lineHeight: 1.1 }}>
+          <div style={{
+            fontSize: firstNameFontSize, fontWeight: 700, color: '#1e293b', lineHeight: 1.1,
+            whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word',
+          }}>
             {resident.first_name}
           </div>
         )}
       </div>
       <div style={{
-        fontSize: 32, fontWeight: 900, color: '#1e293b', letterSpacing: '0.03em', whiteSpace: 'nowrap',
+        fontSize: roomFontSize, fontWeight: 900, color: '#1e293b', letterSpacing: '0.03em', whiteSpace: 'nowrap',
         borderLeft: '2px solid #e2e8f0',
         borderRight: diets.length > 0 ? '2px solid #e2e8f0' : 'none',
         paddingLeft: 14,
         paddingRight: diets.length > 0 ? 14 : 0,
+        flexShrink: 0,
       }}>
         Ch. {resident.room}
       </div>
       {diets.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 2,
+          alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0, maxWidth: '32%',
+        }}>
           {diets.map(d => (
-            <span key={d.label} style={{ fontSize: 20, fontWeight: 800, color: d.color, whiteSpace: 'nowrap' }}>
+            <span key={d.label} style={{
+              fontSize: diets.length > 2 ? 16 : 18,
+              fontWeight: 800, color: d.color, whiteSpace: 'nowrap', lineHeight: 1.15,
+            }}>
               {d.label}
             </span>
           ))}
