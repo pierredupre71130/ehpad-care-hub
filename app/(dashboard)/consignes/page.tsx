@@ -409,13 +409,13 @@ function ResidentRow({
               );
             })}
             {resident.chaussettes_de_contention && (
-              <span title="Chaussettes de contention" style={{ fontSize: 11, lineHeight: 1 }}>🧦</span>
+              <span title="Chaussettes de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
             )}
             {resident.bas_de_contention && (
-              <span title="Bas de contention" style={{ fontSize: 11, lineHeight: 1 }}>🦵</span>
+              <span title="Bas de contention" style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
             )}
             {resident.bande_de_contention && (
-              <span title="Bande de contention" style={{ fontSize: 11, lineHeight: 1 }}>🧻</span>
+              <span title="Bande de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
             )}
           </div>
         )}
