@@ -6,31 +6,6 @@ import {
   Pencil, Check, X, Heart, Pill, Syringe, Sun, Moon,
   AlertTriangle, Printer, Loader2, Lock, Unlock, Eye,
 } from 'lucide-react';
-
-// ─── Icônes contention (SVG inline) ───────────────────────────
-const SockIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 16 16" className={className} fill="currentColor" aria-hidden="true">
-    <path d="M5 2 h4 a1 1 0 0 1 1 1 v5 l-3 3 v2 h-3 v-2 l-2 -2 v-1 l1 -1 v-4 a1 1 0 0 1 1 -1 z" />
-    <rect x="4.5" y="2" width="5" height="1.4" fill="white" opacity="0.4" />
-  </svg>
-);
-
-const StockingIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 16 16" className={className} fill="currentColor" aria-hidden="true">
-    <path d="M5 1 h4 a1 1 0 0 1 1 1 v8 l-3 3 v2 h-3 v-2 l-2 -2 v-1 l1 -1 v-7 a1 1 0 0 1 1 -1 z" />
-  </svg>
-);
-
-const RollIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-    <ellipse cx="8" cy="4" rx="5" ry="1.8" />
-    <path d="M3 4 v8" />
-    <path d="M13 4 v8" />
-    <ellipse cx="8" cy="12" rx="5" ry="1.8" fill="currentColor" fillOpacity="0.15" />
-    <path d="M5.5 7 q2.5 -0.8 5 0" opacity="0.6" />
-    <path d="M5.5 9 q2.5 -0.8 5 0" opacity="0.4" />
-  </svg>
-);
 import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -381,18 +356,18 @@ function ResidentRow({
               </span>
             )}
             {resident.chaussettes_de_contention && (
-              <span title="Chaussettes de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-sky-100 text-sky-700">
-                <SockIcon className="h-3 w-3" />
+              <span title="Chaussettes de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-sky-100 text-sm leading-none">
+                🧦
               </span>
             )}
             {resident.bas_de_contention && (
-              <span title="Bas de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-slate-200 text-slate-900">
-                <StockingIcon className="h-3 w-3" />
+              <span title="Bas de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-slate-200 text-sm leading-none">
+                🦵
               </span>
             )}
             {resident.bande_de_contention && (
-              <span title="Bande de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-amber-100 text-amber-700">
-                <RollIcon className="h-3 w-3" />
+              <span title="Bande de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-amber-100 text-sm leading-none">
+                🧻
               </span>
             )}
           </div>
