@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import {
   User, MapPin, AlertTriangle, Activity, ClipboardCheck,
   ChevronLeft, ChevronRight, Check, Loader2,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import type { ChuteFormData } from './types';
 import {
   LIEUX, ACTIVITES, CHAUSSAGES,
@@ -130,17 +132,142 @@ function AltreInput({ value, onChange, disabled }: { value: string; onChange: (v
 
 type StepProps = { form: ChuteFormData; update: (p: Partial<ChuteFormData>) => void; disabled?: boolean };
 
+interface ResidentLite {
+  id: string;
+  room: string;
+  title: string;
+  first_name: string;
+  last_name: string;
+  date_naissance: string | null;
+  archived?: boolean;
+}
+
+async function fetchResidentsLite(): Promise<ResidentLite[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('residents')
+    .select('id, room, title, first_name, last_name, date_naissance, archived')
+    .order('last_name', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ResidentLite[];
+}
+
+function computeAge(dateStr: string | null | undefined): number | undefined {
+  if (!dateStr) return undefined;
+  const birth = new Date(dateStr + 'T12:00:00');
+  if (Number.isNaN(birth.getTime())) return undefined;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function PatientNameAutocomplete({
+  form, update, disabled,
+}: StepProps) {
+  const { data: residents = [] } = useQuery({
+    queryKey: ['residents'],
+    queryFn: fetchResidentsLite,
+  });
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(form.patient_nom ?? '');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQuery(form.patient_nom ?? ''); }, [form.patient_nom]);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return residents
+      .filter(r => !r.archived)
+      .filter(r =>
+        r.last_name?.toLowerCase().includes(q) ||
+        r.first_name?.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [residents, query]);
+
+  const selectResident = (r: ResidentLite) => {
+    const sexe = r.title === 'Mr' ? 'Homme' : (r.title === 'Mme' ? 'Femme' : form.sexe);
+    update({
+      patient_nom: r.last_name ?? '',
+      patient_prenom: r.first_name ?? '',
+      age: computeAge(r.date_naissance),
+      chambre: r.room ?? '',
+      unite: 'EHPAD Gueugnon',
+      sexe,
+    });
+    setQuery(r.last_name ?? '');
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <input
+        type="text"
+        value={query}
+        onChange={e => {
+          const v = e.target.value;
+          setQuery(v);
+          update({ patient_nom: v });
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="Commencez à saisir le nom…"
+        disabled={disabled}
+        autoComplete="off"
+        className={cn(
+          'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800 placeholder:text-slate-400',
+          'focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-100',
+          'disabled:bg-slate-50 disabled:cursor-not-allowed',
+        )}
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-auto">
+          {suggestions.map(r => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => selectResident(r)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 flex items-center justify-between gap-2"
+              >
+                <span className="text-slate-800">
+                  <span className="font-medium">{r.last_name}</span>{' '}
+                  <span className="text-slate-600">{r.first_name}</span>
+                </span>
+                <span className="text-xs text-slate-400">Ch. {r.room}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function Step1({ form, update, disabled }: StepProps) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
           <FieldLabel required>Nom du patient</FieldLabel>
-          <TextInput value={form.patient_nom} onChange={v => update({ patient_nom: v })} placeholder="Nom de famille" disabled={disabled} />
+          <PatientNameAutocomplete form={form} update={update} disabled={disabled} />
         </div>
         <div>
           <FieldLabel>Prénom</FieldLabel>
-          <TextInput value={form.patient_prenom ?? ''} onChange={v => update({ patient_prenom: v })} placeholder="Prénom" disabled={disabled} />
+          <TextInput value={form.patient_prenom ?? ''} onChange={() => {}} placeholder="Sélectionnez un patient" disabled />
         </div>
         <div>
           <FieldLabel>Sexe</FieldLabel>
@@ -149,21 +276,21 @@ function Step1({ form, update, disabled }: StepProps) {
         <div>
           <FieldLabel>Âge</FieldLabel>
           <input
-            type="number" min={0} max={150}
+            type="number"
             value={form.age ?? ''}
-            onChange={e => update({ age: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-            placeholder="Âge"
-            disabled={disabled}
-            className="w-24 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-orange-400 disabled:bg-slate-50"
+            readOnly
+            disabled
+            placeholder="—"
+            className="w-24 px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 cursor-not-allowed"
           />
         </div>
         <div>
           <FieldLabel>Chambre</FieldLabel>
-          <TextInput value={form.chambre ?? ''} onChange={v => update({ chambre: v })} placeholder="N° chambre" disabled={disabled} className="max-w-xs" />
+          <TextInput value={form.chambre ?? ''} onChange={() => {}} placeholder="—" disabled className="max-w-xs" />
         </div>
         <div>
           <FieldLabel>Unité / Service</FieldLabel>
-          <TextInput value={form.unite ?? ''} onChange={v => update({ unite: v })} placeholder="Ex : Long séjour, Mapad…" disabled={disabled} />
+          <TextInput value={form.unite ?? ''} onChange={() => {}} placeholder="—" disabled />
         </div>
       </div>
     </div>
