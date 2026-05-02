@@ -114,6 +114,22 @@ interface Resident {
   bande_de_contention: boolean;
 }
 
+interface ContentionFiche {
+  id: string;
+  nom: string;
+  traitement: string;
+  dotation_nominative: boolean | null;
+}
+
+// Couleurs / labels pour les pastilles lit / fauteuil / barrières
+const CONTENTION_PALETTE: Record<string, { bg: string; border: string; label: string }> = {
+  lit:               { bg: '#dbeafe', border: '#93c5fd', label: 'L'  },
+  fauteuil:          { bg: '#f3e8ff', border: '#c4b5fd', label: 'F'  },
+  'barrière gauche': { bg: '#fef3c7', border: '#d97706', label: 'BG' },
+  'barrière droite': { bg: '#fef3c7', border: '#d97706', label: 'BD' },
+  'barrière x2':     { bg: '#fef3c7', border: '#d97706', label: 'B2' },
+};
+
 interface NiveauSoinRecord {
   id: string;
   resident_id: string;
@@ -187,6 +203,15 @@ async function fetchNiveaux(): Promise<NiveauSoinRecord[]> {
   return (data ?? []) as NiveauSoinRecord[];
 }
 
+async function fetchContentions(): Promise<ContentionFiche[]> {
+  const sb = createClient();
+  const { data } = await sb
+    .from('contentions')
+    .select('id,nom,traitement,dotation_nominative')
+    .eq('type_suivi', 'contention');
+  return (data ?? []) as ContentionFiche[];
+}
+
 async function fetchPrintSettings(): Promise<PrintSettings> {
   const sb = createClient();
   const { data } = await sb.from('settings').select('value').eq('key', 'consignes_print').maybeSingle();
@@ -216,7 +241,7 @@ async function updateConsignes(id: string, consignes: string): Promise<void> {
 
 function ResidentRow({
   resident, niveauSoin, taDay, isEditing, onStartEdit, onSave, onCancel,
-  maxNameWidth, maxInfosWidth, fontSize, readOnly,
+  maxNameWidth, maxInfosWidth, fontSize, readOnly, contentionItems,
 }: {
   resident: Resident;
   niveauSoin: NiveauSoinRecord | undefined;
@@ -229,6 +254,7 @@ function ResidentRow({
   maxInfosWidth: number;
   fontSize: number;
   readOnly: boolean;
+  contentionItems: Array<{ type: string; siBesoin: boolean }>;
 }) {
   const [draft, setDraft] = useState(resident.consignes ?? '');
 
@@ -355,20 +381,41 @@ function ResidentRow({
                 <AlertTriangle className="h-2.5 w-2.5" />
               </span>
             )}
+          </div>
+        )}
+      </td>
+
+      {/* ── Contentions (lit/fauteuil/barrières + chaussettes/bas/bande) ── */}
+      <td className="px-1 py-1 align-top" style={{ border: '1px solid #475569', width: '52px' }}>
+        {!isEditing && (
+          <div className="flex flex-wrap gap-0.5 justify-center items-center">
+            {contentionItems.map(({ type, siBesoin }, idx) => {
+              const p = CONTENTION_PALETTE[type];
+              if (!p) return null;
+              return (
+                <span
+                  key={idx}
+                  title={`${type}${siBesoin ? ' (si besoin)' : ' (continu)'}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 14, height: 14, borderRadius: '50%',
+                    border: siBesoin ? `1.5px dashed ${p.border}` : `1.5px solid ${p.border}`,
+                    background: siBesoin ? '#ffffff' : p.bg,
+                    fontSize: 7, fontWeight: 700, color: '#1e293b', lineHeight: 1,
+                  }}
+                >
+                  {p.label}
+                </span>
+              );
+            })}
             {resident.chaussettes_de_contention && (
-              <span title="Chaussettes de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-sky-100 text-sm leading-none">
-                🧦
-              </span>
+              <span title="Chaussettes de contention" style={{ fontSize: 11, lineHeight: 1 }}>🧦</span>
             )}
             {resident.bas_de_contention && (
-              <span title="Bas de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-slate-200 text-sm leading-none">
-                🦵
-              </span>
+              <span title="Bas de contention" style={{ fontSize: 11, lineHeight: 1 }}>🦵</span>
             )}
             {resident.bande_de_contention && (
-              <span title="Bande de contention" className="inline-flex items-center justify-center px-1 py-0.5 rounded bg-amber-100 text-sm leading-none">
-                🧻
-              </span>
+              <span title="Bande de contention" style={{ fontSize: 11, lineHeight: 1 }}>🧻</span>
             )}
           </div>
         )}
@@ -406,11 +453,12 @@ function ResidentRow({
 // ─────────────────────────────────────────────────────────────
 
 function SectionTable({
-  title, residents, niveauSoinMap, taOffset, fontSize, onUpdate, readOnly,
+  title, residents, niveauSoinMap, contentionMap, taOffset, fontSize, onUpdate, readOnly,
 }: {
   title: string;
   residents: Resident[];
   niveauSoinMap: Record<string, NiveauSoinRecord>;
+  contentionMap: Record<string, Array<{ type: string; siBesoin: boolean }>>;
   taOffset: number;
   fontSize: number;
   onUpdate: (id: string, consignes: string) => Promise<void>;
@@ -460,6 +508,7 @@ function SectionTable({
             <th style={{ border: '1px solid #475569', width: `${maxInfosWidth}px` }} className="px-1 py-1 text-left text-[10px] font-semibold text-red-600 uppercase tracking-wider">Infos</th>
             <th style={{ border: '1px solid #475569', width: '75%' }} className="px-2 py-1 text-left text-[10px] font-semibold text-slate-800 uppercase tracking-wider">{title} — Consignes</th>
             <th style={{ border: '1px solid #475569' }} className="px-1 py-1 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-8"></th>
+            <th style={{ border: '1px solid #475569', width: '52px' }} className="px-1 py-1 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Cont.</th>
             <th style={{ border: '1px solid #475569' }} className="px-1 py-1 w-8 print:hidden"></th>
           </tr>
         </thead>
@@ -469,6 +518,7 @@ function SectionTable({
               key={r.id}
               resident={r}
               niveauSoin={niveauSoinMap[r.id]}
+              contentionItems={contentionMap[r.id] ?? []}
               taDay={Math.ceil((taOffset + idx + 1) / 2)}
               isEditing={editingId === r.id}
               onStartEdit={() => !readOnly && setEditingId(r.id)}
@@ -482,7 +532,7 @@ function SectionTable({
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-6 text-center text-xs text-slate-300 italic" style={{ border: '1px solid #475569' }}>
+              <td colSpan={7} className="py-6 text-center text-xs text-slate-300 italic" style={{ border: '1px solid #475569' }}>
                 Aucun résident dans cette section
               </td>
             </tr>
@@ -531,6 +581,11 @@ export default function ConsignesPage() {
     queryFn: fetchNiveaux,
   });
 
+  const { data: contentionFiches = [] } = useQuery({
+    queryKey: ['contentions'],
+    queryFn: fetchContentions,
+  });
+
   const { data: printSettings } = useQuery({
     queryKey: ['settings', 'consignes_print'],
     queryFn: fetchPrintSettings,
@@ -555,7 +610,7 @@ export default function ConsignesPage() {
       document.head.appendChild(style);
     }
     const pad = Math.max(1, Math.round((localPrint.rowHeight - 16) / 2));
-    style.textContent = `@page { size: A4 portrait; } @media print { .print-scale-wrapper tr { min-height: ${localPrint.rowHeight}px !important; height: ${localPrint.rowHeight}px !important; page-break-inside: avoid !important; } .print-scale-wrapper td { padding-top: ${pad}px !important; padding-bottom: ${pad}px !important; } }`;
+    style.textContent = `@page { size: A4 portrait; margin: 5mm 3mm; } @media print { .print-scale-wrapper tr { min-height: ${localPrint.rowHeight}px !important; height: ${localPrint.rowHeight}px !important; page-break-inside: avoid !important; } .print-scale-wrapper td { padding-top: ${pad}px !important; padding-bottom: ${pad}px !important; } }`;
   }, [localPrint.rowHeight]);
 
   // ── Mutations ──
@@ -581,6 +636,26 @@ export default function ConsignesPage() {
     niveaux.forEach(n => { map[n.resident_id] = n; });
     return map;
   }, [niveaux]);
+
+  // Map resident_id → contentions (lit / fauteuil / barrières)
+  // Le rapprochement se fait sur le nom complet "Prénom NOM" comme dans
+  // la page Consignes de nuit.
+  const contentionMap = useMemo(() => {
+    const map: Record<string, Array<{ type: string; siBesoin: boolean }>> = {};
+    residents.forEach(r => {
+      const nom = `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim();
+      const seen = new Set<string>();
+      const items: Array<{ type: string; siBesoin: boolean }> = [];
+      contentionFiches.filter(f => f.nom === nom).forEach(f => {
+        const key = `${f.traitement}-${!!f.dotation_nominative}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        items.push({ type: f.traitement, siBesoin: !!f.dotation_nominative });
+      });
+      map[r.id] = items;
+    });
+    return map;
+  }, [residents, contentionFiches]);
 
   const floorResidents = useMemo(
     () => residents.filter(r => r.floor === activeFloor),
@@ -784,6 +859,7 @@ export default function ConsignesPage() {
               title={`${activeFloor} Mapad`}
               residents={mapadResidents}
               niveauSoinMap={niveauSoinMap}
+              contentionMap={contentionMap}
               taOffset={0}
               fontSize={localPrint.fontSize}
               onUpdate={handleUpdate}
@@ -800,6 +876,7 @@ export default function ConsignesPage() {
               title={`${activeFloor} Long Séjour`}
               residents={longSejourResidents}
               niveauSoinMap={niveauSoinMap}
+              contentionMap={contentionMap}
               taOffset={longSejourOffset}
               fontSize={localPrint.fontSize}
               onUpdate={handleUpdate}
