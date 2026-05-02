@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Pencil, Check, X, Heart, Pill, Syringe, Sun, Moon,
-  AlertTriangle, Printer, Loader2, Lock, Unlock, Eye,
+  AlertTriangle, Bandage, Printer, Loader2, Lock, Unlock, Eye,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import Link from 'next/link';
@@ -109,6 +109,8 @@ interface Resident {
   insuline_soir: boolean;
   anticoagulants: boolean;
   appel_nuit: boolean;
+  bas_de_contention: boolean;
+  bande_de_contention: boolean;
 }
 
 interface NiveauSoinRecord {
@@ -350,6 +352,16 @@ function ResidentRow({
             {resident.anticoagulants && (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700">
                 <AlertTriangle className="h-2.5 w-2.5" />
+              </span>
+            )}
+            {resident.bas_de_contention && (
+              <span title="Bas de contention" className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded bg-sky-100 text-sky-700">
+                <Bandage className="h-2.5 w-2.5" />BAS
+              </span>
+            )}
+            {resident.bande_de_contention && (
+              <span title="Bande de contention" className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded bg-cyan-100 text-cyan-700">
+                <Bandage className="h-2.5 w-2.5" />BND
               </span>
             )}
           </div>
