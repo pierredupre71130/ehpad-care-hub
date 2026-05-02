@@ -31,6 +31,16 @@ import {
 
 const TABLE = 'declaration_chutes';
 
+const DATE_TIME_FIELDS = ['date_naissance', 'heure_chute', 'pharma_date', 'date_chute'] as const;
+
+function sanitize<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  for (const f of DATE_TIME_FIELDS) {
+    if (out[f] === '') out[f] = null;
+  }
+  return out as T;
+}
+
 async function fetchChutes(): Promise<ChuteRecord[]> {
   const sb = createClient();
   const { data, error } = await sb.from(TABLE).select('*').order('date_chute', { ascending: false });
@@ -40,14 +50,14 @@ async function fetchChutes(): Promise<ChuteRecord[]> {
 
 async function createChute(data: ChuteFormData): Promise<ChuteRecord> {
   const sb = createClient();
-  const { data: rec, error } = await sb.from(TABLE).insert({ ...data, updated_at: new Date().toISOString() }).select().single();
+  const { data: rec, error } = await sb.from(TABLE).insert({ ...sanitize(data), updated_at: new Date().toISOString() }).select().single();
   if (error) throw error;
   return rec as ChuteRecord;
 }
 
 async function updateChute(id: string, data: Partial<ChuteFormData>): Promise<void> {
   const sb = createClient();
-  const { error } = await sb.from(TABLE).update({ ...data, updated_at: new Date().toISOString() }).eq('id', id);
+  const { error } = await sb.from(TABLE).update({ ...sanitize(data), updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
 }
 
