@@ -806,7 +806,7 @@ function Hole({
       {/* Mole */}
       <div className="absolute inset-0 overflow-hidden rounded-full">
         {state.visible && (
-          <div className={cn('absolute inset-x-0 bottom-0 will-change-transform', animClass, !state.hitState && 'anim-idle')}>
+          <div className={cn('absolute inset-x-0 bottom-0 will-change-transform', animClass)}>
             <img
               src={IMG[state.character]}
               alt={state.character}
