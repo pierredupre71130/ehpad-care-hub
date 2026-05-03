@@ -47,11 +47,21 @@ const IMG: Record<string, string> = {
 // Échelle visuelle par personnage (pour normaliser les tailles si certaines
 // sources ont plus de blanc transparent autour). Ajuste si besoin.
 const CHAR_SCALE: Record<string, number> = {
-  dadou:  1.30,
+  dadou:  1.55,
   momo:   1.00,
   pierre: 1.00,
   flo:    1.00,
   marie:  1.00,
+};
+
+// Décalage vertical par personnage en % de la hauteur du trou. Positif =
+// vers le bas (comble un vide transparent sous le perso dans le PNG).
+const CHAR_OFFSET_Y: Record<string, number> = {
+  dadou:  18,
+  momo:   0,
+  pierre: 0,
+  flo:    0,
+  marie:  0,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -623,7 +633,7 @@ function CharPreview({ name, label, highlight }: { name: string; label: string; 
         'w-12 h-12 rounded-full overflow-hidden border-2',
         highlight ? 'border-red-500 ring-2 ring-red-300' : 'border-amber-700',
       )} style={{ background: 'radial-gradient(circle at center top, #3a1f0a, #1a0d04)' }}>
-        <img src={IMG[name]} alt={name} className="w-full h-full object-contain" style={{ transform: `scale(${CHAR_SCALE[name] ?? 1})` }} />
+        <img src={IMG[name]} alt={name} className="w-full h-full object-contain" style={{ transform: `translateY(${CHAR_OFFSET_Y[name] ?? 0}%) scale(${CHAR_SCALE[name] ?? 1})`, transformOrigin: 'bottom center' }} />
       </div>
       <span className={cn(
         'text-[10px] font-bold uppercase tracking-wide',
@@ -676,7 +686,7 @@ function Hole({
               className="w-full h-full object-contain pointer-events-none drop-shadow-md"
               style={{
                 aspectRatio: '1 / 1',
-                transform: `scale(${scale})`,
+                transform: `translateY(${CHAR_OFFSET_Y[state.character] ?? 0}%) scale(${scale})`,
                 transformOrigin: 'bottom center',
               }}
             />
