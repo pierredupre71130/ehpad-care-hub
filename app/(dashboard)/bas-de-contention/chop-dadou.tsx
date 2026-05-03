@@ -36,6 +36,27 @@ const GAME_TIME = 40;
 const HERO = 'dadou';
 const DECOYS = ['momo', 'pierre', 'flo', 'marie'] as const;
 
+// Niveau bonus : Boss Méga-Dadou
+const BOSS_TIME = 15;          // secondes
+const BOSS_HITS = 12;          // coups pour vaincre
+const BOSS_START_SIZE = 280;   // px
+const BOSS_MIN_SIZE = 90;      // px (taille min en fin de combat)
+const BOSS_INTRO_COUNT = 3;    // décompte avant boss
+
+// Score à atteindre pour débloquer le boss + bonus accordé en cas de victoire
+const BOSS_THRESHOLD: Record<Difficulty, number> = {
+  debutant:  35,
+  facile:    30,
+  complique: 25,
+  challenge: 20,
+};
+const BOSS_BONUS: Record<Difficulty, number> = {
+  debutant:  5,
+  facile:    10,
+  complique: 15,
+  challenge: 20,
+};
+
 const IMG: Record<string, string> = {
   dadou:  '/chop-dadou/dadou.png',
   momo:   '/chop-dadou/momo.png',
@@ -117,9 +138,10 @@ const EMPTY_HOLES: MoleState[] = Array.from({ length: 9 }, () => ({ visible: fal
 export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
 
-  const [phase, setPhase] = useState<'menu' | 'play' | 'over' | 'scores'>('menu');
+  const [phase, setPhase] = useState<'menu' | 'play' | 'bonusIntro' | 'boss' | 'over' | 'scores'>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>('debutant');
   const [score, setScore] = useState(0);
+  const [bonusEarned, setBonusEarned] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_TIME);
   const [holes, setHoles] = useState<MoleState[]>(EMPTY_HOLES);
   const [floats, setFloats] = useState<FloatPoint[]>([]);
@@ -128,31 +150,48 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   const [scoreSaved, setScoreSaved] = useState(false);
   const [muted, setMuted] = useState(false);
 
+  // Boss state
+  const [bossHits, setBossHits] = useState(0);
+  const [bossSize, setBossSize] = useState(BOSS_START_SIZE);
+  const [bossPos, setBossPos] = useState({ left: 50, top: 50 }); // % du terrain
+  const [bossTimeLeft, setBossTimeLeft] = useState(BOSS_TIME);
+  const [introCount, setIntroCount] = useState(BOSS_INTRO_COUNT);
+
+  // Refs miroirs pour accéder aux valeurs dans setInterval
+  const scoreRef = useRef(0);
+  const difficultyRef = useRef<Difficulty>('debutant');
+  useEffect(() => { scoreRef.current = score; }, [score]);
+  useEffect(() => { difficultyRef.current = difficulty; }, [difficulty]);
+
   const moleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Audio ────────────────────────────────────────────────────────────────
-  // Musique de fond → balise <audio> (loop). SFX → Web Audio API pour
-  // une lecture sans latence (le buffer est décodé une seule fois).
   const themeRef = useRef<HTMLAudioElement | null>(null);
+  const bossThemeRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const slapBufRef = useRef<AudioBuffer | null>(null);
   const ouchBufRef = useRef<AudioBuffer | null>(null);
+  const screamBufRef = useRef<AudioBuffer | null>(null);
 
-  // Si le MP3 commence par un petit silence, on saute ces premières millisecondes
   const SLAP_SKIP_SEC = 0;
   const OUCH_SKIP_SEC = 0;
+  const SCREAM_SKIP_SEC = 0;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // Musique
     const theme = new Audio('/chop-dadou/theme.mp3');
     theme.loop = true;
     theme.volume = 0.4;
     theme.preload = 'auto';
     themeRef.current = theme;
 
-    // Web Audio context (créé lazy après un user gesture sur certains navigateurs)
+    const bossTheme = new Audio('/chop-dadou/boss-theme.mp3');
+    bossTheme.loop = true;
+    bossTheme.volume = 0.5;
+    bossTheme.preload = 'auto';
+    bossThemeRef.current = bossTheme;
+
     const Ctx: typeof AudioContext | undefined =
       window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
@@ -171,38 +210,51 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
 
     loadBuffer('/chop-dadou/slap.mp3').then(b => { slapBufRef.current = b; });
     loadBuffer('/chop-dadou/ouch.mp3').then(b => { ouchBufRef.current = b; });
+    loadBuffer('/chop-dadou/scream.mp3').then(b => { screamBufRef.current = b; });
 
     return () => {
       theme.pause();
+      bossTheme.pause();
       themeRef.current = null;
+      bossThemeRef.current = null;
       ctx.close().catch(() => {});
       audioCtxRef.current = null;
       slapBufRef.current = null;
       ouchBufRef.current = null;
+      screamBufRef.current = null;
     };
   }, []);
 
-  const playSfx = useCallback((kind: 'slap' | 'ouch') => {
+  const playSfx = useCallback((kind: 'slap' | 'ouch' | 'scream') => {
     if (muted) return;
     const ctx = audioCtxRef.current;
     if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    const buf = kind === 'slap' ? slapBufRef.current : ouchBufRef.current;
+    const buf =
+      kind === 'slap'   ? slapBufRef.current :
+      kind === 'ouch'   ? ouchBufRef.current :
+                          screamBufRef.current;
     if (!buf) return;
-    const skip = kind === 'slap' ? SLAP_SKIP_SEC : OUCH_SKIP_SEC;
+    const skip =
+      kind === 'slap'   ? SLAP_SKIP_SEC :
+      kind === 'ouch'   ? OUCH_SKIP_SEC :
+                          SCREAM_SKIP_SEC;
+    const gainVal =
+      kind === 'slap'   ? 0.8 :
+      kind === 'ouch'   ? 1.0 :
+                          1.0;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const gain = ctx.createGain();
-    gain.gain.value = kind === 'slap' ? 0.8 : 1.0;
+    gain.gain.value = gainVal;
     src.connect(gain);
     gain.connect(ctx.destination);
     src.start(0, skip);
   }, [muted]);
 
   useEffect(() => {
-    const t = themeRef.current;
-    if (!t) return;
-    t.muted = muted;
+    if (themeRef.current) themeRef.current.muted = muted;
+    if (bossThemeRef.current) bossThemeRef.current.muted = muted;
   }, [muted]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
@@ -216,13 +268,20 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
     if (!open) {
       stopAllTimers();
       themeRef.current?.pause();
+      bossThemeRef.current?.pause();
       setPhase('menu');
       setScore(0);
+      setBonusEarned(0);
       setTimeLeft(GAME_TIME);
       setHoles(EMPTY_HOLES);
       setFloats([]);
       setPlayerName('');
       setScoreSaved(false);
+      setBossHits(0);
+      setBossSize(BOSS_START_SIZE);
+      setBossPos({ left: 50, top: 50 });
+      setBossTimeLeft(BOSS_TIME);
+      setIntroCount(BOSS_INTRO_COUNT);
     }
   }, [open, stopAllTimers]);
 
@@ -230,12 +289,14 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   const startGame = (d: Difficulty) => {
     setDifficulty(d);
     setScore(0);
+    setBonusEarned(0);
     setTimeLeft(GAME_TIME);
     setHoles(EMPTY_HOLES);
     setFloats([]);
     setScoreSaved(false);
+    setBossHits(0);
+    setBossSize(BOSS_START_SIZE);
     setPhase('play');
-    // Démarrage musique (lazy : nécessite un user gesture pour être autorisé)
     if (themeRef.current && !muted) {
       themeRef.current.currentTime = 0;
       themeRef.current.play().catch(() => {});
@@ -250,8 +311,15 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
         if (t <= 1) {
           stopAllTimers();
           themeRef.current?.pause();
-          setPhase('over');
           setHoles(EMPTY_HOLES);
+          // Bonus débloqué si score >= seuil
+          const threshold = BOSS_THRESHOLD[difficultyRef.current];
+          if (scoreRef.current >= threshold) {
+            setIntroCount(BOSS_INTRO_COUNT);
+            setPhase('bonusIntro');
+          } else {
+            setPhase('over');
+          }
           return 0;
         }
         return t - 1;
@@ -259,6 +327,80 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
     }, 1000);
     return stopAllTimers;
   }, [phase, stopAllTimers]);
+
+  // ── Décompte avant le boss ──────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'bonusIntro') return;
+    setIntroCount(BOSS_INTRO_COUNT);
+    const t = setInterval(() => {
+      setIntroCount(n => {
+        if (n <= 1) {
+          clearInterval(t);
+          // Lance le boss
+          setBossHits(0);
+          setBossSize(BOSS_START_SIZE);
+          setBossPos({ left: 50, top: 50 });
+          setBossTimeLeft(BOSS_TIME);
+          setPhase('boss');
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [phase]);
+
+  // ── Boss : timer + musique ──────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'boss') return;
+    // Bascule la musique
+    themeRef.current?.pause();
+    if (bossThemeRef.current && !muted) {
+      bossThemeRef.current.currentTime = 0;
+      bossThemeRef.current.play().catch(() => {});
+    }
+    countdownRef.current = setInterval(() => {
+      setBossTimeLeft(t => {
+        if (t <= 1) {
+          stopAllTimers();
+          bossThemeRef.current?.pause();
+          setPhase('over');
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return stopAllTimers;
+  }, [phase, muted, stopAllTimers]);
+
+  // ── Hit sur le boss ─────────────────────────────────────────────────────
+  const bossHitsRef = useRef(0);
+  useEffect(() => { bossHitsRef.current = bossHits; }, [bossHits]);
+
+  const handleBossHit = () => {
+    if (phase !== 'boss') return;
+    if (bossHitsRef.current >= BOSS_HITS) return; // déjà gagné
+    playSfx('slap');
+    setBossHits(prev => {
+      if (prev >= BOSS_HITS) return prev;
+      const next = prev + 1;
+      if (next >= BOSS_HITS) {
+        stopAllTimers();
+        bossThemeRef.current?.pause();
+        playSfx('scream');
+        const bonus = BOSS_BONUS[difficultyRef.current];
+        setScore(s => s + bonus);
+        setBonusEarned(bonus);
+        setTimeout(() => setPhase('over'), 800);
+      }
+      return next;
+    });
+    // Téléportation + rétrécissement
+    setBossSize(s => Math.max(BOSS_MIN_SIZE, s - 16));
+    const left = 18 + Math.random() * 64; // 18-82 %
+    const top  = 22 + Math.random() * 56; // 22-78 %
+    setBossPos({ left, top });
+  };
 
   // ── Apparition des taupes ────────────────────────────────────────────────
   useEffect(() => {
@@ -470,9 +612,74 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
             </div>
           )}
 
+          {/* ═══ INTRO BONUS ═══ */}
+          {phase === 'bonusIntro' && (
+            <div className="flex flex-col items-center justify-center py-12 anim-fadein relative">
+              <div className="anim-flash" />
+              <h3 className="text-3xl sm:text-5xl font-black text-amber-900 text-center mb-2 z-10"
+                style={{ textShadow: '3px 3px 0 #fbbf24, 5px 5px 8px rgba(0,0,0,0.3)' }}>
+                ⚡ NIVEAU BONUS DÉBLOQUÉ ⚡
+              </h3>
+              <p className="text-amber-800 font-bold text-center mb-6 z-10">
+                Affronte la Méga-Dadou ! {BOSS_HITS} coups en {BOSS_TIME} s pour gagner +{BOSS_BONUS[difficulty]} pts !
+              </p>
+              <div key={introCount} className="text-9xl font-black text-red-600 anim-count z-10"
+                style={{ textShadow: '4px 4px 0 #fbbf24, 6px 6px 10px rgba(0,0,0,0.4)' }}>
+                {introCount}
+              </div>
+            </div>
+          )}
+
+          {/* ═══ BOSS ═══ */}
+          {phase === 'boss' && (
+            <div className="relative w-full" style={{ minHeight: 420 }}>
+              {/* HUD boss */}
+              <div className="absolute -top-1 left-0 right-0 flex items-center justify-between text-amber-900 font-bold text-base sm:text-lg px-2 z-20">
+                <div className="flex items-center gap-2 bg-white/80 px-3 py-1 rounded-xl border-2 border-amber-700">
+                  💢 Coups : <span className="text-red-700 text-xl tabular-nums">{bossHits}/{BOSS_HITS}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/80 px-3 py-1 rounded-xl border-2 border-amber-700">
+                  ⏱ <span className={cn('text-xl tabular-nums', bossTimeLeft <= 5 ? 'text-red-600 animate-pulse' : 'text-amber-800')}>{bossTimeLeft}s</span>
+                </div>
+              </div>
+              {/* Terrain de combat */}
+              <div className="relative w-full mt-12" style={{ height: 360 }}>
+                <button
+                  type="button"
+                  onMouseDown={handleBossHit}
+                  onTouchStart={(e) => { e.preventDefault(); handleBossHit(); }}
+                  className="absolute"
+                  style={{
+                    left: `${bossPos.left}%`,
+                    top: `${bossPos.top}%`,
+                    width: bossSize,
+                    height: bossSize,
+                    transform: 'translate(-50%, -50%)',
+                    transition: 'left 0.15s ease-out, top 0.15s ease-out, width 0.2s ease-out, height 0.2s ease-out',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'crosshair',
+                  }}
+                >
+                  <img
+                    src={IMG.dadou}
+                    alt="Méga-Dadou"
+                    className="w-full h-full object-contain pointer-events-none drop-shadow-2xl"
+                    style={{
+                      filter: 'drop-shadow(0 0 16px rgba(239,68,68,0.8))',
+                      transform: `scale(${CHAR_SCALE.dadou})`,
+                    }}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ═══ FIN ═══ */}
           {phase === 'over' && <GameOver
             score={score}
+            bonusEarned={bonusEarned}
             difficulty={difficulty}
             scoreSaved={scoreSaved}
             playerName={playerName}
@@ -558,6 +765,16 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           from { opacity: 0; transform: translateY(10px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes count-pop {
+          0%   { transform: scale(0.4); opacity: 0; }
+          40%  { transform: scale(1.4); opacity: 1; }
+          100% { transform: scale(1);   opacity: 1; }
+        }
+        @keyframes screen-flash {
+          0%   { opacity: 0; }
+          20%  { opacity: 0.95; }
+          100% { opacity: 0; }
+        }
         .anim-pop      { animation: mole-pop 0.3s ease-out forwards; }
         .anim-idle     { animation: mole-idle 1.6s ease-in-out infinite; }
         .anim-hit      { animation: mole-hit 0.4s ease-in forwards; }
@@ -568,6 +785,14 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
         .anim-confetti { animation: confetti-fall linear forwards; }
         .anim-twinkle  { animation: star-twinkle 2.4s ease-in-out infinite; }
         .anim-fadein   { animation: fade-in 0.4s ease-out forwards; }
+        .anim-count    { animation: count-pop 0.5s ease-out forwards; }
+        .anim-flash    {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle, #fef3c7 0%, #fbbf24 60%, transparent 100%);
+          pointer-events: none;
+          animation: screen-flash 0.7s ease-out;
+        }
       `}</style>
     </div>
   );
@@ -843,10 +1068,11 @@ function Hole({
 }
 
 function GameOver({
-  score, difficulty, scoreSaved, playerName, setPlayerName,
+  score, bonusEarned, difficulty, scoreSaved, playerName, setPlayerName,
   onSave, saving, onReplay, onScores, onMenu, confetti,
 }: {
   score: number;
+  bonusEarned: number;
   difficulty: Difficulty;
   scoreSaved: boolean;
   playerName: string;
@@ -891,6 +1117,11 @@ function GameOver({
         <p className="text-7xl font-black text-emerald-600 leading-none mt-1 tabular-nums" style={{
           textShadow: '2px 2px 0 #064e3b',
         }}>{score}</p>
+        {bonusEarned > 0 && (
+          <p className="text-xs text-purple-700 font-bold uppercase tracking-widest mt-2">
+            (dont +{bonusEarned} bonus Méga-Dadou 🥷)
+          </p>
+        )}
         <p className="text-sm text-amber-700 font-semibold mt-2">{SETTINGS[difficulty].emoji} {SETTINGS[difficulty].label}</p>
       </div>
 
