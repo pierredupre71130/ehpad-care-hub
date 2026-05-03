@@ -701,7 +701,7 @@ function Menu({
   return (
     <div className="flex flex-col items-center gap-5 py-4 anim-fadein">
       <p className="text-amber-900 text-sm sm:text-base text-center max-w-md">
-        Tape sur <strong>Dadou</strong> 🥷 pour marquer ! Évite <strong>Momo, Pierre, Flo et Marie</strong> ou tu perds des points. {GAME_TIME} secondes pour battre ton record.
+        Tape sur <strong>Dadou</strong> 🥷 pour marquer ! Évite <strong>Momo, Pierre, Flo et Elo</strong> ou tu perds des points. {GAME_TIME} secondes pour battre ton record.
       </p>
 
       {/* Aperçu personnages */}
@@ -710,7 +710,7 @@ function Menu({
         <CharPreview name="momo"   label="Momo" />
         <CharPreview name="pierre" label="Pierre" />
         <CharPreview name="flo"    label="Flo" />
-        <CharPreview name="marie"  label="Marie" />
+        <CharPreview name="marie"  label="Elo" />
       </div>
 
       {/* Choix difficulté */}
