@@ -16,6 +16,7 @@ import {
   Package,
   GraduationCap,
   TriangleAlert,
+  Footprints,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -200,6 +201,19 @@ export const MODULES: ModuleConfig[] = [
     iconBg: 'bg-rose-100 text-rose-600',
     visibleRoles: ['psychologue', 'cadre', 'aide-soignante', 'as', 'admin'],
     categoryId: 'accompagnement',
+  },
+  {
+    id: 'basDeContention',
+    label: 'Bas de Contention',
+    description: 'Suivi et prescriptions des bas de contention',
+    href: '/bas-de-contention',
+    icon: Footprints,
+    cardFrom: '#0e7490',
+    cardTo: '#155e75',
+    colorClass: 'border-cyan-100 hover:border-cyan-300 hover:bg-cyan-50/60',
+    iconBg: 'bg-cyan-100 text-cyan-600',
+    visibleRoles: null,
+    categoryId: 'medical',
   },
   {
     id: 'declarationChutes',
