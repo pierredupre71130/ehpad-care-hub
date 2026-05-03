@@ -358,7 +358,7 @@ function ResidentRow({
         {annotationLines.length > 0 && (
           <div className="flex flex-col gap-0.5">
             {annotationLines.map((line, i) => (
-              <span key={i} className="text-red-600 font-semibold text-[11px] leading-tight">{line}</span>
+              <span key={i} className="text-red-600 font-semibold text-[8px] leading-tight">{line}</span>
             ))}
           </div>
         )}
@@ -500,7 +500,7 @@ function SectionTable({
       const lines = (r.annotations ?? '')
         .split('\n')
         .filter(l => !l.startsWith('---SUPPL:'));
-      const lw = lines.map(l => measureTextWidth(l, 11, '600'));
+      const lw = lines.map(l => measureTextWidth(l, 8, '600'));
       return lw.length > 0 ? Math.max(...lw) : 0;
     });
     return Math.max(...widths) + 8;
