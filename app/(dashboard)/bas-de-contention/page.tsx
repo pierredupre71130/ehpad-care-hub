@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Footprints, ChevronRight, Plus, Pencil, Trash2, X, Check,
   Eye, Loader2, Search, ArrowLeft, Calculator, Sliders,
-  Printer, Upload, Download, Link2, Link2Off,
+  Printer, Upload, Download, Link2, Link2Off, Gamepad2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import {
   type CalcResult, type Candidate,
   type Sexe, type ProductType, type RawMesures, type Result,
 } from './calc';
+import { ChopDadouModal } from './chop-dadou';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -533,12 +534,13 @@ function ManualView({
 }
 
 function PatientFormModal({
-  initial, onClose, onSubmit, busy,
+  initial, onClose, onSubmit, busy, onEasterEgg,
 }: {
   initial: BasContentionRecord | null;
   onClose: () => void;
   onSubmit: (input: BasContentionInput) => void;
   busy: boolean;
+  onEasterEgg?: () => void;
 }) {
   const [form, setForm] = useState<FormState>(initial ? recordToForm(initial) : emptyForm());
   const [errors, setErrors] = useState<string[]>([]);
@@ -589,6 +591,20 @@ function PatientFormModal({
   };
 
   const handleSubmit = () => {
+    // Easter-egg : combinaison magique → lance le jeu Chop-Dadou
+    if (
+      onEasterEgg &&
+      form.chambre.trim() === '100' &&
+      form.nom.trim().toUpperCase() === 'TARTANPION' &&
+      form.prenom.trim().toUpperCase() === 'JEAN NICOLAS' &&
+      form.raw_mesures.a?.trim() === '100' &&
+      form.raw_mesures.b?.trim() === '100' &&
+      form.raw_mesures.c?.trim() === '100' &&
+      form.raw_mesures.e?.trim() === '100'
+    ) {
+      onEasterEgg();
+      return;
+    }
     const errs = validate();
     if (errs.length) { setErrors(errs); return; }
     setErrors([]);
@@ -878,6 +894,7 @@ export default function BasDeContentionPage() {
   const [editTarget, setEditTarget] = useState<BasContentionRecord | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BasContentionRecord | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [gameOpen, setGameOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: rows = [], isLoading } = useQuery({
@@ -1123,6 +1140,14 @@ export default function BasDeContentionPage() {
                 </span>
               </button>
               <span className="text-white/50 italic hidden md:inline">À venir : la synchro cochera automatiquement les cases dans la fiche résident.</span>
+              <button
+                onClick={() => { setEditTarget(null); setGameOpen(true); }}
+                title="Lancer Le Chop-Dadou"
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-50 font-semibold transition-colors"
+              >
+                <Gamepad2 className="h-3.5 w-3.5" />
+                Le Chop-Dadou
+              </button>
             </div>
           )}
         </div>
@@ -1368,8 +1393,12 @@ export default function BasDeContentionPage() {
           onClose={() => setEditTarget(null)}
           onSubmit={handleSubmit}
           busy={createMut.isPending || updateMut.isPending}
+          onEasterEgg={() => { setEditTarget(null); setGameOpen(true); }}
         />
       )}
+
+      {/* Le Chop-Dadou */}
+      <ChopDadouModal open={gameOpen} onClose={() => setGameOpen(false)} />
 
       {/* Confirmation suppression */}
       {confirmDelete && (
