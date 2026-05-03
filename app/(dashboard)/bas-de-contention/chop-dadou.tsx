@@ -38,9 +38,10 @@ const DECOYS = ['momo', 'pierre', 'flo', 'marie'] as const;
 
 // Niveau bonus : Boss Méga-Dadou
 const BOSS_TIME = 15;          // secondes
-const BOSS_HITS = 12;          // coups pour vaincre
+const BOSS_HITS = 22;          // coups pour vaincre
 const BOSS_START_SIZE = 280;   // px
-const BOSS_MIN_SIZE = 90;      // px (taille min en fin de combat)
+const BOSS_MIN_SIZE = 50;      // px (taille min en fin de combat)
+const BOSS_SHRINK_PER_HIT = 11; // px retirés à chaque coup
 const BOSS_INTRO_COUNT = 3;    // décompte avant boss
 
 // Score à atteindre pour débloquer le boss + bonus accordé en cas de victoire
@@ -376,10 +377,16 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   // ── Hit sur le boss ─────────────────────────────────────────────────────
   const bossHitsRef = useRef(0);
   useEffect(() => { bossHitsRef.current = bossHits; }, [bossHits]);
+  const lastBossHitRef = useRef(0);
 
   const handleBossHit = () => {
     if (phase !== 'boss') return;
     if (bossHitsRef.current >= BOSS_HITS) return; // déjà gagné
+    // Anti-rebond : ignore les clics dans les 150 ms suivant le précédent
+    // (évite les double-frappes pendant la téléportation animée).
+    const now = Date.now();
+    if (now - lastBossHitRef.current < 150) return;
+    lastBossHitRef.current = now;
     playSfx('slap');
     setBossHits(prev => {
       if (prev >= BOSS_HITS) return prev;
@@ -396,7 +403,7 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
       return next;
     });
     // Téléportation + rétrécissement
-    setBossSize(s => Math.max(BOSS_MIN_SIZE, s - 16));
+    setBossSize(s => Math.max(BOSS_MIN_SIZE, s - BOSS_SHRINK_PER_HIT));
     const left = 18 + Math.random() * 64; // 18-82 %
     const top  = 22 + Math.random() * 56; // 22-78 %
     setBossPos({ left, top });
@@ -407,7 +414,11 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
     if (phase !== 'play') return;
     const settings = SETTINGS[difficulty];
     moleTimerRef.current = setInterval(() => {
-      setHoles(() => {
+      setHoles(prev => {
+        // Si une mole est en cours d'animation de hit, on ne spawne pas
+        // pour éviter qu'un clic rapide du joueur frappe par erreur la
+        // mole de remplacement qui apparaîtrait au même endroit.
+        if (prev.some(h => h.hitState)) return prev;
         const newHoles: MoleState[] = Array.from({ length: 9 }, () => ({ visible: false, character: HERO }));
         const idx = Math.floor(Math.random() * 9);
         const isDecoy = Math.random() < settings.decoyRatio;
