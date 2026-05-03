@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Footprints, ChevronRight, Plus, Pencil, Trash2, X, Check,
-  Eye, Loader2, Search,
+  Eye, Loader2, Search, ArrowLeft, Calculator, Sliders,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -12,23 +12,16 @@ import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useEffectiveRole } from '@/lib/use-effective-role';
+import {
+  calculateSize, buildResultFromCandidate, buildResultFromManual,
+  SIZE_CHARTS,
+  type CalcResult, type Candidate,
+  type Sexe, type ProductType, type RawMesures, type Result,
+} from './calc';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
-
-type Sexe = 'Femme' | 'Homme';
-type ProductType = 'Chaussette' | 'Bas';
-
-interface RawMesures {
-  a?: string; b?: string; c?: string;
-  d?: string; e?: string; f?: string;
-}
-
-interface Result {
-  text?: string;
-  className?: string;
-}
 
 interface BasContentionRecord {
   id: string;
@@ -270,7 +263,7 @@ function recordToForm(r: BasContentionRecord): FormState {
   };
 }
 
-function formToInput(f: FormState, existing?: BasContentionRecord): BasContentionInput {
+function formToInput(f: FormState, result: Result): BasContentionInput {
   return {
     resident_id: f.resident_id,
     chambre: f.chambre.trim(),
@@ -279,7 +272,7 @@ function formToInput(f: FormState, existing?: BasContentionRecord): BasContentio
     sexe: f.sexe,
     product_type: f.product_type,
     raw_mesures: f.raw_mesures,
-    result: existing?.result ?? {},
+    result,
     prioritize_mollet: f.prioritize_mollet,
     date_cmd_1: f.date_cmd_1 || null,
     date_cmd_2: f.date_cmd_2 || null,
@@ -310,6 +303,204 @@ function MesureInput({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VUE RÉSULTAT (perfect / conflict / error)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ResultView({
+  calc, patientLabel, raw, productType, onChoose,
+}: {
+  calc: CalcResult;
+  patientLabel: string;
+  raw: RawMesures;
+  productType: ProductType;
+  onChoose: (r: Result) => void;
+}) {
+  if (calc.type === 'error') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-sm font-semibold text-red-700">{calc.result.text}</p>
+          <p className="text-xs text-red-600 mt-1">
+            Aucune taille ne correspond aux mesures saisies. Vérifiez les valeurs ou forcez une taille manuellement.
+          </p>
+        </div>
+        <div className="text-xs text-slate-500">
+          <span className="font-semibold">Patient :</span> {patientLabel}
+        </div>
+      </div>
+    );
+  }
+
+  if (calc.type === 'perfect') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-5 text-center">
+          <p className="text-xs uppercase font-bold text-green-700 mb-1">Résultat calculé</p>
+          <p className="text-2xl font-bold text-green-800">{calc.result.text}</p>
+        </div>
+        <div className="text-xs text-slate-500">
+          <span className="font-semibold">Patient :</span> {patientLabel}
+        </div>
+        <button
+          onClick={() => onChoose(calc.result)}
+          className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-green-600 hover:bg-green-700 flex items-center justify-center gap-2"
+        >
+          <Check className="h-4 w-4" />
+          Confirmer cette taille
+        </button>
+      </div>
+    );
+  }
+
+  // type === 'conflict'
+  const isBas = productType === 'Bas';
+  const mainMeasureName = isBas ? 'Cuisse' : 'Mollet';
+  const mainKey = isBas ? 'cuisse' : 'mollet';
+  const mainValue = isBas ? raw.c : raw.b;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <p className="text-sm font-semibold text-amber-800">Plusieurs tailles compatibles</p>
+        <p className="text-xs text-amber-700 mt-1">
+          Les mesures correspondent à plusieurs tailles ou nécessitent un compromis. Choisissez la plus pertinente.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {calc.candidates.map((c, idx) => {
+          const labelHeight = calc.height ? `, ${calc.height}` : '';
+          const aTone = c.matches.cheville === 'tolerance' ? 'text-amber-600' : (c.matches.cheville === 'fail' ? 'text-red-600' : 'text-slate-600');
+          const mTone = c.matches[mainKey] === 'tolerance' ? 'text-amber-600' : (c.matches[mainKey] === 'fail' ? 'text-red-600' : 'text-slate-600');
+          return (
+            <button
+              key={idx}
+              onClick={() => onChoose(buildResultFromCandidate(c, calc.height))}
+              className="w-full text-left rounded-xl border-2 border-slate-200 hover:border-cyan-400 hover:bg-cyan-50 p-3 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-slate-800">Taille {c.sizeData.size}{labelHeight}</span>
+                {(c.matches.cheville === 'tolerance' || c.matches[mainKey] === 'tolerance') && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Tolérance</span>
+                )}
+              </div>
+              <div className="text-xs space-y-0.5">
+                <p className={aTone}>
+                  Cheville : {raw.a || '—'} cm (req. {c.sizeData.cheville[0]}–{c.sizeData.cheville[1]} cm)
+                </p>
+                <p className={mTone}>
+                  {mainMeasureName} : {mainValue || '—'} cm (req. {c.sizeData[mainKey][0]}–{c.sizeData[mainKey][1]} cm)
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VUE FORÇAGE MANUEL (grilles cliquables)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ManualView({
+  sexe, raw, size, setSize, height, setHeight,
+}: {
+  sexe: Sexe;
+  raw: RawMesures;
+  size: string;
+  setSize: (v: string) => void;
+  height: '' | 'NORMAL' | 'LONG';
+  setHeight: (v: '' | 'NORMAL' | 'LONG') => void;
+}) {
+  const chart = SIZE_CHARTS[sexe];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+        <p className="text-xs text-purple-800">
+          Sélectionnez une taille manuellement (cliquez une ligne ou utilisez le sélecteur).
+          Mesures saisies : A:{raw.a || '—'} B:{raw.b || '—'} C:{raw.c || '—'} D:{raw.d || '—'} E:{raw.e || '—'}
+        </p>
+      </div>
+
+      {/* Tableau cliquable */}
+      <div>
+        <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">
+          Grille {sexe.toLowerCase()}
+        </p>
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-2 py-1.5 text-left">Taille</th>
+                <th className="px-2 py-1.5 text-left">A · Cheville</th>
+                <th className="px-2 py-1.5 text-left">B · Mollet</th>
+                <th className="px-2 py-1.5 text-left">C · Cuisse</th>
+              </tr>
+            </thead>
+            <tbody>
+              {chart.map(row => {
+                const selected = String(row.size) === size;
+                return (
+                  <tr
+                    key={row.size}
+                    onClick={() => setSize(String(row.size))}
+                    className={cn(
+                      'cursor-pointer border-t border-slate-100 hover:bg-cyan-50 transition-colors',
+                      selected && 'bg-cyan-100 font-semibold',
+                    )}
+                  >
+                    <td className="px-2 py-1.5 font-bold">{row.size}</td>
+                    <td className="px-2 py-1.5">{row.cheville[0]}–{row.cheville[1]}</td>
+                    <td className="px-2 py-1.5">{row.mollet[0]}–{row.mollet[1]}</td>
+                    <td className="px-2 py-1.5">{row.cuisse[0]}–{row.cuisse[1]}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Sélecteurs */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Taille</label>
+          <select
+            value={size}
+            onChange={e => setSize(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-cyan-500"
+          >
+            <option value="">— Choisir —</option>
+            {chart.map(row => (
+              <option key={row.size} value={row.size}>Taille {row.size}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">Hauteur</label>
+          <select
+            value={height}
+            onChange={e => setHeight(e.target.value as '' | 'NORMAL' | 'LONG')}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-cyan-500"
+          >
+            <option value="">— Aucune —</option>
+            <option value="NORMAL">NORMAL</option>
+            <option value="LONG">LONG</option>
+          </select>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-slate-400 italic">
+        Légende : Mi-Bas/Chaussette → NORMAL si D ≤ 40, LONG si D &gt; 40 · Bas → NORMAL si E ≤ 72, LONG si E &gt; 72.
+      </p>
+    </div>
+  );
+}
+
 function PatientFormModal({
   initial, onClose, onSubmit, busy,
 }: {
@@ -320,9 +511,17 @@ function PatientFormModal({
 }) {
   const [form, setForm] = useState<FormState>(initial ? recordToForm(initial) : emptyForm());
   const [errors, setErrors] = useState<string[]>([]);
+  const [step, setStep] = useState<'form' | 'result' | 'manual'>('form');
+  const [calc, setCalc] = useState<CalcResult | null>(null);
+  const [manualSize, setManualSize] = useState<string>('');
+  const [manualHeight, setManualHeight] = useState<'' | 'NORMAL' | 'LONG'>('');
 
   const isChaussette = form.product_type === 'Chaussette';
   const isBas = form.product_type === 'Bas';
+
+  const submitWithResult = (result: Result) => {
+    onSubmit(formToInput(form, result));
+  };
 
   const update = (patch: Partial<FormState>) => setForm(prev => ({ ...prev, ...patch }));
   const updateMes = (patch: Partial<RawMesures>) =>
@@ -362,7 +561,15 @@ function PatientFormModal({
     const errs = validate();
     if (errs.length) { setErrors(errs); return; }
     setErrors([]);
-    onSubmit(formToInput(form, initial ?? undefined));
+    const c = calculateSize(form.sexe, form.product_type, form.raw_mesures, form.prioritize_mollet);
+    setCalc(c);
+    setStep('result');
+  };
+
+  const handleManualValidate = () => {
+    const sz = parseInt(manualSize, 10);
+    if (Number.isNaN(sz)) { toast.error('Sélectionnez une taille'); return; }
+    submitWithResult(buildResultFromManual(sz, manualHeight));
   };
 
   return (
@@ -380,6 +587,7 @@ function PatientFormModal({
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+          {step === 'form' && (<>
           {errors.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 space-y-1">
               {errors.map((e, i) => <p key={i} className="text-sm text-red-700">• {e}</p>)}
@@ -536,24 +744,83 @@ function PatientFormModal({
               />
             </div>
           </div>
+          </>)}
+
+          {step === 'result' && calc && (
+            <ResultView
+              calc={calc}
+              patientLabel={`${form.nom} ${form.prenom}`}
+              raw={form.raw_mesures}
+              productType={form.product_type}
+              onChoose={result => submitWithResult(result)}
+            />
+          )}
+
+          {step === 'manual' && (
+            <ManualView
+              sexe={form.sexe}
+              raw={form.raw_mesures}
+              size={manualSize}
+              setSize={setManualSize}
+              height={manualHeight}
+              setHeight={setManualHeight}
+            />
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex gap-2 px-5 py-4 border-t border-slate-100 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={busy}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {initial ? 'Enregistrer' : 'Ajouter'}
-          </button>
+          {step === 'form' && (<>
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={busy}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Calculator className="h-4 w-4" />
+              Calculer la taille
+            </button>
+          </>)}
+
+          {step === 'result' && calc && (<>
+            <button
+              onClick={() => setStep('form')}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Modifier les mesures
+            </button>
+            <button
+              onClick={() => setStep('manual')}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 flex items-center justify-center gap-2"
+            >
+              <Sliders className="h-4 w-4" />
+              Forcer manuellement
+            </button>
+          </>)}
+
+          {step === 'manual' && (<>
+            <button
+              onClick={() => setStep(calc ? 'result' : 'form')}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Retour
+            </button>
+            <button
+              onClick={handleManualValidate}
+              disabled={busy}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-cyan-700 hover:bg-cyan-800 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Valider la taille forcée
+            </button>
+          </>)}
         </div>
       </div>
     </div>
@@ -823,6 +1090,7 @@ export default function BasDeContentionPage() {
       {/* Modale formulaire */}
       {editTarget && (
         <PatientFormModal
+          key={editTarget === 'new' ? 'new' : editTarget.id}
           initial={editTarget === 'new' ? null : editTarget}
           onClose={() => setEditTarget(null)}
           onSubmit={handleSubmit}
