@@ -265,7 +265,10 @@ function recordToForm(r: BasContentionRecord): FormState {
 
 function formToInput(f: FormState, result: Result): BasContentionInput {
   return {
-    resident_id: f.resident_id,
+    // resident_id reste null tant que la synchro n'est pas activée :
+    // residents.id n'est pas un UUID dans cette base, on le réintégrera
+    // quand on branchera la synchro avec la fiche résident.
+    resident_id: null,
     chambre: f.chambre.trim(),
     nom: f.nom.trim().toUpperCase(),
     prenom: formatProperCase(f.prenom.trim()),
