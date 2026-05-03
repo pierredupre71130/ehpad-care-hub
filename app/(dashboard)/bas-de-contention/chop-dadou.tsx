@@ -132,55 +132,71 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Audio ────────────────────────────────────────────────────────────────
-  // Musique de fond (instance unique loop)
+  // Musique de fond → balise <audio> (loop). SFX → Web Audio API pour
+  // une lecture sans latence (le buffer est décodé une seule fois).
   const themeRef = useRef<HTMLAudioElement | null>(null);
-  // Pool d'instances pour les SFX, pour permettre la lecture rapide successive
-  // sans devoir attendre la fin d'une lecture précédente.
-  const slapPoolRef = useRef<HTMLAudioElement[]>([]);
-  const ouchPoolRef = useRef<HTMLAudioElement[]>([]);
-  const slapIdxRef = useRef(0);
-  const ouchIdxRef = useRef(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const slapBufRef = useRef<AudioBuffer | null>(null);
+  const ouchBufRef = useRef<AudioBuffer | null>(null);
+
+  // Si le MP3 commence par un petit silence, on saute ces premières millisecondes
+  const SLAP_SKIP_SEC = 0;
+  const OUCH_SKIP_SEC = 0;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // Musique
     const theme = new Audio('/chop-dadou/theme.mp3');
     theme.loop = true;
     theme.volume = 0.4;
     theme.preload = 'auto';
     themeRef.current = theme;
 
-    const makePool = (src: string, volume: number, size = 4) =>
-      Array.from({ length: size }, () => {
-        const a = new Audio(src);
-        a.volume = volume;
-        a.preload = 'auto';
-        return a;
-      });
+    // Web Audio context (créé lazy après un user gesture sur certains navigateurs)
+    const Ctx: typeof AudioContext | undefined =
+      window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    audioCtxRef.current = ctx;
 
-    slapPoolRef.current = makePool('/chop-dadou/slap.mp3', 0.8);
-    ouchPoolRef.current = makePool('/chop-dadou/ouch.mp3', 1.0);
+    const loadBuffer = async (url: string) => {
+      try {
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        return await ctx.decodeAudioData(buf);
+      } catch {
+        return null;
+      }
+    };
+
+    loadBuffer('/chop-dadou/slap.mp3').then(b => { slapBufRef.current = b; });
+    loadBuffer('/chop-dadou/ouch.mp3').then(b => { ouchBufRef.current = b; });
 
     return () => {
       theme.pause();
       themeRef.current = null;
-      slapPoolRef.current.forEach(a => a.pause());
-      ouchPoolRef.current.forEach(a => a.pause());
-      slapPoolRef.current = [];
-      ouchPoolRef.current = [];
+      ctx.close().catch(() => {});
+      audioCtxRef.current = null;
+      slapBufRef.current = null;
+      ouchBufRef.current = null;
     };
   }, []);
 
   const playSfx = useCallback((kind: 'slap' | 'ouch') => {
     if (muted) return;
-    const pool = kind === 'slap' ? slapPoolRef.current : ouchPoolRef.current;
-    const idxRef = kind === 'slap' ? slapIdxRef : ouchIdxRef;
-    if (pool.length === 0) return;
-    const a = pool[idxRef.current];
-    idxRef.current = (idxRef.current + 1) % pool.length;
-    try {
-      a.currentTime = 0;
-      a.play().catch(() => {});
-    } catch {/* noop */}
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const buf = kind === 'slap' ? slapBufRef.current : ouchBufRef.current;
+    if (!buf) return;
+    const skip = kind === 'slap' ? SLAP_SKIP_SEC : OUCH_SKIP_SEC;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.value = kind === 'slap' ? 0.8 : 1.0;
+    src.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(0, skip);
   }, [muted]);
 
   useEffect(() => {
@@ -265,7 +281,8 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   const handleHit = (idx: number) => {
     if (phase !== 'play') return;
     const hole = holes[idx];
-    if (!hole.visible) return;
+    // Empêche les multi-clics tant que la mole n'a pas redisparu
+    if (!hole.visible || hole.hitState) return;
 
     const settings = SETTINGS[difficulty];
     const isHero = hole.character === HERO;
@@ -517,6 +534,16 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           30%  { transform: scale(1.3) rotate(35deg);  opacity: 1; }
           100% { transform: scale(1.8) rotate(70deg);  opacity: 0; }
         }
+        @keyframes blood-drop {
+          0%   { transform: translate(0, 0) scale(0.4); opacity: 0.9; }
+          70%  { transform: translate(var(--bd-x), var(--bd-y)) scale(1); opacity: 1; }
+          100% { transform: translate(calc(var(--bd-x) * 1.4), calc(var(--bd-y) * 1.4 + 12px)) scale(0.5); opacity: 0; }
+        }
+        @keyframes star-fly {
+          0%   { transform: translate(0, 0) rotate(0deg) scale(0.3); opacity: 0; }
+          30%  { transform: translate(calc(var(--bd-x) * 0.6), calc(var(--bd-y) * 0.6)) rotate(calc(var(--bd-rot) * 0.5)) scale(1.2); opacity: 1; }
+          100% { transform: translate(var(--bd-x), calc(var(--bd-y) - 8px)) rotate(var(--bd-rot)) scale(0.6); opacity: 0; }
+        }
         @keyframes dadou-glow {
           0%, 100% { box-shadow: inset 0 6px 14px rgba(0,0,0,0.6), 0 4px 0 #6b3410, 0 0 24px 4px rgba(239,68,68,0.55); }
           50%      { box-shadow: inset 0 6px 14px rgba(0,0,0,0.6), 0 4px 0 #6b3410, 0 0 36px 8px rgba(239,68,68,0.95); }
@@ -551,6 +578,88 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
 // ─────────────────────────────────────────────────────────────────────────────
 // Sous-composants
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Effet sang (8 gouttes en éventail) ───
+function BloodSplatter() {
+  const drops = useMemo(() => Array.from({ length: 9 }, (_, i) => {
+    const angle = (i / 9) * Math.PI * 2;
+    const dist = 30 + Math.random() * 20;
+    return {
+      id: i,
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist,
+      size: 6 + Math.random() * 8,
+      delay: Math.random() * 30,
+    };
+  }), []);
+  return (
+    <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-visible">
+      {/* tâche centrale */}
+      <div
+        className="absolute w-12 h-12 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, #b91c1c 0%, #7f1d1d 50%, transparent 75%)',
+          animation: 'splash-burst 0.5s ease-out forwards',
+        }}
+      />
+      {drops.map(d => (
+        <span
+          key={d.id}
+          className="absolute"
+          style={{
+            width: d.size, height: d.size,
+            background: '#b91c1c',
+            borderRadius: '50%',
+            boxShadow: '0 0 4px rgba(127,29,29,0.8)',
+            animation: `blood-drop 0.6s ease-out forwards`,
+            animationDelay: `${d.delay}ms`,
+            ['--bd-x' as string]: `${d.x}px`,
+            ['--bd-y' as string]: `${d.y}px`,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Effet étoiles (6 étoiles en éventail) ───
+function StarBurst() {
+  const stars = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const angle = (i / 7) * Math.PI * 2;
+    const dist = 24 + Math.random() * 18;
+    return {
+      id: i,
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist,
+      size: 14 + Math.random() * 10,
+      rot: Math.random() * 360,
+      color: ['#fde047', '#fbbf24', '#fef3c7', '#facc15'][i % 4],
+      delay: Math.random() * 30,
+    };
+  }), []);
+  return (
+    <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-visible">
+      {stars.map(s => (
+        <span
+          key={s.id}
+          className="absolute font-black"
+          style={{
+            color: s.color,
+            fontSize: s.size,
+            textShadow: '0 0 4px rgba(0,0,0,0.4), 0 0 6px rgba(250,204,21,0.7)',
+            animation: 'star-fly 0.7s ease-out forwards',
+            animationDelay: `${s.delay}ms`,
+            ['--bd-x' as string]: `${s.x}px`,
+            ['--bd-y' as string]: `${s.y}px`,
+            ['--bd-rot' as string]: `${s.rot}deg`,
+          } as React.CSSProperties}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function CarnivalBackground() {
   // Étoiles aléatoires scintillantes en arrière-plan
@@ -714,14 +823,9 @@ function Hole({
         )}
       </div>
 
-      {/* Splash burst lors du hit */}
-      {state.hitState && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="anim-splash text-5xl">
-            {state.hitState === 'hit' ? '💥' : '💢'}
-          </div>
-        </div>
-      )}
+      {/* Effet visuel au hit */}
+      {state.hitState === 'hit'  && <BloodSplatter />}
+      {state.hitState === 'miss' && <StarBurst />}
 
       {/* Texte flottant +1 / -2 */}
       {floatPoints.map(fp => (
