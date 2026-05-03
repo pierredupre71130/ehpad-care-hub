@@ -132,31 +132,51 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Audio ────────────────────────────────────────────────────────────────
+  // Musique de fond (instance unique loop)
   const themeRef = useRef<HTMLAudioElement | null>(null);
-  const slapRef = useRef<HTMLAudioElement | null>(null);
-  const ouchRef = useRef<HTMLAudioElement | null>(null);
+  // Pool d'instances pour les SFX, pour permettre la lecture rapide successive
+  // sans devoir attendre la fin d'une lecture précédente.
+  const slapPoolRef = useRef<HTMLAudioElement[]>([]);
+  const ouchPoolRef = useRef<HTMLAudioElement[]>([]);
+  const slapIdxRef = useRef(0);
+  const ouchIdxRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const theme = new Audio('/chop-dadou/theme.mp3');
     theme.loop = true;
     theme.volume = 0.4;
+    theme.preload = 'auto';
     themeRef.current = theme;
-    slapRef.current = new Audio('/chop-dadou/slap.mp3');
-    if (slapRef.current) slapRef.current.volume = 0.8;
-    ouchRef.current = new Audio('/chop-dadou/ouch.mp3');
-    if (ouchRef.current) ouchRef.current.volume = 1.0;
+
+    const makePool = (src: string, volume: number, size = 4) =>
+      Array.from({ length: size }, () => {
+        const a = new Audio(src);
+        a.volume = volume;
+        a.preload = 'auto';
+        return a;
+      });
+
+    slapPoolRef.current = makePool('/chop-dadou/slap.mp3', 0.8);
+    ouchPoolRef.current = makePool('/chop-dadou/ouch.mp3', 1.0);
+
     return () => {
       theme.pause();
       themeRef.current = null;
-      slapRef.current = null;
-      ouchRef.current = null;
+      slapPoolRef.current.forEach(a => a.pause());
+      ouchPoolRef.current.forEach(a => a.pause());
+      slapPoolRef.current = [];
+      ouchPoolRef.current = [];
     };
   }, []);
 
-  const playSfx = useCallback((ref: React.MutableRefObject<HTMLAudioElement | null>) => {
-    const a = ref.current;
-    if (!a || muted) return;
+  const playSfx = useCallback((kind: 'slap' | 'ouch') => {
+    if (muted) return;
+    const pool = kind === 'slap' ? slapPoolRef.current : ouchPoolRef.current;
+    const idxRef = kind === 'slap' ? slapIdxRef : ouchIdxRef;
+    if (pool.length === 0) return;
+    const a = pool[idxRef.current];
+    idxRef.current = (idxRef.current + 1) % pool.length;
     try {
       a.currentTime = 0;
       a.play().catch(() => {});
@@ -253,10 +273,10 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
 
     if (isHero) {
       setScore(s => s + 1);
-      playSfx(slapRef);
+      playSfx('slap');
     } else {
       setScore(s => Math.max(0, s + delta));
-      playSfx(ouchRef);
+      playSfx('ouch');
     }
 
     // Marque la mole comme touchée pour l'anim
