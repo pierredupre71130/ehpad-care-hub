@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Footprints, ChevronRight, Plus, Pencil, Trash2, X, Check,
   Eye, Loader2, Search, ArrowLeft, Calculator, Sliders,
+  Printer, Upload, Download, Link2, Link2Off,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -133,6 +134,33 @@ async function updateRow(id: string, patch: Partial<BasContentionInput>): Promis
 async function deleteRow(id: string): Promise<void> {
   const sb = createClient();
   const { error } = await sb.from(TABLE).delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+// Remplace l'intégralité des lignes (utilisé par l'import JSON)
+async function replaceAllRows(rows: BasContentionInput[]): Promise<void> {
+  const sb = createClient();
+  const { error: delErr } = await sb.from(TABLE).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (delErr) throw new Error(delErr.message);
+  if (rows.length === 0) return;
+  const { error: insErr } = await sb.from(TABLE).insert(rows);
+  if (insErr) throw new Error(insErr.message);
+}
+
+// Réglage admin "Synchroniser avec la fiche résident"
+const SETTING_SYNC_KEY = 'bas_contention_sync_residents';
+
+async function fetchSyncSetting(): Promise<boolean> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', SETTING_SYNC_KEY).maybeSingle();
+  return data?.value === true;
+}
+
+async function saveSyncSetting(value: boolean): Promise<void> {
+  const sb = createClient();
+  const { error } = await sb
+    .from('settings')
+    .upsert({ key: SETTING_SYNC_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
   if (error) throw new Error(error.message);
 }
 
@@ -843,14 +871,41 @@ export default function BasDeContentionPage() {
   const role = useEffectiveRole();
   const canEdit = !readOnly && (role === 'admin' || role === 'ide');
 
+  const isAdmin = role === 'admin';
+
   const [floor, setFloor] = useState<Floor>('rdc');
   const [search, setSearch] = useState('');
   const [editTarget, setEditTarget] = useState<BasContentionRecord | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BasContentionRecord | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['bas_contention'],
     queryFn: fetchRows,
+  });
+
+  const { data: syncEnabled = false } = useQuery({
+    queryKey: ['settings', SETTING_SYNC_KEY],
+    queryFn: fetchSyncSetting,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: saveSyncSetting,
+    onSuccess: (_, value) => {
+      qc.invalidateQueries({ queryKey: ['settings', SETTING_SYNC_KEY] });
+      toast.success(value ? 'Synchronisation activée' : 'Synchronisation désactivée');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const importMut = useMutation({
+    mutationFn: replaceAllRows,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bas_contention'] });
+      toast.success('Importation réussie');
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const createMut = useMutation({
@@ -883,6 +938,68 @@ export default function BasDeContentionPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const toggleOne = (id: string) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const allRdc  = useMemo(() => rows.filter(r => getFloor(r.chambre) === 'rdc'), [rows]);
+  const allEtage = useMemo(() => rows.filter(r => getFloor(r.chambre) === 'etage'), [rows]);
+
+  const exportableRows = (): BasContentionRecord[] => {
+    if (selected.size > 0) return rows.filter(r => selected.has(r.id));
+    return rows;
+  };
+
+  const handleExportJson = () => {
+    const list = exportableRows();
+    if (list.length === 0) { toast.info('Rien à exporter'); return; }
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `bas-contention_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleImportClick = () => fileInputRef.current?.click();
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!confirm("Importer ce fichier remplacera TOUTES les données actuelles. Continuer ?")) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) throw new Error('Format JSON invalide');
+      const inputs: BasContentionInput[] = parsed.map((r: Partial<BasContentionRecord>) => ({
+        resident_id: null,
+        chambre: String(r.chambre ?? ''),
+        nom: String(r.nom ?? ''),
+        prenom: String(r.prenom ?? ''),
+        sexe: (r.sexe === 'Homme' ? 'Homme' : 'Femme') as Sexe,
+        product_type: (r.product_type === 'Bas' ? 'Bas' : 'Chaussette') as ProductType,
+        raw_mesures: (r.raw_mesures ?? {}) as RawMesures,
+        result: (r.result ?? {}) as Result,
+        prioritize_mollet: r.prioritize_mollet !== false,
+        date_cmd_1: r.date_cmd_1 ?? null,
+        date_cmd_2: r.date_cmd_2 ?? null,
+      }));
+      importMut.mutate(inputs);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import échoué');
+    }
+  };
+
+  const handlePrint = () => {
+    if (selected.size === 0 && rows.length === 0) { toast.info('Rien à imprimer'); return; }
+    if (selected.size === 0 && !confirm("Aucune ligne sélectionnée. Imprimer toutes les listes ?")) return;
+    window.print();
+  };
+
   const filtered = useMemo(() => {
     const f = floor;
     return rows
@@ -909,7 +1026,7 @@ export default function BasDeContentionPage() {
   return (
     <div className="min-h-screen" style={{ background: '#dde4ee' }}>
       {/* ── Header ── */}
-      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0e7490 0%, #155e75 100%)' }}>
+      <div className="relative overflow-hidden print:hidden" style={{ background: 'linear-gradient(135deg, #0e7490 0%, #155e75 100%)' }}>
         <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
           <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
             <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
@@ -941,22 +1058,79 @@ export default function BasDeContentionPage() {
               ))}
             </div>
 
+            <button
+              onClick={handlePrint}
+              title="Imprimer / Enregistrer en PDF"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/15 text-white hover:bg-white/25 text-sm font-semibold"
+            >
+              <Printer className="h-4 w-4" />
+              <span className="hidden sm:inline">Imprimer</span>
+            </button>
+
             {canEdit && (
-              <button
-                onClick={() => setEditTarget('new')}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-cyan-800 hover:bg-cyan-50 text-sm font-semibold shadow-sm"
-              >
-                <Plus className="h-4 w-4" />
-                Nouveau patient
-              </button>
+              <>
+                <button
+                  onClick={handleExportJson}
+                  title="Exporter en JSON"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/15 text-white hover:bg-white/25 text-sm font-semibold"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden md:inline">Export JSON</span>
+                </button>
+                <button
+                  onClick={handleImportClick}
+                  title="Importer depuis un JSON"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/15 text-white hover:bg-white/25 text-sm font-semibold"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span className="hidden md:inline">Import JSON</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+                <button
+                  onClick={() => setEditTarget('new')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-cyan-800 hover:bg-cyan-50 text-sm font-semibold shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Nouveau patient</span>
+                </button>
+              </>
             )}
           </div>
+
+          {isAdmin && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-white/85">
+              <button
+                onClick={() => syncMut.mutate(!syncEnabled)}
+                disabled={syncMut.isPending}
+                className={cn(
+                  'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold transition-colors',
+                  syncEnabled
+                    ? 'bg-emerald-400/30 hover:bg-emerald-400/40 text-white'
+                    : 'bg-white/15 hover:bg-white/25 text-white/80',
+                )}
+                title="Réservé admin — synchronisera les cases du résident lié quand activé"
+              >
+                {syncEnabled ? <Link2 className="h-3.5 w-3.5" /> : <Link2Off className="h-3.5 w-3.5" />}
+                Synchroniser avec la fiche résident
+                <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-bold', syncEnabled ? 'bg-white text-emerald-700' : 'bg-slate-700 text-white/80')}>
+                  {syncEnabled ? 'Activée' : 'Désactivée'}
+                </span>
+              </button>
+              <span className="text-white/50 italic hidden md:inline">À venir : la synchro cochera automatiquement les cases dans la fiche résident.</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Lecture seule ── */}
       {readOnly && (
-        <div className="max-w-6xl mx-auto px-4 mt-4">
+        <div className="max-w-6xl mx-auto px-4 mt-4 print:hidden">
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4 flex-shrink-0" />
             Vous consultez ce module en lecture seule.
@@ -964,8 +1138,25 @@ export default function BasDeContentionPage() {
         </div>
       )}
 
+      {/* ── CSS d'impression ── */}
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 8mm; }
+          body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .bc-print-zone { display: block !important; }
+          .bc-print-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          .bc-print-table th, .bc-print-table td { border: 1px solid #475569; padding: 4px 6px; vertical-align: top; }
+          .bc-print-table thead { background: #f1f5f9; }
+          .bc-print-section { margin-bottom: 14px; page-break-inside: auto; }
+          .bc-print-title { font-size: 14px; font-weight: 700; margin: 0 0 6px 0; color: #0e7490; }
+          .bc-print-table tr { page-break-inside: avoid; }
+          .bc-page-break { page-break-before: always; break-before: page; }
+        }
+        .bc-print-zone { display: none; }
+      `}</style>
+
       {/* ── Corps ── */}
-      <div className="max-w-6xl mx-auto px-4 py-6 pb-20 space-y-4">
+      <div className="max-w-6xl mx-auto px-4 py-6 pb-20 space-y-4 print:hidden">
         {/* Recherche */}
         <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3">
           <div className="flex-1 relative">
@@ -989,6 +1180,21 @@ export default function BasDeContentionPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="px-2 py-2 w-8 text-center print:hidden">
+                    <input
+                      type="checkbox"
+                      title="Tout sélectionner / désélectionner sur cet étage"
+                      checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
+                      onChange={e => {
+                        setSelected(prev => {
+                          const next = new Set(prev);
+                          if (e.target.checked) filtered.forEach(r => next.add(r.id));
+                          else filtered.forEach(r => next.delete(r.id));
+                          return next;
+                        });
+                      }}
+                    />
+                  </th>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-16">Ch.</th>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Nom Prénom</th>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide w-16">Sexe</th>
@@ -997,13 +1203,13 @@ export default function BasDeContentionPage() {
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Taille recommandée</th>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">1ère cmd</th>
                   <th className="px-3 py-2 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">2e cmd</th>
-                  <th className="px-3 py-2 w-24" />
+                  <th className="px-3 py-2 w-24 print:hidden" />
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td colSpan={9} className="text-center py-12 text-slate-400">
+                    <td colSpan={10} className="text-center py-12 text-slate-400">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
                       Chargement…
                     </td>
@@ -1011,7 +1217,7 @@ export default function BasDeContentionPage() {
                 )}
                 {!isLoading && filtered.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                    <td colSpan={10} className="text-center py-12 text-slate-400 text-sm">
                       {rows.length === 0 ? 'Aucun patient enregistré' : 'Aucun résultat pour ces filtres'}
                     </td>
                   </tr>
@@ -1027,7 +1233,7 @@ export default function BasDeContentionPage() {
                     if ((isFloorRdc && a <= 16 && b >= 17) || (!isFloorRdc && a <= 122 && b >= 123)) {
                       separator = (
                         <tr key={`sep-${r.id}`} aria-hidden>
-                          <td colSpan={9} className="px-0 py-0">
+                          <td colSpan={10} className="px-0 py-0">
                             <div className="h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
                           </td>
                         </tr>
@@ -1043,6 +1249,13 @@ export default function BasDeContentionPage() {
                           r.sexe === 'Femme' ? 'bg-rose-50/30' : 'bg-blue-50/30',
                         )}
                       >
+                        <td className="px-2 py-2 text-center print:hidden">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(r.id)}
+                            onChange={() => toggleOne(r.id)}
+                          />
+                        </td>
                         <td className="px-3 py-2 font-semibold text-slate-700">{r.chambre}</td>
                         <td className="px-3 py-2">
                           <span className="font-semibold text-slate-800">{r.nom}</span>{' '}
@@ -1060,7 +1273,7 @@ export default function BasDeContentionPage() {
                         </td>
                         <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{fmtDateFR(r.date_cmd_1)}</td>
                         <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{fmtDateFR(r.date_cmd_2)}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 print:hidden">
                           {canEdit && (
                             <div className="flex gap-1 justify-end">
                               <button
@@ -1088,6 +1301,63 @@ export default function BasDeContentionPage() {
             </table>
           </div>
         </div>
+      </div>
+
+      {/* ── Zone d'impression ── */}
+      <div className="bc-print-zone">
+        {(() => {
+          const selectionMode = selected.size > 0;
+          const filterFn = (r: BasContentionRecord) => !selectionMode || selected.has(r.id);
+          const printRdc = allRdc.filter(filterFn);
+          const printEtage = allEtage.filter(filterFn);
+          const renderTable = (title: string, list: BasContentionRecord[]) => (
+            <section className="bc-print-section">
+              <h2 className="bc-print-title">{title}</h2>
+              <table className="bc-print-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 40 }}>Ch.</th>
+                    <th>Nom Prénom</th>
+                    <th style={{ width: 50 }}>Sexe</th>
+                    <th style={{ width: 80 }}>Type</th>
+                    <th>Mesures (cm)</th>
+                    <th>Taille recommandée</th>
+                    <th style={{ width: 80 }}>1ère cmd</th>
+                    <th style={{ width: 80 }}>2e cmd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.length === 0 ? (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>—</td></tr>
+                  ) : (
+                    list.map(r => (
+                      <tr key={r.id}>
+                        <td><strong>{r.chambre}</strong></td>
+                        <td><strong>{r.nom}</strong> {r.prenom}</td>
+                        <td>{r.sexe}</td>
+                        <td>{r.product_type}</td>
+                        <td>{summarizeMesures(r.raw_mesures) || '—'}</td>
+                        <td>{r.result?.text || '—'}</td>
+                        <td>{fmtDateFR(r.date_cmd_1)}</td>
+                        <td>{fmtDateFR(r.date_cmd_2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </section>
+          );
+          return (
+            <>
+              {printRdc.length > 0 && renderTable('Suivi des Bas de Contention — RDC', printRdc)}
+              {printRdc.length > 0 && printEtage.length > 0 && <div className="bc-page-break" />}
+              {printEtage.length > 0 && renderTable('Suivi des Bas de Contention — 1er Étage', printEtage)}
+              {printRdc.length === 0 && printEtage.length === 0 && (
+                <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: 40 }}>Aucune donnée à imprimer.</p>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Modale formulaire */}
