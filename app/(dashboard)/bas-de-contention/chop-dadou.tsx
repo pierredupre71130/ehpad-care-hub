@@ -57,7 +57,7 @@ const CHAR_SCALE: Record<string, number> = {
 // Décalage vertical par personnage en % de la hauteur du trou. Positif =
 // vers le bas (comble un vide transparent sous le perso dans le PNG).
 const CHAR_OFFSET_Y: Record<string, number> = {
-  dadou:  18,
+  dadou:  6,
   momo:   0,
   pierre: 0,
   flo:    0,
@@ -504,25 +504,27 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
 
       {/* Animations CSS globales */}
       <style>{`
+        /* Position de repos = translateY(38%) → le perso dépasse uniquement
+           du trou avec sa tête + épaules (style whack-a-mole). */
         @keyframes mole-pop {
-          0%   { transform: translateY(105%) scale(0.85); }
-          60%  { transform: translateY(-8%)  scale(1.05); }
-          80%  { transform: translateY(2%)   scale(0.97); }
-          100% { transform: translateY(0)    scale(1); }
+          0%   { transform: translateY(115%) scale(0.85); }
+          55%  { transform: translateY(28%)  scale(1.05); }
+          80%  { transform: translateY(42%)  scale(0.97); }
+          100% { transform: translateY(38%)  scale(1); }
         }
         @keyframes mole-idle {
-          0%, 100% { transform: translateY(0) scale(1); }
-          50%      { transform: translateY(-2%) scale(1.025); }
+          0%, 100% { transform: translateY(38%) scale(1); }
+          50%      { transform: translateY(36%) scale(1.025); }
         }
         @keyframes mole-hit {
-          0%   { transform: translateY(0)   scale(1)    rotate(0deg); }
-          50%  { transform: translateY(20%) scale(1.1, 0.7) rotate(8deg); }
-          100% { transform: translateY(120%) scale(0.7) rotate(-12deg); opacity: 0; }
+          0%   { transform: translateY(38%)  scale(1)    rotate(0deg); }
+          50%  { transform: translateY(58%)  scale(1.1, 0.7) rotate(8deg); }
+          100% { transform: translateY(125%) scale(0.7) rotate(-12deg); opacity: 0; }
         }
         @keyframes mole-miss {
-          0%   { transform: translateY(0)   scale(1)    rotate(0deg); }
-          50%  { transform: translateY(-10%) scale(1.05) rotate(-6deg); }
-          100% { transform: translateY(120%) scale(0.85) rotate(6deg); opacity: 0; }
+          0%   { transform: translateY(38%)  scale(1)    rotate(0deg); }
+          50%  { transform: translateY(28%)  scale(1.05) rotate(-6deg); }
+          100% { transform: translateY(125%) scale(0.85) rotate(6deg); opacity: 0; }
         }
         @keyframes float-up {
           0%   { transform: translate(-50%, 0)    scale(0.7); opacity: 0; }
