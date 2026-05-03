@@ -1,6 +1,6 @@
 'use client';
 
-import { Bandage, ChevronRight, Construction } from 'lucide-react';
+import { Footprints, ChevronRight, Construction } from 'lucide-react';
 import Link from 'next/link';
 
 export default function BasDeContentionPage() {
@@ -18,7 +18,7 @@ export default function BasDeContentionPage() {
           </div>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
-              <Bandage className="h-6 w-6 text-white" strokeWidth={1.5} />
+              <Footprints className="h-6 w-6 text-white" strokeWidth={1.5} />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Bas de Contention</h1>
