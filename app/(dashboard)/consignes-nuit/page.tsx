@@ -55,11 +55,10 @@ interface NiveauSoin {
   niveau_soin?: string;
 }
 
-// Emojis sous forme de SVG Twemoji pour fiabiliser l'impression
-const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg';
-const EMOJI_SOCK = `${TWEMOJI_BASE}/1f9e6.svg`; // 🧦
-const EMOJI_LEG  = `${TWEMOJI_BASE}/1f9b5.svg`; // 🦵
-const EMOJI_ROLL = `${TWEMOJI_BASE}/1f9fb.svg`; // 🧻
+// Emojis sous forme de SVG Twemoji servis localement (sans CDN externe)
+const EMOJI_SOCK = '/twemoji/1f9e6.svg'; // 🧦
+const EMOJI_LEG  = '/twemoji/1f9b5.svg'; // 🦵
+const EMOJI_ROLL = '/twemoji/1f9fb.svg'; // 🧻
 
 function EmojiImg({ src, alt, size = 14 }: { src: string; alt: string; size?: number }) {
   return (
