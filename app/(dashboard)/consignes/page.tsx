@@ -610,7 +610,7 @@ export default function ConsignesPage() {
       document.head.appendChild(style);
     }
     const pad = Math.max(1, Math.round((localPrint.rowHeight - 16) / 2));
-    style.textContent = `@page { size: A4 portrait; margin: 5mm 3mm; } @media print { .print-scale-wrapper tr { min-height: ${localPrint.rowHeight}px !important; height: ${localPrint.rowHeight}px !important; page-break-inside: avoid !important; } .print-scale-wrapper td { padding-top: ${pad}px !important; padding-bottom: ${pad}px !important; } }`;
+    style.textContent = `@page { size: A4 portrait; margin: 5mm 3mm; } @media print { .print-scale-wrapper tr { min-height: ${localPrint.rowHeight}px !important; height: ${localPrint.rowHeight}px !important; page-break-inside: avoid !important; } .print-scale-wrapper td { padding-top: ${pad}px !important; padding-bottom: ${pad}px !important; } .print-page-break { page-break-before: always !important; break-before: page !important; } }`;
   }, [localPrint.rowHeight]);
 
   // ── Mutations ──
@@ -868,7 +868,7 @@ export default function ConsignesPage() {
           </div>
 
           {/* ── LONG SÉJOUR ── */}
-          <div style={{ marginTop: `${currentSpacing}px` }}>
+          <div className="print-page-break" style={{ marginTop: `${currentSpacing}px` }}>
             <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-2 print:hidden">
               Long Séjour
             </h2>
