@@ -33,11 +33,11 @@ const HERO = 'dadou';
 const DECOYS = ['momo', 'pierre', 'flo', 'marie'] as const;
 
 const IMG: Record<string, string> = {
-  dadou:  '/chop-dadou/dadou.jpg',
-  momo:   '/chop-dadou/momo.jpg',
-  pierre: '/chop-dadou/pierre.jpg',
-  flo:    '/chop-dadou/flo.jpg',
-  marie:  '/chop-dadou/marie.jpg',
+  dadou:  '/chop-dadou/dadou.png',
+  momo:   '/chop-dadou/momo.png',
+  pierre: '/chop-dadou/pierre.png',
+  flo:    '/chop-dadou/flo.png',
+  marie:  '/chop-dadou/marie.png',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,8 +451,8 @@ function Hole({ state, splash, onClick }: { state: MoleState; splash: boolean; o
       onTouchStart={(e) => { e.preventDefault(); onClick(); }}
       className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-amber-900 overflow-hidden cursor-pointer select-none"
       style={{
-        background: '#000',
-        boxShadow: 'inset 0 8px 18px rgba(0,0,0,0.9), 0 4px 0 #6b3410',
+        background: 'radial-gradient(circle at center top, #3a1f0a 0%, #1a0d04 70%)',
+        boxShadow: 'inset 0 6px 14px rgba(0,0,0,0.6), 0 4px 0 #6b3410',
       }}
     >
       <div
