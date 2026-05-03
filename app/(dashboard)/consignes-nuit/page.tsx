@@ -55,6 +55,25 @@ interface NiveauSoin {
   niveau_soin?: string;
 }
 
+// Emojis sous forme de SVG Twemoji pour fiabiliser l'impression
+const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg';
+const EMOJI_SOCK = `${TWEMOJI_BASE}/1f9e6.svg`; // 🧦
+const EMOJI_LEG  = `${TWEMOJI_BASE}/1f9b5.svg`; // 🦵
+const EMOJI_ROLL = `${TWEMOJI_BASE}/1f9fb.svg`; // 🧻
+
+function EmojiImg({ src, alt, size = 14 }: { src: string; alt: string; size?: number }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      title={alt}
+      width={size}
+      height={size}
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    />
+  );
+}
+
 interface ContentionFiche {
   id: string;
   nom: string;
@@ -443,15 +462,9 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
               {CONTENTION_ICONS[type]}
             </span>
           ))}
-          {resident.chaussettes_de_contention && (
-            <span title="Chaussettes de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
-          )}
-          {resident.bas_de_contention && (
-            <span title="Bas de contention" style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
-          )}
-          {resident.bande_de_contention && (
-            <span title="Bande de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
-          )}
+          {resident.chaussettes_de_contention && <EmojiImg src={EMOJI_SOCK} alt="Chaussettes de contention" />}
+          {resident.bas_de_contention         && <EmojiImg src={EMOJI_LEG}  alt="Bas de contention" />}
+          {resident.bande_de_contention       && <EmojiImg src={EMOJI_ROLL} alt="Bande de contention" />}
         </div>
       </td>
     </tr>
@@ -535,9 +548,9 @@ function Legend() {
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>BG</span><span>Barrière G</span></div>
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>BD</span><span>Barrière D</span></div>
         <div className="flex items-center gap-1"><span style={circleStyle('#fef3c7', '#d97706', 20, 9)}>B2</span><span>BarX2</span></div>
-        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🧦</span><span>Chaussettes</span></div>
-        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🦵</span><span>Bas</span></div>
-        <div className="flex items-center gap-1"><span style={{ fontSize: 16, lineHeight: 1 }}>🧻</span><span>Bande</span></div>
+        <div className="flex items-center gap-1"><EmojiImg src={EMOJI_SOCK} alt="Chaussettes" size={16} /><span>Chaussettes</span></div>
+        <div className="flex items-center gap-1"><EmojiImg src={EMOJI_LEG}  alt="Bas"         size={16} /><span>Bas</span></div>
+        <div className="flex items-center gap-1"><EmojiImg src={EMOJI_ROLL} alt="Bande"       size={16} /><span>Bande</span></div>
         <div className="flex items-center gap-1">
           <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: 'white', border: '2px dashed #000', fontWeight: 'bold', fontSize: 10 }}>L</span><span>Si besoin</span>
         </div>
@@ -819,10 +832,12 @@ export default function ConsignesNuitPage() {
         return `<span style="${style}" title="${f.traitement}">${labelMap[f.traitement] ?? '?'}</span>`;
       }).join(' ');
 
+      const emojiImg = (src: string, alt: string) =>
+        `<img src="${src}" alt="${alt}" title="${alt}" width="14" height="14" style="display:inline-block;vertical-align:middle"/>`;
       const contentionEmojis = [
-        r.chaussettes_de_contention ? `<span title="Chaussettes de contention" style="font-size:14px;line-height:1">🧦</span>` : '',
-        r.bas_de_contention         ? `<span title="Bas de contention"         style="font-size:14px;line-height:1">🦵</span>` : '',
-        r.bande_de_contention       ? `<span title="Bande de contention"       style="font-size:14px;line-height:1">🧻</span>` : '',
+        r.chaussettes_de_contention ? emojiImg(EMOJI_SOCK, 'Chaussettes de contention') : '',
+        r.bas_de_contention         ? emojiImg(EMOJI_LEG,  'Bas de contention')         : '',
+        r.bande_de_contention       ? emojiImg(EMOJI_ROLL, 'Bande de contention')       : '',
       ].filter(Boolean).join(' ');
 
       const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
@@ -881,9 +896,9 @@ export default function ConsignesNuitPage() {
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>BG</span> <span>BG</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>BD</span> <span>BD</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#fef3c7;border:1.5px solid #d97706;font-weight:bold;font-size:8px'>B2</span> <span>BarX2</span></div>
-        <div><span style='font-size:14px;line-height:1'>🧦</span> <span>Chaussettes</span></div>
-        <div><span style='font-size:14px;line-height:1'>🦵</span> <span>Bas</span></div>
-        <div><span style='font-size:14px;line-height:1'>🧻</span> <span>Bande</span></div>
+        <div><img src='${EMOJI_SOCK}' alt='Chaussettes' width='14' height='14' style='display:inline-block;vertical-align:middle'/> <span>Chaussettes</span></div>
+        <div><img src='${EMOJI_LEG}'  alt='Bas'         width='14' height='14' style='display:inline-block;vertical-align:middle'/> <span>Bas</span></div>
+        <div><img src='${EMOJI_ROLL}' alt='Bande'       width='14' height='14' style='display:inline-block;vertical-align:middle'/> <span>Bande</span></div>
         <div><span style='display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:white;border:1.5px dashed #000;font-weight:bold;font-size:9px'>L</span> <span>Si besoin</span></div>
       </div></div>${infosBox}` : '';
 

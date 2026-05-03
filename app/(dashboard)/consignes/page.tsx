@@ -121,6 +121,27 @@ interface ContentionFiche {
   dotation_nominative: boolean | null;
 }
 
+// Emojis sous forme de SVG Twemoji pour garantir le rendu à
+// l'impression (les polices emoji système ne sont pas toujours
+// disponibles côté pilote d'impression).
+const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg';
+const EMOJI_SOCK = `${TWEMOJI_BASE}/1f9e6.svg`; // 🧦
+const EMOJI_LEG  = `${TWEMOJI_BASE}/1f9b5.svg`; // 🦵
+const EMOJI_ROLL = `${TWEMOJI_BASE}/1f9fb.svg`; // 🧻
+
+function EmojiImg({ src, alt, size = 14 }: { src: string; alt: string; size?: number }) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      title={alt}
+      width={size}
+      height={size}
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    />
+  );
+}
+
 // Couleurs / labels pour les pastilles lit / fauteuil / barrières
 const CONTENTION_PALETTE: Record<string, { bg: string; border: string; label: string }> = {
   lit:               { bg: '#dbeafe', border: '#93c5fd', label: 'L'  },
@@ -408,15 +429,9 @@ function ResidentRow({
                 </span>
               );
             })}
-            {resident.chaussettes_de_contention && (
-              <span title="Chaussettes de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
-            )}
-            {resident.bas_de_contention && (
-              <span title="Bas de contention" style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
-            )}
-            {resident.bande_de_contention && (
-              <span title="Bande de contention" style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
-            )}
+            {resident.chaussettes_de_contention && <EmojiImg src={EMOJI_SOCK} alt="Chaussettes de contention" />}
+            {resident.bas_de_contention         && <EmojiImg src={EMOJI_LEG}  alt="Bas de contention" />}
+            {resident.bande_de_contention       && <EmojiImg src={EMOJI_ROLL} alt="Bande de contention" />}
           </div>
         )}
       </td>
@@ -968,15 +983,15 @@ export default function ConsignesPage() {
                   Si besoin
                 </span>
                 <span className="flex items-center gap-1">
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>🧦</span>
+                  <EmojiImg src={EMOJI_SOCK} alt="Chaussettes" />
                   Chaussettes
                 </span>
                 <span className="flex items-center gap-1">
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>🦵</span>
+                  <EmojiImg src={EMOJI_LEG} alt="Bas" />
                   Bas
                 </span>
                 <span className="flex items-center gap-1">
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>🧻</span>
+                  <EmojiImg src={EMOJI_ROLL} alt="Bande" />
                   Bande
                 </span>
               </div>
