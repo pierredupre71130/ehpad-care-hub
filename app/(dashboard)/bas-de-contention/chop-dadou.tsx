@@ -505,10 +505,8 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
       {/* Animations CSS globales */}
       <style>{`
         @keyframes mole-pop {
-          0%   { transform: translateY(105%) scale(0.85); }
-          60%  { transform: translateY(-8%)  scale(1.05); }
-          80%  { transform: translateY(2%)   scale(0.97); }
-          100% { transform: translateY(0)    scale(1); }
+          0%   { transform: translateY(105%); }
+          100% { transform: translateY(0);    }
         }
         @keyframes mole-idle {
           0%, 100% { transform: translateY(0)   scale(1); }
@@ -560,7 +558,7 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           from { opacity: 0; transform: translateY(10px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .anim-pop      { animation: mole-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-pop      { animation: mole-pop 0.3s ease-out forwards; }
         .anim-idle     { animation: mole-idle 1.6s ease-in-out infinite; }
         .anim-hit      { animation: mole-hit 0.4s ease-in forwards; }
         .anim-miss     { animation: mole-miss 0.4s ease-in forwards; }
