@@ -76,14 +76,18 @@ function applyGravity(grid: (Color | null)[][]): (Color | null)[][] {
 }
 
 function findMatches(grid: (Color | null)[][]): Array<Array<[number, number]>> {
-  const visited = new Set<string>();
+  // inAnyCluster ne contient que les cases qui ont été RÉELLEMENT validées
+  // dans un cluster (couleur correspondante), pour qu'on n'oublie pas les
+  // clusters d'autres couleurs voisins.
+  const inAnyCluster = new Set<string>();
   const result: Array<Array<[number, number]>> = [];
   for (let r = 0; r < GRID_H; r++) {
     for (let c = 0; c < GRID_W; c++) {
       const k = `${r}-${c}`;
-      if (visited.has(k) || !grid[r][c]) continue;
+      if (inAnyCluster.has(k) || !grid[r][c]) continue;
       const target = grid[r][c];
       const cluster: Array<[number, number]> = [];
+      const visited = new Set<string>(); // visités dans CE BFS uniquement
       const stack: Array<[number, number]> = [[r, c]];
       while (stack.length) {
         const [cr, cc] = stack.pop()!;
@@ -98,6 +102,7 @@ function findMatches(grid: (Color | null)[][]): Array<Array<[number, number]>> {
           if (!visited.has(`${nr}-${nc}`)) stack.push([nr, nc]);
         }
       }
+      cluster.forEach(([cr, cc]) => inAnyCluster.add(`${cr}-${cc}`));
       if (cluster.length >= 4) result.push(cluster);
     }
   }
