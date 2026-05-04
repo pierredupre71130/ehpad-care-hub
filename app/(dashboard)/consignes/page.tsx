@@ -377,19 +377,19 @@ function ResidentRow({
         ) : (
           <span className="whitespace-pre-line text-black" style={{ fontSize: `${fontSize}px` }}>
             {(resident.insuline_matin || resident.insuline_soir || resident.anticoagulants) && (
-              <span className="inline-flex items-center gap-1 mr-1.5 align-middle">
+              <span className="inline-flex flex-col gap-0.5 mr-1.5 align-top float-left">
                 {resident.insuline_matin && (
-                  <span title="Insuline matin" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700 align-middle">
+                  <span title="Insuline matin" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700">
                     <Syringe className="h-2.5 w-2.5" /><Sun className="h-2.5 w-2.5" />
                   </span>
                 )}
                 {resident.insuline_soir && (
-                  <span title="Insuline soir" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 align-middle">
+                  <span title="Insuline soir" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700">
                     <Syringe className="h-2.5 w-2.5" /><Moon className="h-2.5 w-2.5" />
                   </span>
                 )}
                 {resident.anticoagulants && (
-                  <span title="Anticoagulants" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700 align-middle">
+                  <span title="Anticoagulants" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700">
                     <AlertTriangle className="h-2.5 w-2.5" />
                   </span>
                 )}
