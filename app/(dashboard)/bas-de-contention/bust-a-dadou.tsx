@@ -387,37 +387,36 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
     if (phase !== 'play') return;
     let rafId: number;
     const step = () => {
+      rafId = requestAnimationFrame(step); // toujours re-scheduler la prochaine frame
       const fb = flyingRef.current;
-      if (fb) {
-        let nx = fb.x + fb.vx;
-        let ny = fb.y + fb.vy;
-        // Rebonds murs
-        if (nx - BUBBLE/2 <= 0) { nx = BUBBLE/2; setFlying(f => f ? { ...f, vx: -f.vx } : null); }
-        else if (nx + BUBBLE/2 >= BOARD_W) { nx = BOARD_W - BUBBLE/2; setFlying(f => f ? { ...f, vx: -f.vx } : null); }
+      if (!fb) return;
+      let nx = fb.x + fb.vx;
+      let ny = fb.y + fb.vy;
+      // Rebonds murs
+      if (nx - BUBBLE/2 <= 0) { nx = BUBBLE/2; setFlying(f => f ? { ...f, vx: -f.vx } : null); }
+      else if (nx + BUBBLE/2 >= BOARD_W) { nx = BOARD_W - BUBBLE/2; setFlying(f => f ? { ...f, vx: -f.vx } : null); }
 
-        // Collision avec le plafond
-        if (ny - BUBBLE/2 <= 0) {
-          handleSnapRef.current(nx, BUBBLE/2);
-          return;
-        }
-        // Collision avec une bulle existante
-        const g = gridRef.current;
-        let hit = false;
-        for (let r = 0; r < g.length && !hit; r++) {
-          for (let c = 0; c < g[r].length && !hit; c++) {
-            if (!g[r][c]) continue;
-            const p = cellToXY(r, c);
-            const d = Math.hypot(p.x - nx, p.y - ny);
-            if (d < BUBBLE * 0.92) hit = true;
-          }
-        }
-        if (hit) {
-          handleSnapRef.current(nx, ny);
-          return;
-        }
-        setFlying(f => f ? { ...f, x: nx, y: ny } : null);
+      // Collision avec le plafond
+      if (ny - BUBBLE/2 <= 0) {
+        handleSnapRef.current(nx, BUBBLE/2);
+        return;
       }
-      rafId = requestAnimationFrame(step);
+      // Collision avec une bulle existante
+      const g = gridRef.current;
+      let hit = false;
+      for (let r = 0; r < g.length && !hit; r++) {
+        for (let c = 0; c < g[r].length && !hit; c++) {
+          if (!g[r][c]) continue;
+          const p = cellToXY(r, c);
+          const d = Math.hypot(p.x - nx, p.y - ny);
+          if (d < BUBBLE * 0.92) hit = true;
+        }
+      }
+      if (hit) {
+        handleSnapRef.current(nx, ny);
+        return;
+      }
+      setFlying(f => f ? { ...f, x: nx, y: ny } : null);
     };
     rafId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(rafId);
@@ -547,30 +546,60 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
 
   // ── Aim & shoot ─────────────────────────────────────────────────────────
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const [aimDir, setAimDir] = useState<'left' | 'right' | null>(null);
+  const AIM_SPEED = 0.045; // radians par frame (~60 fps)
+  const MIN_ANGLE = -Math.PI + Math.PI / 18;
+  const MAX_ANGLE = -Math.PI / 18;
 
-  const handleAim = (clientX: number, clientY: number) => {
-    const board = boardRef.current;
-    if (!board) return;
-    const rect = board.getBoundingClientRect();
-    const px = (clientX - rect.left) * (BOARD_W / rect.width);
-    const py = (clientY - rect.top)  * (BOARD_H / rect.height);
-    const dx = px - SHOOTER_X;
-    const dy = py - SHOOTER_Y;
-    if (dy > -10) return; // si on vise vers le bas, on ignore
-    const angle = Math.atan2(dy, dx);
-    // limite l'angle entre -10° de l'horizontale gauche et -10° de l'horizontale droite
-    const minA = -Math.PI + Math.PI / 18;  // ~−170°
-    const maxA = -Math.PI / 18;             // ~−10°
-    setAimAngle(Math.max(minA, Math.min(maxA, angle)));
-  };
+  // Rotation continue de la visée tant qu'une direction est maintenue
+  useEffect(() => {
+    if (!aimDir || phase !== 'play') return;
+    let rafId: number;
+    const tick = () => {
+      setAimAngle(a => {
+        const next = a + (aimDir === 'left' ? -AIM_SPEED : AIM_SPEED);
+        return Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, next));
+      });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [aimDir, phase]);
 
-  const handleShoot = () => {
+  const flyingHasRef = useRef<boolean>(false);
+  useEffect(() => { flyingHasRef.current = !!flying; }, [flying]);
+  const currentColorRef = useRef<Color>(currentColor);
+  useEffect(() => { currentColorRef.current = currentColor; }, [currentColor]);
+  const aimAngleRef = useRef(aimAngle);
+  useEffect(() => { aimAngleRef.current = aimAngle; }, [aimAngle]);
+
+  const handleShoot = useCallback(() => {
+    if (phaseRef.current !== 'play') return;
+    if (flyingHasRef.current) return;
+    const a = aimAngleRef.current;
+    const vx = Math.cos(a) * SHOT_SPEED;
+    const vy = Math.sin(a) * SHOT_SPEED;
+    setFlying({ x: SHOOTER_X, y: SHOOTER_Y, vx, vy, color: currentColorRef.current });
+  }, []);
+
+  // Clavier : ← / → pour viser, espace pour tirer
+  useEffect(() => {
     if (phase !== 'play') return;
-    if (flying) return;
-    const vx = Math.cos(aimAngle) * SHOT_SPEED;
-    const vy = Math.sin(aimAngle) * SHOT_SPEED;
-    setFlying({ x: SHOOTER_X, y: SHOOTER_Y, vx, vy, color: currentColor });
-  };
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft')      { e.preventDefault(); setAimDir('left'); }
+      else if (e.key === 'ArrowRight'){ e.preventDefault(); setAimDir('right'); }
+      else if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); handleShoot(); }
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setAimDir(null);
+    };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, [phase, handleShoot]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDU
@@ -683,7 +712,7 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
 
           {/* JEU */}
           {phase === 'play' && (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
               <Board
                 refEl={boardRef}
                 grid={grid}
@@ -692,9 +721,37 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
                 aimAngle={aimAngle}
                 currentColor={currentColor}
                 nextColor={nextColor}
-                onMove={(x, y) => handleAim(x, y)}
-                onShoot={handleShoot}
               />
+              {/* Contrôles tactiles / clic — clavier ← → espace dispo en + */}
+              <div className="flex items-center justify-center gap-3 mt-1 select-none">
+                <button
+                  type="button"
+                  onMouseDown={() => setAimDir('left')}
+                  onMouseUp={() => setAimDir(null)}
+                  onMouseLeave={() => setAimDir(null)}
+                  onTouchStart={(e) => { e.preventDefault(); setAimDir('left'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); setAimDir(null); }}
+                  className="w-16 h-14 rounded-2xl bg-gradient-to-b from-sky-500 to-sky-700 text-white text-3xl font-black border-2 border-sky-900 shadow-lg active:scale-95"
+                  title="Viser à gauche (← )"
+                >‹</button>
+                <button
+                  type="button"
+                  onClick={handleShoot}
+                  className="w-28 h-14 rounded-2xl bg-gradient-to-b from-amber-400 to-amber-600 text-white text-lg font-black border-2 border-amber-900 shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                  title="Tirer (Espace)"
+                >🔥 TIRER</button>
+                <button
+                  type="button"
+                  onMouseDown={() => setAimDir('right')}
+                  onMouseUp={() => setAimDir(null)}
+                  onMouseLeave={() => setAimDir(null)}
+                  onTouchStart={(e) => { e.preventDefault(); setAimDir('right'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); setAimDir(null); }}
+                  className="w-16 h-14 rounded-2xl bg-gradient-to-b from-sky-500 to-sky-700 text-white text-3xl font-black border-2 border-sky-900 shadow-lg active:scale-95"
+                  title="Viser à droite (→)"
+                >›</button>
+              </div>
+              <p className="text-[10px] text-sky-300 italic">PC : ← → pour viser, espace pour tirer</p>
             </div>
           )}
 
@@ -827,7 +884,7 @@ function Bubble({ color, size = BUBBLE }: { color: Color; size?: number }) {
 }
 
 function Board({
-  refEl, grid, flying, popping, aimAngle, currentColor, nextColor, onMove, onShoot,
+  refEl, grid, flying, popping, aimAngle, currentColor, nextColor,
 }: {
   refEl: React.MutableRefObject<HTMLDivElement | null>;
   grid: (Color | null)[][];
@@ -836,17 +893,11 @@ function Board({
   aimAngle: number;
   currentColor: Color;
   nextColor: Color;
-  onMove: (x: number, y: number) => void;
-  onShoot: () => void;
 }) {
   return (
     <div
       ref={refEl}
-      onMouseMove={e => onMove(e.clientX, e.clientY)}
-      onTouchMove={e => { if (e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY); }}
-      onClick={onShoot}
-      onTouchEnd={onShoot}
-      className="relative cursor-crosshair select-none"
+      className="relative select-none"
       style={{
         width: '100%',
         maxWidth: BOARD_W,
