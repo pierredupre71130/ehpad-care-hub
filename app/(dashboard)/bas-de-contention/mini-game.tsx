@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { X, Hammer } from 'lucide-react';
 import { ChopDadouModal } from './chop-dadou';
 import { BustADadouModal } from './bust-a-dadou';
+import { PuyoDadouModal } from './puyo-dadou';
 
-type GameChoice = 'chop' | 'bust' | null;
+type GameChoice = 'chop' | 'bust' | 'puyo' | null;
 
 /**
  * Modale d'accueil qui propose de choisir entre Chop-Dadou (whack-a-mole)
@@ -26,6 +27,9 @@ export function MiniGameModal({ open, onClose }: { open: boolean; onClose: () =>
   }
   if (chosen === 'bust') {
     return <BustADadouModal open onClose={onClose} onBack={() => setChosen(null)} />;
+  }
+  if (chosen === 'puyo') {
+    return <PuyoDadouModal open onClose={onClose} onBack={() => setChosen(null)} />;
   }
 
   // Écran de choix
@@ -72,26 +76,37 @@ export function MiniGameModal({ open, onClose }: { open: boolean; onClose: () =>
           🎪 Choisis ton jeu 🎪
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <button onClick={() => setChosen('chop')}
-            className="group bg-gradient-to-b from-orange-400 to-orange-600 text-white rounded-2xl p-6 border-4 border-orange-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
-            <Hammer className="h-12 w-12 mx-auto mb-2" />
-            <div className="text-2xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
+            className="group bg-gradient-to-b from-orange-400 to-orange-600 text-white rounded-2xl p-5 border-4 border-orange-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
+            <Hammer className="h-10 w-10 mx-auto mb-2" />
+            <div className="text-xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
               Le Chop-Dadou
             </div>
-            <div className="text-xs opacity-90">
-              Whack-a-mole · Tape Dadou, évite les autres
+            <div className="text-[11px] opacity-90">
+              Whack-a-mole · Tape Dadou
             </div>
           </button>
 
           <button onClick={() => setChosen('bust')}
-            className="group bg-gradient-to-b from-sky-400 to-sky-600 text-white rounded-2xl p-6 border-4 border-sky-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
-            <span className="text-5xl mx-auto mb-2 block">🫧</span>
-            <div className="text-2xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
+            className="group bg-gradient-to-b from-sky-400 to-sky-600 text-white rounded-2xl p-5 border-4 border-sky-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
+            <span className="text-4xl mx-auto mb-2 block">🫧</span>
+            <div className="text-xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
               Bust-a-Dadou
             </div>
-            <div className="text-xs opacity-90">
-              Puzzle Bobble · Aligne 3+ têtes pour les éclater
+            <div className="text-[11px] opacity-90">
+              Puzzle Bobble · Aligne 3+
+            </div>
+          </button>
+
+          <button onClick={() => setChosen('puyo')}
+            className="group bg-gradient-to-b from-emerald-400 to-emerald-600 text-white rounded-2xl p-5 border-4 border-emerald-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
+            <span className="text-4xl mx-auto mb-2 block">🟢</span>
+            <div className="text-xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
+              Puyo-Dadou
+            </div>
+            <div className="text-[11px] opacity-90">
+              Puyo Puyo · Chaînes de 4+
             </div>
           </button>
         </div>

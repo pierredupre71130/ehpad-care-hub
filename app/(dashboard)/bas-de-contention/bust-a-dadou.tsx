@@ -54,8 +54,6 @@ const LEVELS: Level[] = [
   { rows: 6, colors: 5, density: 0.85 },
 ];
 const TOTAL_LEVELS = LEVELS.length;
-// Au-delà des niveaux fixes : mode endless avec descente progressive
-const ENDLESS_DESCEND_MS = 12000;     // ms entre 2 descentes en endless
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS GÉOMÉTRIE HEX (offset coords avec décalage des rangées impaires)
