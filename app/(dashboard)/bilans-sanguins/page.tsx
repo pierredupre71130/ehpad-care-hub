@@ -1315,22 +1315,20 @@ export default function BilansSanguinsPage() {
     },
   });
 
+  // Récupère uniquement le DERNIER poids par résident (via la vue
+  // `last_poids_per_resident`) au lieu de paginer tout l'historique
+  // de la table poids_mesure (sinon plusieurs milliers de lignes
+  // téléchargées à chaque ouverture de la page).
   const { data: mesures = [] } = useQuery<PoidsMesure[]>({
-    queryKey: ['poids'],
+    queryKey: ['poids_latest'],
     queryFn: async () => {
-      const pageSize = 1000;
-      let all: PoidsMesure[] = [];
-      let page = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from('poids_mesure').select('*').order('date')
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-        if (error) throw new Error(error.message);
-        all = all.concat((data ?? []) as PoidsMesure[]);
-        if (!data || data.length < pageSize) break;
-        page++;
-      }
-      return all;
+      const { data, error } = await supabase
+        .from('last_poids_per_resident')
+        .select('resident_id, date, poids_kg');
+      if (error) throw new Error(error.message);
+      // L'id n'est pas exposé par la vue, on génère une clé pour TypeScript
+      return ((data ?? []) as Array<{ resident_id: string; date: string; poids_kg: number }>)
+        .map(d => ({ id: `${d.resident_id}-${d.date}`, ...d }));
     },
     staleTime: 60_000,
   });
