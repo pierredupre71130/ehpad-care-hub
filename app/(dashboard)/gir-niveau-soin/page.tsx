@@ -132,6 +132,7 @@ async function fetchResidents(): Promise<Resident[]> {
   const { data, error } = await sb
     .from('residents')
     .select('*')
+    .eq('archived', false)
     .order('last_name', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Resident[];
