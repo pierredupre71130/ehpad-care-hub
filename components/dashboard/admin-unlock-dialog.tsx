@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { PhoneCall, ShieldCheck, UserCog, ScrollText, Scale, Megaphone } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 interface AdminUnlockDialogProps {
   open: boolean;
@@ -21,6 +22,8 @@ export function AdminUnlockDialog({
   onOpenChange,
   onUnlock,
 }: AdminUnlockDialogProps) {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const handleUnlock = () => {
     onUnlock();
     onOpenChange(false);
@@ -43,6 +46,7 @@ export function AdminUnlockDialog({
             Annuler
           </Button>
         </div>
+        {isAdmin && (
         <div className="border-t border-slate-100 pt-3 mt-1">
           <p className="text-xs text-slate-400 mb-2 uppercase font-semibold tracking-wide">Paramètres</p>
           <Link
@@ -124,6 +128,7 @@ export function AdminUnlockDialog({
             </div>
           </Link>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

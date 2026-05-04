@@ -85,6 +85,7 @@ interface Resident {
   regime_diabetique?: boolean;
   epargne_intestinale?: boolean;
   allergie_poisson?: boolean;
+  allergie_autre?: string;
   photo_url?: string;   // URL signée pour l'affichage
   photo_path?: string;  // Chemin brut dans le bucket (pour suppression)
 }
@@ -122,7 +123,7 @@ async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('residents')
-    .select('id,title,first_name,last_name,room,floor,archived,regime_mixe,viande_mixee,regime_diabetique,epargne_intestinale,allergie_poisson,photo_url')
+    .select('id,title,first_name,last_name,room,floor,archived,regime_mixe,viande_mixee,regime_diabetique,epargne_intestinale,allergie_poisson,allergie_autre,photo_url')
     .eq('archived', false)
     .order('room');
   if (error) throw new Error(error.message);
@@ -166,6 +167,8 @@ function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boo
   if (resident.regime_diabetique)   diets.push({ label: 'Diabétique',        color: '#7e22ce' });
   if (resident.epargne_intestinale) diets.push({ label: 'Épargne intestinale', color: '#15803d' });
   if (resident.allergie_poisson)    diets.push({ label: '⚠ Allergie poisson', color: '#dc2626' });
+  if (resident.allergie_autre && resident.allergie_autre.trim())
+    diets.push({ label: `⚠ ${resident.allergie_autre.trim()}`, color: '#dc2626' });
 
   // Police adaptative pour le nom : réduit progressivement selon la longueur
   // afin d'éviter la troncature quand le régime prend de la place.
@@ -383,7 +386,8 @@ export default function EtiquettesRepasPage() {
   );
 
   const hasDiet = (r: Resident) =>
-    r.regime_mixe || r.viande_mixee || r.regime_diabetique || r.epargne_intestinale || r.allergie_poisson;
+    r.regime_mixe || r.viande_mixee || r.regime_diabetique || r.epargne_intestinale || r.allergie_poisson
+    || (r.allergie_autre && r.allergie_autre.trim().length > 0);
 
   const isLoading = loadingResidents || loadingSelections;
 

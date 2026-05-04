@@ -106,6 +106,7 @@ interface Resident {
   regime_diabetique: boolean;
   epargne_intestinale: boolean;
   allergie_poisson: boolean;
+  allergie_autre?: string;
   // Traitements
   traitement_ecrase: boolean;
   insuline_matin: boolean;
@@ -168,6 +169,7 @@ const REGIME_BADGES = [
   { key: 'regime_diabetique'   as keyof Resident, label: 'Diabétique',       cls: 'bg-blue-100   text-blue-700   border-blue-300'   },
   { key: 'epargne_intestinale' as keyof Resident, label: 'Épargne int.',     cls: 'bg-green-100  text-green-700  border-green-300'  },
   { key: 'allergie_poisson'    as keyof Resident, label: '⚠ Poisson',        cls: 'bg-red-100    text-red-700    border-red-300'    },
+  { key: 'allergie_autre'      as keyof Resident, label: '⚠ Allergie',       cls: 'bg-red-100    text-red-700    border-red-300'    },
 ];
 
 const TRAITEMENT_BADGES = [
@@ -187,7 +189,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
   annotations: '', medecin: '', referent: '',
   regime_mixe: false, viande_mixee: false, regime_diabetique: false,
-  epargne_intestinale: false, allergie_poisson: false,
+  epargne_intestinale: false, allergie_poisson: false, allergie_autre: '',
   traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
   anticoagulants: false, appel_nuit: false,
   chaussettes_de_contention: false, bas_de_contention: false, bande_de_contention: false,
@@ -262,20 +264,29 @@ function FloorBadge({ floor }: { floor: string }) {
 
 function AllBadges({ r }: { r: Resident }) {
   const active = [
-    ...REGIME_BADGES.filter(b => r[b.key]),
+    ...REGIME_BADGES.filter(b => {
+      const v = r[b.key];
+      return typeof v === 'string' ? v.trim().length > 0 : !!v;
+    }),
     ...TRAITEMENT_BADGES.filter(b => r[b.key]),
   ];
   if (!active.length) return null;
   return (
     <div className="flex flex-wrap gap-1 mt-1.5">
-      {active.map(b => (
-        <span
-          key={String(b.key)}
-          className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded border leading-none', b.cls)}
-        >
-          {b.label}
-        </span>
-      ))}
+      {active.map(b => {
+        const v = r[b.key];
+        const text = b.key === 'allergie_autre' && typeof v === 'string'
+          ? `⚠ ${v}`
+          : b.label;
+        return (
+          <span
+            key={String(b.key)}
+            className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded border leading-none', b.cls)}
+          >
+            {text}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -704,6 +715,21 @@ function EditForm({
               checked={form.allergie_poisson ?? false}
               onChange={v => patch({ allergie_poisson: v })}
             />
+          </div>
+          <div className="mt-3">
+            <label htmlFor="f_allergie_autre" className="block text-xs font-semibold text-slate-700 mb-1">
+              ⚠ Autre allergie alimentaire (saisie libre)
+            </label>
+            <Input
+              id="f_allergie_autre"
+              value={form.allergie_autre ?? ''}
+              onChange={e => patch({ allergie_autre: e.target.value })}
+              placeholder="Ex : arachides, lactose, gluten, fraises…"
+              className="text-sm"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Apparaîtra automatiquement sur la fiche résident et les étiquettes repas.
+            </p>
           </div>
         </section>
 
