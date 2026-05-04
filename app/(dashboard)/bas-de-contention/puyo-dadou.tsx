@@ -594,10 +594,10 @@ export function PuyoDadouModal({ open, onClose, onBack }: { open: boolean; onClo
               <div className="flex items-start gap-3">
                 <Board grid={grid} falling={falling} popping={popping} />
                 {/* Aperçu prochaine paire */}
-                <div className="flex flex-col items-center gap-1 p-2 rounded-xl bg-emerald-900/40 border border-emerald-700">
-                  <div className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider">Suivant</div>
-                  <Puyo color={nextPair.sat} size={36} />
-                  <Puyo color={nextPair.axis} size={36} />
+                <div className="flex flex-col items-center gap-2 px-3 py-3 rounded-xl bg-emerald-900/40 border border-emerald-700 flex-shrink-0" style={{ minWidth: 64 }}>
+                  <div className="text-[10px] uppercase font-bold text-emerald-300 tracking-wide whitespace-nowrap">Suivant</div>
+                  <Puyo color={nextPair.sat} size={40} />
+                  <Puyo color={nextPair.axis} size={40} />
                 </div>
               </div>
               {/* Contrôles tactiles */}
@@ -773,11 +773,10 @@ function Board({
   const sat = falling ? satOf(falling) : null;
   return (
     <div
-      className="relative select-none"
+      className="relative select-none flex-shrink-0"
       style={{
-        width: '100%',
-        maxWidth: BOARD_W,
-        aspectRatio: `${BOARD_W} / ${BOARD_H}`,
+        width: BOARD_W,
+        height: BOARD_H,
         background: 'linear-gradient(180deg, #0c4a6e 0%, #082f49 100%)',
         border: '3px solid #34d399',
         borderRadius: 12,
