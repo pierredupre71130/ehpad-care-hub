@@ -19,7 +19,7 @@ import {
   type CalcResult, type Candidate,
   type Sexe, type ProductType, type RawMesures, type Result,
 } from './calc';
-import { ChopDadouModal } from './chop-dadou';
+import { MiniGameModal } from './mini-game';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -1397,8 +1397,8 @@ export default function BasDeContentionPage() {
         />
       )}
 
-      {/* Le Chop-Dadou */}
-      <ChopDadouModal open={gameOpen} onClose={() => setGameOpen(false)} />
+      {/* Mini-jeux : Chop-Dadou + Bust-a-Dadou */}
+      <MiniGameModal open={gameOpen} onClose={() => setGameOpen(false)} />
 
       {/* Confirmation suppression */}
       {confirmDelete && (

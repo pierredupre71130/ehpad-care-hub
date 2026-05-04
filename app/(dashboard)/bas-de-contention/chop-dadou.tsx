@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Play, Trophy, Loader2, Timer, Award,
-  Volume2, VolumeX, Sparkles,
+  Volume2, VolumeX, Sparkles, ArrowLeft,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -136,7 +136,7 @@ interface FloatPoint {
 
 const EMPTY_HOLES: MoleState[] = Array.from({ length: 9 }, () => ({ visible: false, character: HERO }));
 
-export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ChopDadouModal({ open, onClose, onBack }: { open: boolean; onClose: () => void; onBack?: () => void }) {
   const qc = useQueryClient();
 
   const [phase, setPhase] = useState<'menu' | 'play' | 'bonusIntro' | 'boss' | 'over' | 'scores'>('menu');
@@ -410,25 +410,32 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
   };
 
   // ── Apparition des taupes ────────────────────────────────────────────────
+  // Spawn d'une nouvelle mole (utilisé par le timer + après chaque hit Dadou
+  // pour relancer un cycle plus vite que l'intervalle nominal).
+  const spawnMole = useCallback((force = false) => {
+    const settings = SETTINGS[difficultyRef.current];
+    setHoles(prev => {
+      if (!force && prev.some(h => h.hitState)) return prev;
+      const newHoles: MoleState[] = Array.from({ length: 9 }, () => ({ visible: false, character: HERO }));
+      const idx = Math.floor(Math.random() * 9);
+      const isDecoy = Math.random() < settings.decoyRatio;
+      const character = isDecoy ? DECOYS[Math.floor(Math.random() * DECOYS.length)] : HERO;
+      newHoles[idx] = { visible: true, character };
+      return newHoles;
+    });
+  }, []);
+
+  const restartMoleTimer = useCallback(() => {
+    if (moleTimerRef.current) clearInterval(moleTimerRef.current);
+    const settings = SETTINGS[difficultyRef.current];
+    moleTimerRef.current = setInterval(() => spawnMole(false), settings.moleSpeed);
+  }, [spawnMole]);
+
   useEffect(() => {
     if (phase !== 'play') return;
-    const settings = SETTINGS[difficulty];
-    moleTimerRef.current = setInterval(() => {
-      setHoles(prev => {
-        // Si une mole est en cours d'animation de hit, on ne spawne pas
-        // pour éviter qu'un clic rapide du joueur frappe par erreur la
-        // mole de remplacement qui apparaîtrait au même endroit.
-        if (prev.some(h => h.hitState)) return prev;
-        const newHoles: MoleState[] = Array.from({ length: 9 }, () => ({ visible: false, character: HERO }));
-        const idx = Math.floor(Math.random() * 9);
-        const isDecoy = Math.random() < settings.decoyRatio;
-        const character = isDecoy ? DECOYS[Math.floor(Math.random() * DECOYS.length)] : HERO;
-        newHoles[idx] = { visible: true, character };
-        return newHoles;
-      });
-    }, settings.moleSpeed);
+    restartMoleTimer();
     return () => { if (moleTimerRef.current) clearInterval(moleTimerRef.current); };
-  }, [phase, difficulty]);
+  }, [phase, difficulty, restartMoleTimer]);
 
   // ── Hit ──────────────────────────────────────────────────────────────────
   const handleHit = (idx: number) => {
@@ -468,6 +475,15 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
     setTimeout(() => {
       setHoles(prev => prev.map((h, i) => i === idx ? { ...h, visible: false, hitState: undefined } : h));
     }, 200);
+
+    // Si on a tapé Dadou, on relance un cycle rapidement (pour permettre
+    // de marquer plus que l'intervalle nominal autoriserait).
+    if (isHero) {
+      setTimeout(() => {
+        spawnMole(true);
+        restartMoleTimer();
+      }, 250);
+    }
   };
 
   const handleClose = () => {
@@ -541,7 +557,7 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           background: 'repeating-linear-gradient(135deg, #b91c1c 0 18px, #fef3c7 18px 36px)',
         }} />
 
-        {/* Bouton mute + close */}
+        {/* Bouton mute + back + close */}
         <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
           <button
             onClick={() => setMuted(m => !m)}
@@ -550,6 +566,15 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           >
             {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
           </button>
+          {onBack && (
+            <button
+              onClick={() => { stopAllTimers(); themeRef.current?.pause(); bossThemeRef.current?.pause(); onBack(); }}
+              className="w-9 h-9 rounded-full bg-orange-600 hover:bg-orange-700 text-white shadow-md flex items-center justify-center transition-transform active:scale-95"
+              title="Choisir un autre jeu"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={handleClose}
             className="w-9 h-9 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md flex items-center justify-center transition-transform active:scale-95"
@@ -576,18 +601,19 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
           {phase === 'play' && (
             <div className="flex items-center justify-center gap-4 sm:gap-8 mt-3 flex-wrap">
               <div className="flex items-center gap-2 text-amber-900 font-bold text-lg sm:text-xl">
-                <Award className="h-5 w-5" />
+                <Award className="h-5 w-5 flex-shrink-0" />
                 <span>Score :</span>
-                <span className="text-2xl sm:text-3xl text-emerald-700 font-black tabular-nums">{score}</span>
+                <span className="text-2xl sm:text-3xl text-emerald-700 font-black tabular-nums inline-block text-right" style={{ minWidth: '2.5ch' }}>{score}</span>
               </div>
               <div className="flex items-center gap-2 text-amber-900 font-bold text-lg sm:text-xl">
-                <Timer className="h-5 w-5" />
+                <Timer className="h-5 w-5 flex-shrink-0" />
                 <span className={cn(
-                  'text-2xl sm:text-3xl font-black tabular-nums',
-                  timeLeft <= 5 ? 'text-red-600 animate-pulse' : 'text-amber-800',
-                )}>
-                  {timeLeft}s
+                  'text-2xl sm:text-3xl font-black tabular-nums inline-block text-right',
+                  timeLeft <= 5 ? 'text-red-600' : 'text-amber-800',
+                )} style={{ minWidth: '2ch' }}>
+                  {timeLeft}
                 </span>
+                <span className="text-base">s</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide bg-amber-200 text-amber-900 px-2 py-1 rounded-full">
                 {SETTINGS[difficulty].emoji} {SETTINGS[difficulty].label}
@@ -609,7 +635,7 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
 
           {/* ═══ JEU ═══ */}
           {phase === 'play' && (
-            <div className="flex justify-center pt-2 sm:pt-4">
+            <div className="relative flex justify-center pt-2 sm:pt-4">
               <div className="grid grid-cols-3 gap-3 sm:gap-5">
                 {holes.map((hole, idx) => (
                   <Hole
@@ -620,6 +646,24 @@ export function ChopDadouModal({ open, onClose }: { open: boolean; onClose: () =
                   />
                 ))}
               </div>
+              {/* Décompte géant des 5 dernières secondes (chiffre creux) */}
+              {timeLeft > 0 && timeLeft <= 5 && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                  <div
+                    key={timeLeft}
+                    className="anim-count font-black tabular-nums"
+                    style={{
+                      fontSize: 'clamp(120px, 28vw, 220px)',
+                      color: 'transparent',
+                      lineHeight: 1,
+                      WebkitTextStroke: '5px rgba(220, 38, 38, 0.85)',
+                      filter: 'drop-shadow(3px 3px 0 rgba(251, 191, 36, 0.9))',
+                    }}
+                  >
+                    {timeLeft}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
