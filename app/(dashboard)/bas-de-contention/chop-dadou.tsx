@@ -38,10 +38,10 @@ const DECOYS = ['momo', 'pierre', 'flo', 'marie'] as const;
 
 // Niveau bonus : Boss Méga-Dadou
 const BOSS_TIME = 15;          // secondes
-const BOSS_HITS = 22;          // coups pour vaincre
+const BOSS_HITS = 30;          // coups pour vaincre
 const BOSS_START_SIZE = 280;   // px
-const BOSS_MIN_SIZE = 50;      // px (taille min en fin de combat)
-const BOSS_SHRINK_PER_HIT = 11; // px retirés à chaque coup
+const BOSS_MIN_SIZE = 30;      // px (taille min en fin de combat)
+const BOSS_SHRINK_PER_HIT = 8; // px retirés à chaque coup
 const BOSS_INTRO_COUNT = 3;    // décompte avant boss
 
 // Score à atteindre pour débloquer le boss + bonus accordé en cas de victoire
