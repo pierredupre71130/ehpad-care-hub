@@ -364,7 +364,7 @@ function ResidentRow({
         )}
       </td>
 
-      {/* ── Consignes (éditables) ── */}
+      {/* ── Consignes (éditables) avec icônes insuline/anticoag inline ── */}
       <td className="px-2 py-1 align-top" style={{ border: '1px solid #475569' }}>
         {isEditing ? (
           <Textarea
@@ -376,31 +376,27 @@ function ResidentRow({
           />
         ) : (
           <span className="whitespace-pre-line text-black" style={{ fontSize: `${fontSize}px` }}>
+            {(resident.insuline_matin || resident.insuline_soir || resident.anticoagulants) && (
+              <span className="inline-flex items-center gap-1 mr-1.5 align-middle">
+                {resident.insuline_matin && (
+                  <span title="Insuline matin" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700 align-middle">
+                    <Syringe className="h-2.5 w-2.5" /><Sun className="h-2.5 w-2.5" />
+                  </span>
+                )}
+                {resident.insuline_soir && (
+                  <span title="Insuline soir" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 align-middle">
+                    <Syringe className="h-2.5 w-2.5" /><Moon className="h-2.5 w-2.5" />
+                  </span>
+                )}
+                {resident.anticoagulants && (
+                  <span title="Anticoagulants" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700 align-middle">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </span>
+            )}
             {resident.consignes ?? ''}
           </span>
-        )}
-      </td>
-
-      {/* ── Icônes insuline / anticoagulants ── */}
-      <td className="px-1 py-1 align-top" style={{ border: '1px solid #475569', width: '50px' }}>
-        {!isEditing && (
-          <div className="flex flex-col gap-0.5">
-            {resident.insuline_matin && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700">
-                <Syringe className="h-2.5 w-2.5" /><Sun className="h-2.5 w-2.5" />
-              </span>
-            )}
-            {resident.insuline_soir && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700">
-                <Syringe className="h-2.5 w-2.5" /><Moon className="h-2.5 w-2.5" />
-              </span>
-            )}
-            {resident.anticoagulants && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700">
-                <AlertTriangle className="h-2.5 w-2.5" />
-              </span>
-            )}
-          </div>
         )}
       </td>
 
@@ -520,7 +516,6 @@ function SectionTable({
             <th style={{ border: '1px solid #475569', width: `${maxNameWidth}px` }} className="px-1 py-1 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Nom</th>
             <th style={{ border: '1px solid #475569', width: `${maxInfosWidth}px` }} className="px-1 py-1 text-left text-[10px] font-semibold text-red-600 uppercase tracking-wider">Infos</th>
             <th style={{ border: '1px solid #475569', width: '75%' }} className="px-2 py-1 text-left text-[10px] font-semibold text-slate-800 uppercase tracking-wider">{title} — Consignes</th>
-            <th style={{ border: '1px solid #475569' }} className="px-1 py-1 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider w-8"></th>
             <th style={{ border: '1px solid #475569', width: '52px' }} className="px-1 py-1 text-center text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Cont.</th>
             <th style={{ border: '1px solid #475569' }} className="px-1 py-1 w-8 print:hidden"></th>
           </tr>
@@ -545,7 +540,7 @@ function SectionTable({
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={7} className="py-6 text-center text-xs text-slate-300 italic" style={{ border: '1px solid #475569' }}>
+              <td colSpan={6} className="py-6 text-center text-xs text-slate-300 italic" style={{ border: '1px solid #475569' }}>
                 Aucun résident dans cette section
               </td>
             </tr>
