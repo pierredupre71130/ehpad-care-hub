@@ -5,8 +5,9 @@ import { X, Hammer } from 'lucide-react';
 import { ChopDadouModal } from './chop-dadou';
 import { BustADadouModal } from './bust-a-dadou';
 import { PuyoDadouModal } from './puyo-dadou';
+import { SnakeDadouModal } from './snake-dadou';
 
-type GameChoice = 'chop' | 'bust' | 'puyo' | null;
+type GameChoice = 'chop' | 'bust' | 'puyo' | 'snake' | null;
 
 /**
  * Modale d'accueil qui propose de choisir entre Chop-Dadou (whack-a-mole)
@@ -30,6 +31,9 @@ export function MiniGameModal({ open, onClose }: { open: boolean; onClose: () =>
   }
   if (chosen === 'puyo') {
     return <PuyoDadouModal open onClose={onClose} onBack={() => setChosen(null)} />;
+  }
+  if (chosen === 'snake') {
+    return <SnakeDadouModal open onClose={onClose} onBack={() => setChosen(null)} />;
   }
 
   // Écran de choix
@@ -76,7 +80,7 @@ export function MiniGameModal({ open, onClose }: { open: boolean; onClose: () =>
           🎪 Choisis ton jeu 🎪
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
           <button onClick={() => setChosen('chop')}
             className="group bg-gradient-to-b from-orange-400 to-orange-600 text-white rounded-2xl p-5 border-4 border-orange-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
             <Hammer className="h-10 w-10 mx-auto mb-2" />
@@ -107,6 +111,17 @@ export function MiniGameModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
             <div className="text-[11px] opacity-90">
               Puyo Puyo · Chaînes de 4+
+            </div>
+          </button>
+
+          <button onClick={() => setChosen('snake')}
+            className="group bg-gradient-to-b from-lime-400 to-lime-600 text-white rounded-2xl p-5 border-4 border-lime-900 shadow-lg hover:scale-105 active:scale-95 transition-transform">
+            <span className="text-4xl mx-auto mb-2 block">🐍</span>
+            <div className="text-xl font-black mb-1" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.4)' }}>
+              Snake-Dadou
+            </div>
+            <div className="text-[11px] opacity-90">
+              Mange, grandis, évite la queue
             </div>
           </button>
         </div>
