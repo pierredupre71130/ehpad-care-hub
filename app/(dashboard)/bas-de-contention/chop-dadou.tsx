@@ -636,7 +636,10 @@ export function ChopDadouModal({ open, onClose, onBack }: { open: boolean; onClo
           {/* ═══ JEU ═══ */}
           {phase === 'play' && (
             <div className="relative flex justify-center pt-2 sm:pt-4">
-              <div className="grid grid-cols-3 gap-3 sm:gap-5">
+              <div className={cn(
+                'grid grid-cols-3 gap-3 sm:gap-5 p-3 rounded-3xl transition-colors',
+                timeLeft > 0 && timeLeft <= 5 && 'anim-edge-pulse',
+              )}>
                 {holes.map((hole, idx) => (
                   <Hole
                     key={idx}
@@ -646,18 +649,17 @@ export function ChopDadouModal({ open, onClose, onBack }: { open: boolean; onClo
                   />
                 ))}
               </div>
-              {/* Décompte géant des 5 dernières secondes (chiffre creux) */}
+              {/* Décompte des 5 dernières secondes : chiffre creux en haut à droite */}
               {timeLeft > 0 && timeLeft <= 5 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                <div className="absolute top-0 right-2 pointer-events-none z-30">
                   <div
                     key={timeLeft}
-                    className="anim-count font-black tabular-nums"
+                    className="anim-count font-black tabular-nums leading-none"
                     style={{
-                      fontSize: 'clamp(120px, 28vw, 220px)',
+                      fontSize: 'clamp(56px, 11vw, 90px)',
                       color: 'transparent',
-                      lineHeight: 1,
-                      WebkitTextStroke: '5px rgba(220, 38, 38, 0.85)',
-                      filter: 'drop-shadow(3px 3px 0 rgba(251, 191, 36, 0.9))',
+                      WebkitTextStroke: '3px rgba(220, 38, 38, 0.95)',
+                      filter: 'drop-shadow(2px 2px 0 rgba(251, 191, 36, 1))',
                     }}
                   >
                     {timeLeft}
@@ -830,6 +832,10 @@ export function ChopDadouModal({ open, onClose, onBack }: { open: boolean; onClo
           20%  { opacity: 0.95; }
           100% { opacity: 0; }
         }
+        @keyframes edge-pulse {
+          0%, 100% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.55), 0 0 24px 0 rgba(220, 38, 38, 0.35); }
+          50%      { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.95), 0 0 36px 8px rgba(220, 38, 38, 0.65); }
+        }
         .anim-pop      { animation: mole-pop 0.3s ease-out forwards; }
         .anim-idle     { animation: mole-idle 1.6s ease-in-out infinite; }
         .anim-hit      { animation: mole-hit 0.4s ease-in forwards; }
@@ -841,6 +847,7 @@ export function ChopDadouModal({ open, onClose, onBack }: { open: boolean; onClo
         .anim-twinkle  { animation: star-twinkle 2.4s ease-in-out infinite; }
         .anim-fadein   { animation: fade-in 0.4s ease-out forwards; }
         .anim-count    { animation: count-pop 0.5s ease-out forwards; }
+        .anim-edge-pulse { animation: edge-pulse 0.8s ease-in-out infinite; }
         .anim-flash    {
           position: absolute;
           inset: 0;

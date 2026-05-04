@@ -24,6 +24,8 @@ const SHOOTER_Y = BOARD_H - 50;
 const SHOOTER_X = BOARD_W / 2;
 const DEATH_Y = BOARD_H - 90;         // ligne en dessous de laquelle = game over
 const SHOT_SPEED = 14;                // px par frame (~60 fps)
+const SHOTS_PER_DESCENT = 6;          // nb de tirs avant que le plateau descende
+const FALL_DURATION_MS = 750;         // durée de l'animation de chute
 
 const COLORS = ['dadou', 'momo', 'pierre', 'flo', 'marie'] as const;
 type Color = typeof COLORS[number];
@@ -248,11 +250,14 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
   const [muted, setMuted] = useState(false);
   const [playerName, setPlayerName] = useState('');
   const [scoreSaved, setScoreSaved] = useState(false);
+  const [shotCount, setShotCount] = useState(0);
 
   // Refs miroir
   const phaseRef = useRef(phase); useEffect(() => { phaseRef.current = phase; }, [phase]);
   const flyingRef = useRef<FlyingBubble | null>(null); useEffect(() => { flyingRef.current = flying; }, [flying]);
   const gridRef = useRef(grid); useEffect(() => { gridRef.current = grid; }, [grid]);
+  const levelRef = useRef(level); useEffect(() => { levelRef.current = level; }, [level]);
+  const nextColorRef = useRef(nextColor); useEffect(() => { nextColorRef.current = nextColor; }, [nextColor]);
 
   // ── Audio ────────────────────────────────────────────────────────────────
   const themeRef = useRef<HTMLAudioElement | null>(null);
@@ -330,6 +335,7 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
       setPopping(new Set());
       setPlayerName('');
       setScoreSaved(false);
+      setShotCount(0);
     }
   }, [open]);
 
@@ -340,6 +346,7 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
     setGrid(newGrid);
     setLevel(lv);
     setEndlessRow(0);
+    setShotCount(0);
     const palette = COLORS.slice(0, lvl.colors);
     setCurrentColor(palette[Math.floor(Math.random() * palette.length)]);
     setNextColor(palette[Math.floor(Math.random() * palette.length)]);
@@ -358,25 +365,23 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
     startLevel(0);
   };
 
-  // ── Mode endless : descente du plateau ──────────────────────────────────
-  useEffect(() => {
-    if (phase !== 'play') return;
-    if (level < TOTAL_LEVELS) return; // pas en endless
-    const t = setInterval(() => {
-      setGrid(prev => {
-        if (prev.length === 0) return prev;
-        // On insère une nouvelle rangée en haut, remplie aléatoirement
-        const palette = COLORS.slice(0, 5);
-        const newTop = Array.from({ length: COLS_EVEN }, () =>
-          Math.random() < 0.85 ? palette[Math.floor(Math.random() * palette.length)] : null,
-        );
-        // On ajoute en haut, on retire la dernière rangée
-        return [newTop, ...prev.slice(0, prev.length - 1)];
-      });
-      setEndlessRow(r => r + 1);
-    }, ENDLESS_DESCEND_MS);
-    return () => clearInterval(t);
-  }, [phase, level]);
+  // ── Descente du plateau (toutes les SHOTS_PER_DESCENT bulles) ──────────
+  // On insère 2 rangées en haut pour préserver la parité hexagonale
+  // (rangée 0 = COLS_EVEN, rangée 1 = COLS_ODD).
+  const descendGrid = useCallback(() => {
+    setGrid(prev => {
+      if (prev.length === 0) return prev;
+      const palette = colorsInGrid(prev);
+      const lvl = Math.min(levelRef.current, TOTAL_LEVELS - 1);
+      const fallback = COLORS.slice(0, LEVELS[lvl].colors);
+      const colors = palette.length > 0 ? palette : fallback;
+      const cell = () => Math.random() < 0.85 ? colors[Math.floor(Math.random() * colors.length)] : null;
+      const newTop0 = Array.from({ length: COLS_EVEN }, cell);
+      const newTop1 = Array.from({ length: COLS_ODD  }, cell);
+      return [newTop0, newTop1, ...prev.slice(0, prev.length - 2)];
+    });
+    setEndlessRow(r => r + 1);
+  }, []);
 
   // ── Animation : bulle volante ───────────────────────────────────────────
   // handleSnap est défini plus bas mais on en garde une ref toujours fraîche
@@ -433,53 +438,63 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
       return;
     }
     playSfx('touch');
-    // Place la bulle
-    const newGrid = grid.map(row => row.slice());
-    while (newGrid.length <= cell.r) {
-      newGrid.push(Array.from({ length: colsForRow(newGrid.length) }, () => null));
+
+    // Place la bulle dans une copie de la grille
+    const placedGrid = grid.map(row => row.slice());
+    while (placedGrid.length <= cell.r) {
+      placedGrid.push(Array.from({ length: colsForRow(placedGrid.length) }, () => null));
     }
-    newGrid[cell.r][cell.c] = fb.color;
+    placedGrid[cell.r][cell.c] = fb.color;
 
     // Cluster ?
-    const cluster = findCluster(newGrid, cell.r, cell.c);
+    const cluster = findCluster(placedGrid, cell.r, cell.c);
+    const pendingFall = new Set<string>();
     let popped = 0;
     let bonus = 0;
+
     if (cluster.length >= 3) {
-      cluster.forEach(([r, c]) => { newGrid[r][c] = null; });
-      popped += cluster.length;
-      // Orphelines (cascade)
-      const orphans = findOrphans(newGrid);
-      orphans.forEach(([r, c]) => { newGrid[r][c] = null; });
-      popped += orphans.length;
-      bonus = orphans.length * 2; // bonus cascade
-    }
+      // Cherche les orphelines qui seront isolées une fois le cluster supprimé
+      const tempGrid = placedGrid.map(row => row.slice());
+      cluster.forEach(([r, c]) => { tempGrid[r][c] = null; });
+      const orphans = findOrphans(tempGrid);
 
-    // Animation pop
-    if (popped > 0) {
-      const popKeys = new Set<string>();
-      cluster.forEach(([r, c]) => popKeys.add(`${r}-${c}`));
-      const orphans = findOrphans(grid.map(row => row.slice())); // pour anim
-      orphans.forEach(([r, c]) => popKeys.add(`${r}-${c}`));
-      setPopping(popKeys);
-      setTimeout(() => setPopping(new Set()), 350);
+      cluster.forEach(([r, c]) => pendingFall.add(`${r}-${c}`));
+      orphans.forEach(([r, c]) => pendingFall.add(`${r}-${c}`));
+
+      popped = cluster.length + orphans.length;
+      bonus = orphans.length * 2;
+
+      setPopping(pendingFall);
       playSfx('pop');
+
+      // Suppression effective après l'animation de chute (750 ms)
+      setTimeout(() => {
+        setGrid(g => {
+          const updated = g.map(row => row.slice());
+          pendingFall.forEach(k => {
+            const [r, c] = k.split('-').map(Number);
+            if (updated[r]) updated[r][c] = null;
+          });
+          return updated;
+        });
+        setPopping(new Set());
+      }, FALL_DURATION_MS);
     }
 
-    // Score
     setScore(s => s + popped + bonus);
 
-    // Check perte : une bulle est-elle au-delà de la death line ?
+    // Check perte (en ignorant les bulles qui sont en train de tomber)
     let dead = false;
-    for (let r = 0; r < newGrid.length && !dead; r++) {
-      for (let c = 0; c < newGrid[r].length && !dead; c++) {
-        if (newGrid[r][c]) {
+    for (let r = 0; r < placedGrid.length && !dead; r++) {
+      for (let c = 0; c < placedGrid[r].length && !dead; c++) {
+        if (placedGrid[r][c] && !pendingFall.has(`${r}-${c}`)) {
           const p = cellToXY(r, c);
           if (p.y > DEATH_Y) dead = true;
         }
       }
     }
     if (dead) {
-      setGrid(newGrid);
+      setGrid(placedGrid);
       setFlying(null);
       themeRef.current?.pause();
       playSfx('gameover');
@@ -487,32 +502,38 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
       return;
     }
 
-    // Check victoire (grille vide) : passage au niveau suivant
-    const empty = newGrid.every(row => row.every(cell => !cell));
-    if (empty) {
-      setGrid(newGrid);
+    // Check victoire (grille vide une fois les bulles tombées)
+    const willBeEmpty = placedGrid.every((row, r) =>
+      row.every((cell, c) => !cell || pendingFall.has(`${r}-${c}`)),
+    );
+    if (willBeEmpty) {
+      setGrid(placedGrid);
       setFlying(null);
-      const nextLv = level + 1;
+      const nextLv = levelRef.current + 1;
       if (nextLv < TOTAL_LEVELS) {
-        // Bonus de niveau et passage au suivant après une pause
         setScore(s => s + 50);
-        setTimeout(() => startLevel(nextLv), 1200);
+        setTimeout(() => startLevel(nextLv), 1500);
       } else if (nextLv === TOTAL_LEVELS) {
-        // Tous les niveaux fixes terminés → endless
         setScore(s => s + 100);
         toast.success('Mode endless débloqué !', { duration: 2000 });
-        setTimeout(() => startLevel(nextLv), 1500);
+        setTimeout(() => startLevel(nextLv), 1800);
       }
       return;
     }
 
-    // Préparer la prochaine bulle
-    const palette = colorsInGrid(newGrid);
-    const pool = palette.length > 0 ? palette : COLORS.slice(0, LEVELS[Math.min(level, TOTAL_LEVELS - 1)].colors);
+    // Préparer la prochaine bulle (en se basant sur les couleurs restantes
+    // après la chute prévue).
+    const postFallGrid = placedGrid.map((row, r) =>
+      row.map((c, ci) => pendingFall.has(`${r}-${ci}`) ? null : c),
+    );
+    const palette = colorsInGrid(postFallGrid);
+    const pool = palette.length > 0
+      ? palette
+      : COLORS.slice(0, LEVELS[Math.min(levelRef.current, TOTAL_LEVELS - 1)].colors);
     const next = pool[Math.floor(Math.random() * pool.length)];
-    setCurrentColor(nextColor);
+    setCurrentColor(nextColorRef.current);
     setNextColor(next);
-    setGrid(newGrid);
+    setGrid(placedGrid);
     setFlying(null);
   };
 
@@ -580,7 +601,15 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
     const vx = Math.cos(a) * SHOT_SPEED;
     const vy = Math.sin(a) * SHOT_SPEED;
     setFlying({ x: SHOOTER_X, y: SHOOTER_Y, vx, vy, color: currentColorRef.current });
-  }, []);
+    setShotCount(c => {
+      const next = c + 1;
+      if (next > 0 && next % SHOTS_PER_DESCENT === 0) {
+        // Descente sur le tick suivant pour ne pas perturber le tir en cours
+        setTimeout(() => descendGrid(), 50);
+      }
+      return next;
+    });
+  }, [descendGrid]);
 
   // Clavier : ← / → pour viser, espace pour tirer
   useEffect(() => {
@@ -848,12 +877,12 @@ export function BustADadouModal({ open, onClose, onBack }: { open: boolean; onCl
       </div>
 
       <style>{`
-        @keyframes bubble-pop {
-          0%   { transform: scale(1); opacity: 1; }
-          50%  { transform: scale(1.4); opacity: 0.8; }
-          100% { transform: scale(0); opacity: 0; }
+        @keyframes bubble-fall {
+          0%   { transform: translateY(0)     rotate(0deg);   opacity: 1; }
+          15%  { transform: translateY(-12px) rotate(-15deg); opacity: 1; }
+          100% { transform: translateY(520px) rotate(540deg); opacity: 0; }
         }
-        .anim-bubble-pop { animation: bubble-pop 0.35s ease-out forwards; }
+        .anim-bubble-fall { animation: bubble-fall 0.75s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(10px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -921,7 +950,7 @@ function Board({
         const p = cellToXY(r, c);
         const popped = popping.has(`${r}-${c}`);
         return (
-          <div key={`${r}-${c}`} className={popped ? 'anim-bubble-pop' : ''}
+          <div key={`${r}-${c}`}
             style={{
               position: 'absolute',
               left: `${(p.x / BOARD_W) * 100}%`,
@@ -929,8 +958,11 @@ function Board({
               width: `${(BUBBLE / BOARD_W) * 100}%`,
               aspectRatio: '1 / 1',
               transform: 'translate(-50%, -50%)',
+              zIndex: popped ? 5 : 1,
             }}>
-            <Bubble color={color} size={BUBBLE} />
+            <div className={popped ? 'anim-bubble-fall' : ''} style={{ width: '100%', height: '100%' }}>
+              <Bubble color={color} size={BUBBLE} />
+            </div>
           </div>
         );
       }))}
