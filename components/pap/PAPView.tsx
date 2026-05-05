@@ -1,6 +1,7 @@
 'use client';
 
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Pencil } from 'lucide-react';
+import Link from 'next/link';
 
 interface Resident {
   id: string;
@@ -53,13 +54,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function PAPView({
-  pap, resident, onClose, readOnly, archiveDate
+  pap, resident, onClose, readOnly, archiveDate, editHref
 }: {
   pap: PapData;
   resident: Resident;
   onClose: () => void;
   readOnly?: boolean;
   archiveDate?: string;
+  editHref?: string;
 }) {
   const fmtDate = (d: string | null | undefined) =>
     d ? new Date(d + 'T12:00:00').toLocaleDateString('fr-FR') : '—';
@@ -109,6 +111,12 @@ export default function PAPView({
             )}
           </div>
           <div className="flex gap-2">
+            {editHref && !readOnly && (
+              <Link href={editHref}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors">
+                <Pencil className="h-4 w-4" /> Modifier
+              </Link>
+            )}
             <button onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 transition-colors">
               <Printer className="h-4 w-4" /> Imprimer
