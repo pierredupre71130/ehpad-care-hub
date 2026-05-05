@@ -396,3 +396,15 @@ export function openPdfBlob(bytes: Uint8Array) {
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+
+// ─── Merge several PDFs into a single document ──────────────────────────────────
+
+export async function mergePdfBytes(parts: Uint8Array[]): Promise<Uint8Array> {
+  const merged = await PDFDocument.create();
+  for (const bytes of parts) {
+    const doc = await PDFDocument.load(bytes);
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(p => merged.addPage(p));
+  }
+  return merged.save();
+}

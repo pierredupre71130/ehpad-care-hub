@@ -7,7 +7,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
-  generateBilanPDF, openPdfBlob,
+  generateBilanPDF, openPdfBlob, mergePdfBytes,
   isAJeunRequired, isCreatininePresent,
   PdfCalibration, DEFAULT_CHECK_COORDS,
 } from '@/lib/generate-bilan-pdf';
@@ -250,6 +250,33 @@ export default function GenerateDatesModal({
     return wRec[0]?.poids_kg ?? null;
   };
 
+  const generateOneBytes = async (
+    cell: PlanningBilanCell,
+    resident: Resident,
+    aJeunOverride?: boolean,
+  ): Promise<Uint8Array> => {
+    const examens = getExamensForCell(cell, referentiels);
+    const days = cell.jours?.length > 0 ? cell.jours : (cell.jour ? [cell.jour] : []);
+    const day = days[0] ? String(days[0]).padStart(2, '0') : '__';
+    const monthStr = String(mois).padStart(2, '0');
+    const datePrescription = `${day}/${monthStr}/${annee}`;
+    const needsPoids = isCreatininePresent(examens);
+
+    return generateBilanPDF({
+      patientName: resident.last_name || '',
+      prenom: resident.first_name || '',
+      prescripteur: resident.medecin || '',
+      datePrescription,
+      datePrescriptionOrdonnance: datePrescription,
+      examens,
+      aJeun: aJeunOverride !== undefined ? aJeunOverride : (aJeunMap[cell.id] || false),
+      poids: needsPoids ? getLatestWeight(resident.id) : undefined,
+      croixSeulement,
+      calibration,
+      examCoords: examCoords ?? DEFAULT_CHECK_COORDS,
+    });
+  };
+
   const handlePrint = async (
     cell: PlanningBilanCell,
     resident: Resident,
@@ -257,26 +284,7 @@ export default function GenerateDatesModal({
   ) => {
     setPrintingId(cell.id);
     try {
-      const examens = getExamensForCell(cell, referentiels);
-      const days = cell.jours?.length > 0 ? cell.jours : (cell.jour ? [cell.jour] : []);
-      const day = days[0] ? String(days[0]).padStart(2, '0') : '__';
-      const monthStr = String(mois).padStart(2, '0');
-      const datePrescription = `${day}/${monthStr}/${annee}`;
-      const needsPoids = isCreatininePresent(examens);
-
-      const bytes = await generateBilanPDF({
-        patientName: resident.last_name || '',
-        prenom: resident.first_name || '',
-        prescripteur: resident.medecin || '',
-        datePrescription,
-        datePrescriptionOrdonnance: datePrescription,
-        examens,
-        aJeun: aJeunOverride !== undefined ? aJeunOverride : (aJeunMap[cell.id] || false),
-        poids: needsPoids ? getLatestWeight(resident.id) : undefined,
-        croixSeulement,
-        calibration,
-        examCoords: examCoords ?? DEFAULT_CHECK_COORDS,
-      });
+      const bytes = await generateOneBytes(cell, resident, aJeunOverride);
       openPdfBlob(bytes);
     } catch (err) {
       toast.error(`Erreur PDF : ${(err as Error).message}`);
@@ -285,23 +293,27 @@ export default function GenerateDatesModal({
     }
   };
 
-  const handlePrintAll = async () => {
+  const printBatch = async (cellsToPrint: typeof recapCells) => {
     setPrintingBatch(true);
-    for (const { cell, resident } of recapCells) {
-      if (resident) await handlePrint(cell, resident, aJeunMap[cell.id] ?? false);
+    try {
+      const parts: Uint8Array[] = [];
+      for (const { cell, resident } of cellsToPrint) {
+        if (!resident) continue;
+        const bytes = await generateOneBytes(cell, resident, aJeunMap[cell.id] ?? false);
+        parts.push(bytes);
+      }
+      if (parts.length === 0) return;
+      const merged = await mergePdfBytes(parts);
+      openPdfBlob(merged);
+    } catch (err) {
+      toast.error(`Erreur PDF : ${(err as Error).message}`);
+    } finally {
+      setPrintingBatch(false);
     }
-    setPrintingBatch(false);
   };
 
-  const handlePrintSelected = async () => {
-    setPrintingBatch(true);
-    for (const { cell, resident } of recapCells) {
-      if (resident && selectedIds.has(cell.id)) {
-        await handlePrint(cell, resident, aJeunMap[cell.id] ?? false);
-      }
-    }
-    setPrintingBatch(false);
-  };
+  const handlePrintAll = () => printBatch(recapCells);
+  const handlePrintSelected = () => printBatch(recapCells.filter(({ cell }) => selectedIds.has(cell.id)));
 
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => {
