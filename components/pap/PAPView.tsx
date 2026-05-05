@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer, Pencil } from 'lucide-react';
 import Link from 'next/link';
 
@@ -66,6 +68,9 @@ export default function PAPView({
   const fmtDate = (d: string | null | undefined) =>
     d ? new Date(d + 'T12:00:00').toLocaleDateString('fr-FR') : '—';
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const f = (label: string, value: string | null | undefined) => {
     if (!value) return '';
     return `<div class="field"><div class="field-label">${label}</div><div class="field-value">${String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></div>`;
@@ -97,8 +102,10 @@ export default function PAPView({
     setTimeout(() => { win.print(); win.close(); }, 400);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+  if (!mounted) return null;
+
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between px-6 py-4 border-b bg-white rounded-t-xl shrink-0">
           <div>
@@ -225,4 +232,6 @@ export default function PAPView({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
