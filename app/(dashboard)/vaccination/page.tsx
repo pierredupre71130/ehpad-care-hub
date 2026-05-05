@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2, Info, Eye,
+  Syringe, RefreshCw, ChevronDown, ChevronUp, Archive, X, Save, Zap, Printer, Loader2, Info, Eye, ClipboardList,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -742,6 +742,9 @@ export default function VaccinationPage() {
   const [showArchivedSection, setShowArchivedSection] = useState(false);
   const [archiveOpenName, setArchiveOpenName] = useState<string | null>(null);
   const [bulkModal, setBulkModal] = useState<{ column: string; label: string; records: Vaccination[] } | null>(null);
+  const [sheetModal, setSheetModal] = useState(false);
+  const [sheetType, setSheetType] = useState<'covid_inj1' | 'covid_inj2' | 'covid_inj3' | 'grippe_inj1'>('grippe_inj1');
+  const [sheetFloor, setSheetFloor] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
   const pastYears = [...Array(Math.max(0, CURRENT_YEAR - 2022))].map((_, i) => CURRENT_YEAR - 1 - i);
   const [selectedPastYear, setSelectedPastYear] = useState<number | null>(pastYears[0] ?? null);
 
@@ -913,6 +916,132 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
     setTimeout(() => { win.print(); }, 300);
   };
 
+  // ── Feuille de vaccination (à remplir au moment de l'injection) ───────────
+
+  const printVaccinationSheet = () => {
+    const SHEET_LABELS: Record<typeof sheetType, string> = {
+      covid_inj1: 'Covid — Injection 1',
+      covid_inj2: 'Covid — Injection 2',
+      covid_inj3: 'Covid — Injection 3',
+      grippe_inj1: 'Grippe',
+    };
+    const label = SHEET_LABELS[sheetType];
+    const floorLabel = sheetFloor === 'ALL' ? 'Tous les étages' : sheetFloor === 'RDC' ? 'Rez-de-chaussée' : '1er étage';
+
+    const list = residents
+      .filter(r => !r.archived)
+      .filter(r => sheetFloor === 'ALL' || r.floor === sheetFloor)
+      .sort((a, b) => {
+        const fa = (a.floor || '').localeCompare(b.floor || '');
+        if (fa !== 0) return fa;
+        const na = parseInt((a.room || '').replace(/\D/g, '') || '0');
+        const nb = parseInt((b.room || '').replace(/\D/g, '') || '0');
+        return na - nb;
+      });
+
+    const rows = list.map(r => {
+      const rec = getVaccinsForResident(r).find(v => v.year === CURRENT_YEAR);
+      const raw = rec?.[sheetType] as string | null | undefined;
+      const v = (raw || '').trim();
+      const isRefus = v.toUpperCase() === 'REFUS' || /refus/i.test(v);
+      const isStop = v.toUpperCase() === 'STOP' || /stop/i.test(v);
+      const isDate = /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+      let statusCell = '';
+      let tempCell = '<td class="temp"></td>';
+      let checkCell = '<td class="check"><div class="checkbox"></div></td>';
+
+      if (isRefus) {
+        statusCell = '<td class="status refus">REFUS</td>';
+        tempCell = '<td class="temp muted">—</td>';
+        checkCell = '<td class="check muted">—</td>';
+      } else if (isStop) {
+        statusCell = '<td class="status stop">STOP Dr</td>';
+        tempCell = '<td class="temp muted">—</td>';
+        checkCell = '<td class="check muted">—</td>';
+      } else if (isDate) {
+        statusCell = `<td class="status done">Déjà fait — ${displayDate(v)}</td>`;
+        tempCell = '<td class="temp muted">—</td>';
+        checkCell = '<td class="check muted">—</td>';
+      } else {
+        statusCell = '<td class="status accept">À vacciner</td>';
+      }
+
+      return `<tr>
+        <td class="room">${r.room || '—'}</td>
+        <td class="floor">${r.floor || ''}</td>
+        <td class="name">${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>
+        ${statusCell}
+        ${tempCell}
+        ${checkCell}
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>Feuille — ${label}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:12px;margin:10mm;color:#1e293b}
+  h1{font-size:18px;font-weight:bold;margin-bottom:2px}
+  .sub{font-size:11px;color:#64748b;margin-bottom:12px}
+  .meta{display:flex;gap:18px;margin-bottom:10px;font-size:11px}
+  .meta b{color:#0f172a}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{background:#0f766e;color:white;padding:7px 8px;text-align:left;font-size:11px;border:1px solid #0f766e}
+  td{border:1px solid #cbd5e1;padding:6px 8px;font-size:12px}
+  td.room{text-align:center;font-weight:600;width:55px}
+  td.floor{text-align:center;width:55px;color:#64748b;font-size:10px}
+  td.name{font-weight:600}
+  td.status{text-align:center;font-weight:700;width:130px}
+  td.status.refus{background:#fee2e2;color:#b91c1c}
+  td.status.stop{background:#ffedd5;color:#c2410c}
+  td.status.done{background:#dcfce7;color:#166534;font-weight:500}
+  td.status.accept{background:#eff6ff;color:#1e40af}
+  td.temp{width:90px;text-align:center}
+  td.temp.muted, td.check.muted{background:#f8fafc;color:#cbd5e1;text-align:center}
+  td.check{width:60px;text-align:center}
+  .checkbox{width:18px;height:18px;border:2px solid #475569;border-radius:3px;display:inline-block}
+  tr:nth-child(even) td:not(.status){background:#f8fafc}
+  .signature{margin-top:18px;display:flex;gap:30px;font-size:11px}
+  .signature .box{flex:1}
+  .signature .box .label{color:#64748b;margin-bottom:4px}
+  .signature .box .area{border-bottom:1px solid #94a3b8;height:38px}
+  @page{size:A4 portrait;margin:10mm}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head><body>
+<h1>Feuille de vaccination — ${label}</h1>
+<div class="sub">Imprimée le ${new Date().toLocaleDateString('fr-FR')}</div>
+<div class="meta">
+  <div><b>Étage :</b> ${floorLabel}</div>
+  <div><b>Année :</b> ${CURRENT_YEAR}</div>
+  <div><b>Résidents :</b> ${list.length}</div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="text-align:center">Chambre</th>
+      <th style="text-align:center">Étage</th>
+      <th>Résident</th>
+      <th style="text-align:center">Statut</th>
+      <th style="text-align:center">Température</th>
+      <th style="text-align:center">Fait</th>
+    </tr>
+  </thead>
+  <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">Aucun résident</td></tr>'}</tbody>
+</table>
+<div class="signature">
+  <div class="box"><div class="label">Soignant·e</div><div class="area"></div></div>
+  <div class="box"><div class="label">Date</div><div class="area"></div></div>
+</div>
+</body></html>`;
+
+    const win = window.open('', '_blank')!;
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 300);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -938,6 +1067,74 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
           ))}
         </svg>
       </div>
+
+      {sheetModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setSheetModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h2 className="font-semibold text-slate-900">Préparer la feuille de vaccination</h2>
+                <p className="text-xs text-slate-500">Choisissez le vaccin et l&apos;étage</p>
+              </div>
+              <button onClick={() => setSheetModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Vaccin</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['covid_inj1', 'Covid — Inj. 1'],
+                    ['covid_inj2', 'Covid — Inj. 2'],
+                    ['covid_inj3', 'Covid — Inj. 3'],
+                    ['grippe_inj1', 'Grippe'],
+                  ] as const).map(([val, lbl]) => (
+                    <button key={val} onClick={() => setSheetType(val)}
+                      className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        sheetType === val
+                          ? 'border-teal-500 bg-teal-50 text-teal-800'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Étage</label>
+                <div className="flex gap-2">
+                  {([
+                    ['ALL', 'Tous'],
+                    ['RDC', 'Rez-de-chaussée'],
+                    ['1ER', '1er étage'],
+                  ] as const).map(([val, lbl]) => (
+                    <button key={val} onClick={() => setSheetFloor(val)}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                        sheetFloor === val
+                          ? 'border-teal-500 bg-teal-50 text-teal-800'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end p-4 border-t">
+              <button onClick={() => setSheetModal(false)}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition-colors">
+                Annuler
+              </button>
+              <button onClick={() => { printVaccinationSheet(); setSheetModal(false); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 transition-colors">
+                <Printer className="h-4 w-4" /> Imprimer la feuille
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {bulkModal && (
         <BulkInjectModal
@@ -971,6 +1168,10 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                 <p className="text-white/70 text-sm hidden sm:block">Suivi Covid &amp; Grippe — Année {CURRENT_YEAR}</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setSheetModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white text-teal-700 hover:bg-teal-50 text-sm font-semibold transition-colors">
+                  <ClipboardList className="h-4 w-4" /> Feuille de vaccination
+                </button>
                 <button onClick={handlePrint}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/20 hover:bg-white/20 text-white text-sm font-medium transition-colors">
                   <Printer className="h-4 w-4" /> Imprimer
