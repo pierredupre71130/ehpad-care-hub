@@ -1,8 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
-import { NotebookPen, CalendarCheck, AlertTriangle, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
+import {
+  NotebookPen, CalendarCheck, AlertTriangle, CheckCircle2, Clock, ChevronRight,
+  CalendarX, X,
+} from 'lucide-react';
 import Link from 'next/link';
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -12,7 +16,7 @@ async function fetchPapStats() {
   const [{ data: paps }, { count: totalResidents }] = await Promise.all([
     sb
       .from('pap')
-      .select('id, resident_id, resident_name, date_redaction, date_reunion, created_at'),
+      .select('id, resident_id, resident_name, date_redaction, date_reunion, date_reevaluation, created_at'),
     sb
       .from('residents')
       .select('id', { count: 'exact', head: true })
@@ -58,7 +62,15 @@ async function fetchPapStats() {
     return d && d >= thirtyDaysAgo;
   });
 
-  return { total, distinctResidents, totalPaps: list.length, mostRecent, mostRecentDate, daysSince, recentPaps };
+  // PAPs réalisés sans réunion (ni date_reunion ni date_reevaluation actée)
+  const sansReunion = list
+    .filter(p => !p.date_reunion?.trim() && !p.date_reevaluation?.trim())
+    .sort((a, b) => (a.resident_name || '').localeCompare(b.resident_name || ''));
+
+  return {
+    total, distinctResidents, totalPaps: list.length,
+    mostRecent, mostRecentDate, daysSince, recentPaps, sansReunion,
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,6 +90,7 @@ function RecencyBadge({ days }: { days: number | null }) {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function PapStatsWidget() {
+  const [showSansReunion, setShowSansReunion] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['pap-stats'],
     queryFn: fetchPapStats,
@@ -86,21 +99,25 @@ export function PapStatsWidget() {
 
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {[0, 1].map(i => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[0, 1, 2].map(i => (
           <div key={i} className="bg-white/70 rounded-2xl h-28 animate-pulse" />
         ))}
       </div>
     );
   }
 
-  const { total, distinctResidents, totalPaps, mostRecent, mostRecentDate, daysSince, recentPaps } = data;
+  const {
+    total, distinctResidents, totalPaps, mostRecent, mostRecentDate, daysSince,
+    recentPaps, sansReunion,
+  } = data;
 
   const pct = total > 0 ? Math.round((distinctResidents / total) * 100) : 0;
   const barColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
       {/* ── Carte 1 : PAP effectués ── */}
       <Link href="/pap?filter=faits"
@@ -166,6 +183,78 @@ export function PapStatsWidget() {
         )}
       </Link>
 
+      {/* ── Carte 3 : PAP réalisés sans réunion ── */}
+      <button
+        type="button"
+        onClick={() => setShowSansReunion(true)}
+        className="group text-left bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:shadow-md hover:border-amber-200 transition-all"
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+            <CalendarX className="h-5 w-5 text-amber-600" />
+          </div>
+          <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-amber-400 transition-colors mt-1" />
+        </div>
+
+        <div className="mb-1">
+          <span className="text-3xl font-extrabold text-slate-800">{sansReunion.length}</span>
+        </div>
+        <p className="text-sm font-semibold text-slate-600 mb-1">PAP réalisés sans réunion</p>
+        <p className="text-[11px] text-slate-400">Sans date de réévaluation actée</p>
+      </button>
+
     </div>
+
+    {/* ── Modal : liste des PAP sans réunion ── */}
+    {showSansReunion && (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b">
+            <div>
+              <h2 className="font-semibold text-slate-900">PAP réalisés sans réunion</h2>
+              <p className="text-xs text-slate-500">
+                {sansReunion.length} PAP sans date de réévaluation actée
+              </p>
+            </div>
+            <button onClick={() => setShowSansReunion(false)}
+              className="text-slate-400 hover:text-slate-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="overflow-y-auto p-4 space-y-2">
+            {sansReunion.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">
+                Tous les PAP réalisés ont une réunion programmée 🎉
+              </p>
+            ) : (
+              sansReunion.map(p => (
+                <Link
+                  key={p.id}
+                  href={`/pap?edit=${p.resident_id}`}
+                  onClick={() => setShowSansReunion(false)}
+                  className="flex items-center justify-between gap-3 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 border border-slate-200 rounded-xl px-4 py-3 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 truncate">
+                      {p.resident_name || '—'}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {p.date_redaction
+                        ? `Rédigé le ${formatDate(new Date(p.date_redaction))}`
+                        : 'Sans date de rédaction'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 shrink-0">
+                    Faire la réunion
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

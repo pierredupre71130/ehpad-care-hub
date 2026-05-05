@@ -430,7 +430,7 @@ function PAPPageInner() {
   const colorFrom = colorOverrides['pap']?.from ?? papModule?.cardFrom ?? '#d63052';
   const colorTo   = colorOverrides['pap']?.to   ?? papModule?.cardTo   ?? '#a81535';
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(searchParams.get('edit'));
   // Ouvre directement la vue si ?view=RESIDENT_ID est dans l'URL (vient du widget dashboard)
   const [viewingId, setViewingId] = useState<string | null>(searchParams.get('view'));
   const [historyResidentId, setHistoryResidentId] = useState<string | null>(null);
