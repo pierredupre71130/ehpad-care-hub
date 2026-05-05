@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import PAPView from '@/components/pap/PAPView';
 import PrintReferentsTable from '@/components/pap/PrintReferentsTable';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 
 // ── Network background ────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ function NetworkBackground() {
 interface Resident {
   id: string; title: string; first_name: string; last_name: string;
   room: string; section: string; referent: string; sort_order: number;
+  date_naissance?: string | null;
 }
 
 interface Pap {
@@ -156,7 +158,7 @@ function computeProgress(form: Partial<PapForm>): number {
 // ─── PAPForm Component ───────────────────────────────────────────────────────
 
 function PAPFormComp({
-  resident, initialData, onSave, onCancel, isSaving, readOnly,
+  resident, initialData, onSave, onCancel, isSaving, readOnly, canEditRestricted,
 }: {
   resident: Resident;
   initialData?: Pap | null;
@@ -164,33 +166,43 @@ function PAPFormComp({
   onCancel: () => void;
   isSaving: boolean;
   readOnly?: boolean;
+  canEditRestricted: boolean;
 }) {
-  const [form, setForm] = useState<PapForm>(initialData ? { ...emptyForm, ...initialData } : { ...emptyForm });
+  const [form, setForm] = useState<PapForm>(
+    initialData
+      ? { ...emptyForm, ...initialData }
+      : { ...emptyForm, date_naissance: resident.date_naissance || '' }
+  );
 
   useEffect(() => {
     if (initialData) setForm({ ...emptyForm, ...initialData });
-  }, [initialData]);
+    else setForm({ ...emptyForm, date_naissance: resident.date_naissance || '' });
+  }, [initialData, resident.date_naissance]);
 
   const handleChange = (field: keyof PapForm, value: string | boolean) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
-  const ta = (field: keyof PapForm, rows = 2) => (
+  const ta = (field: keyof PapForm, rows = 2, disabled = false) => (
     <textarea
       value={(form[field] as string) || ''}
       onChange={e => handleChange(field, e.target.value)}
       rows={rows}
-      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400 resize-y"
+      disabled={disabled}
+      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400 resize-y disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
     />
   );
-  const inp = (field: keyof PapForm, type = 'text', placeholder = '') => (
+  const inp = (field: keyof PapForm, type = 'text', placeholder = '', disabled = false) => (
     <input
       type={type}
       value={(form[field] as string) || ''}
       onChange={e => handleChange(field, e.target.value)}
       placeholder={placeholder}
-      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400"
+      disabled={disabled}
+      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
     />
   );
+
+  const restricted = !canEditRestricted;
 
   const progress = computeProgress(form);
   const progressColor = progress < 30 ? 'bg-red-400' : progress < 70 ? 'bg-amber-400' : 'bg-green-500';
@@ -245,12 +257,16 @@ function PAPFormComp({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {field('Date de naissance', inp('date_naissance', 'date'))}
             {field('Service - Chambre', inp('service_chambre', 'text', 'Ex: Mapad - 101'))}
-            {field('Date de la réunion', inp('date_reunion', 'date'))}
+            {field('Date de la réunion', inp('date_reunion', 'date', '', restricted))}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Date de réévaluation</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Date de réévaluation
+                {restricted && <span className="ml-1 text-[10px] text-slate-400 font-normal italic">(admin/psychologue)</span>}
+              </label>
               <div className="flex gap-2 items-center">
                 <select
-                  className="px-2 py-1.5 border border-slate-300 rounded-md text-sm"
+                  disabled={restricted}
+                  className="px-2 py-1.5 border border-slate-300 rounded-md text-sm disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   defaultValue=""
                   onChange={e => {
                     if (!e.target.value) return;
@@ -268,13 +284,14 @@ function PAPFormComp({
                 </select>
                 <input type="date" value={form.date_reevaluation || ''}
                   onChange={e => handleChange('date_reevaluation', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400" />
-                {form.date_reevaluation && (
+                  disabled={restricted}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed" />
+                {form.date_reevaluation && !restricted && (
                   <button type="button" onClick={() => handleChange('date_reevaluation', '')} className="text-slate-400 hover:text-slate-700 text-xs">✕</button>
                 )}
               </div>
             </div>
-            {field('Personnes présentes', inp('presents'))}
+            {field('Personnes présentes', inp('presents', 'text', '', restricted))}
           </div>
         )}
 
@@ -351,13 +368,19 @@ function PAPFormComp({
 
         {section('Objectifs et signature',
           <>
+            {restricted && (
+              <p className="text-xs text-slate-500 italic bg-slate-50 border border-slate-200 rounded px-3 py-2">
+                Cette section est réservée aux rôles admin et psychologue.
+              </p>
+            )}
             {field('L\'équipe pluridisciplinaire retient la proposition des objectifs présentés ci-dessous',
-              ta('objectifs', 3))}
+              ta('objectifs', 3, restricted))}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Capacité concernant l'information</label>
               <select value={form.capacite_information || ''}
                 onChange={e => handleChange('capacite_information', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                disabled={restricted}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed">
                 <option value="">-- Sélectionner --</option>
                 <option value="informee">La personne a la capacité d'être informée sur son PAP</option>
                 <option value="capable_signer">La personne a la capacité de signer son PAP</option>
@@ -366,7 +389,7 @@ function PAPFormComp({
                 <option value="pas_capable">La personne n'a pas la capacité de recevoir l'information et de signer son PAP</option>
               </select>
             </div>
-            {field('Date de signature', inp('date_signature', 'date'))}
+            {field('Date de signature', inp('date_signature', 'date', '', restricted))}
           </>
         )}
 
@@ -394,6 +417,8 @@ function PAPPageInner() {
   const searchParams = useSearchParams();
   const access = useModuleAccess('pap');
   const readOnly = access === 'read';
+  const effectiveRole = useEffectiveRole();
+  const canEditRestricted = effectiveRole === 'admin' || effectiveRole === 'psychologue';
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -766,6 +791,7 @@ function PAPPageInner() {
               onCancel={() => setEditingId(null)}
               isSaving={saveMutation.isPending}
               readOnly={readOnly}
+              canEditRestricted={canEditRestricted}
             />
           </div>
         ) : (
