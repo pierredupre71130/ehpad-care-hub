@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import {
-  X, Check, AlertTriangle, Info, Loader2, Lock, RotateCcw, Printer,
+  X, Check, AlertTriangle, Info, Loader2, Lock, RotateCcw, Printer, CheckSquare, Square,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -191,6 +191,8 @@ export default function GenerateDatesModal({
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [printingBatch, setPrintingBatch] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [croixSeulement, setCroixSeulement] = useState(true); // true = page blanche à imprimer sur la feuille vierge déjà dans le bac
   const [aJeunMap, setAJeunMap] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -284,9 +286,34 @@ export default function GenerateDatesModal({
   };
 
   const handlePrintAll = async () => {
+    setPrintingBatch(true);
     for (const { cell, resident } of recapCells) {
       if (resident) await handlePrint(cell, resident, aJeunMap[cell.id] ?? false);
     }
+    setPrintingBatch(false);
+  };
+
+  const handlePrintSelected = async () => {
+    setPrintingBatch(true);
+    for (const { cell, resident } of recapCells) {
+      if (resident && selectedIds.has(cell.id)) {
+        await handlePrint(cell, resident, aJeunMap[cell.id] ?? false);
+      }
+    }
+    setPrintingBatch(false);
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const allSelected = recapCells.length > 0 && recapCells.every(({ cell }) => selectedIds.has(cell.id));
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(recapCells.map(({ cell }) => cell.id)));
   };
 
   // ── Save / Clear ───────────────────────────────────────────────────────────
@@ -351,8 +378,17 @@ export default function GenerateDatesModal({
               {recapCells.length === 0 ? (
                 <p className="text-sm text-slate-400 italic text-center py-8">Aucun bilan planifié ce mois.</p>
               ) : recapCells.map(({ cell, resident, days }) => (
-                <div key={cell.id} className="flex items-center justify-between gap-3 border border-slate-100 rounded-lg px-3 py-2">
+                <div key={cell.id} className={`flex items-center justify-between gap-3 border rounded-lg px-3 py-2 transition-colors ${
+                  selectedIds.has(cell.id) ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-100'
+                }`}>
                   <div className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => toggleSelected(cell.id)}
+                      className="text-slate-400 hover:text-indigo-600 transition-colors shrink-0"
+                      title={selectedIds.has(cell.id) ? 'Désélectionner' : 'Sélectionner pour impression'}>
+                      {selectedIds.has(cell.id)
+                        ? <CheckSquare className="h-4 w-4 text-indigo-600" />
+                        : <Square className="h-4 w-4" />}
+                    </button>
                     <span className="text-xs font-bold text-slate-500 w-8 shrink-0">Ch.{resident!.room}</span>
                     <span className="text-sm font-semibold text-slate-800 truncate">
                       {resident!.last_name} {resident!.first_name || ''}
@@ -390,14 +426,33 @@ export default function GenerateDatesModal({
               ))}
             </div>
 
-            <div className="flex justify-between items-center px-5 py-4 border-t border-slate-100 shrink-0">
+            <div className="flex justify-between items-start gap-3 px-5 py-4 border-t border-slate-100 shrink-0 flex-wrap">
               <div className="flex flex-col gap-2">
-                <button onClick={handlePrintAll}
-                  disabled={printingId !== null || recapCells.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 transition-colors">
-                  <Printer className="h-3.5 w-3.5" />
-                  Tout imprimer ({recapCells.length})
-                </button>
+                {recapCells.length > 0 && (
+                  <button onClick={toggleAll}
+                    className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors w-fit">
+                    {allSelected
+                      ? <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                      : <Square className="h-3.5 w-3.5" />}
+                    {allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  </button>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={handlePrintAll}
+                    disabled={printingId !== null || printingBatch || recapCells.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                    <Printer className="h-3.5 w-3.5" />
+                    Tout imprimer ({recapCells.length})
+                  </button>
+                  <button onClick={handlePrintSelected}
+                    disabled={printingId !== null || printingBatch || selectedIds.size === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+                    {printingBatch
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Printer className="h-3.5 w-3.5" />}
+                    Imprimer la sélection ({selectedIds.size})
+                  </button>
+                </div>
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
                   <input type="checkbox" checked={croixSeulement}
                     onChange={e => setCroixSeulement(e.target.checked)}
