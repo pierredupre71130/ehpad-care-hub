@@ -745,6 +745,7 @@ export default function VaccinationPage() {
   const [sheetModal, setSheetModal] = useState(false);
   const [sheetType, setSheetType] = useState<'covid_inj1' | 'covid_inj2' | 'covid_inj3' | 'grippe_inj1'>('grippe_inj1');
   const [sheetFloor, setSheetFloor] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
+  const [sheetLot, setSheetLot] = useState('');
   const pastYears = [...Array(Math.max(0, CURRENT_YEAR - 2022))].map((_, i) => CURRENT_YEAR - 1 - i);
   const [selectedPastYear, setSelectedPastYear] = useState<number | null>(pastYears[0] ?? null);
 
@@ -983,7 +984,10 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
   *{box-sizing:border-box}
   body{font-family:Arial,sans-serif;font-size:12px;margin:10mm;color:#1e293b}
   h1{font-size:18px;font-weight:bold;margin-bottom:2px}
-  .sub{font-size:11px;color:#64748b;margin-bottom:12px}
+  .sub{font-size:11px;color:#64748b;margin-bottom:8px}
+  .lot{font-size:13px;border:1px solid #94a3b8;border-radius:5px;padding:6px 10px;margin-bottom:10px;background:#f8fafc}
+  .lot b{color:#0f172a;margin-right:6px}
+  .lot-value{display:inline-block;min-width:240px;border-bottom:1px dashed #64748b;padding:0 4px;font-weight:600;color:#0f766e}
   .meta{display:flex;gap:18px;margin-bottom:10px;font-size:11px}
   .meta b{color:#0f172a}
   table{width:100%;border-collapse:collapse;margin-top:6px}
@@ -1012,6 +1016,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
 </head><body>
 <h1>Feuille de vaccination — ${label}</h1>
 <div class="sub">Imprimée le ${new Date().toLocaleDateString('fr-FR')}</div>
+<div class="lot"><b>N° de lot :</b> <span class="lot-value">${sheetLot.trim() ? sheetLot.replace(/</g, '&lt;') : ''}</span></div>
 <div class="meta">
   <div><b>Étage :</b> ${floorLabel}</div>
   <div><b>Année :</b> ${CURRENT_YEAR}</div>
@@ -1101,6 +1106,16 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
                     </button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">N° de lot (optionnel)</label>
+                <input
+                  type="text"
+                  value={sheetLot}
+                  onChange={e => setSheetLot(e.target.value)}
+                  placeholder="Laisser vide pour écrire à la main"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-400"
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Étage</label>
