@@ -62,9 +62,9 @@ async function fetchPapStats() {
     return d && d >= thirtyDaysAgo;
   });
 
-  // PAPs réalisés sans réunion (ni date_reunion ni date_reevaluation actée)
+  // PAPs réalisés sans réunion (sans date de réévaluation actée)
   const sansReunion = list
-    .filter(p => !p.date_reunion?.trim() && !p.date_reevaluation?.trim())
+    .filter(p => !p.date_reevaluation?.trim())
     .sort((a, b) => (a.resident_name || '').localeCompare(b.resident_name || ''));
 
   return {
