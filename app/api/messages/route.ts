@@ -12,10 +12,18 @@ export async function GET() {
     .select('*')
     .eq('conversation_id', user.id)
     .order('created_at', { ascending: true });
-  // mark admin messages as read by user
+  return NextResponse.json(data ?? []);
+}
+
+// PATCH — marque les messages admin comme lus (appelé à l'ouverture de la messagerie)
+export async function PATCH() {
+  const sb = await createClient();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  const admin = createAdminClient();
   await admin.from('messages').update({ read_by_user: true })
     .eq('conversation_id', user.id).eq('sender_type', 'admin').eq('read_by_user', false);
-  return NextResponse.json(data ?? []);
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: Request) {

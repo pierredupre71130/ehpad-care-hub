@@ -56,10 +56,11 @@ export function UserMessagingWidget() {
     }
   }, [messages, open]);
 
-  // invalidate on open to mark as read
+  // marque comme lu à l'ouverture
   useEffect(() => {
     if (open) {
-      qc.invalidateQueries({ queryKey: ['user-messages'] });
+      fetch('/api/messages', { method: 'PATCH' })
+        .finally(() => qc.invalidateQueries({ queryKey: ['user-messages'] }));
     }
   }, [open, qc]);
 

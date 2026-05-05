@@ -63,7 +63,9 @@ function UserMessagingHeaderButton() {
 
   useEffect(() => {
     if (open) {
-      qc.invalidateQueries({ queryKey: ['user-messages'] });
+      // Marque les messages admin comme lus, puis rafraîchit
+      fetch('/api/messages', { method: 'PATCH' })
+        .finally(() => qc.invalidateQueries({ queryKey: ['user-messages'] }));
     }
   }, [open, qc]);
 
