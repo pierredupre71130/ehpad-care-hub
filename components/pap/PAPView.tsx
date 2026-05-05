@@ -98,9 +98,9 @@ export default function PAPView({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl my-4">
-        <div className="flex items-start justify-between px-6 py-4 border-b bg-white rounded-t-xl sticky top-0 z-10">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-6 py-4 border-b bg-white rounded-t-xl shrink-0">
           <div>
             <h2 className="font-bold text-slate-900 text-lg">PAP — {resident.title} {resident.last_name} {resident.first_name}</h2>
             <p className="text-xs text-slate-500">Chambre {resident.room} • {resident.section}</p>
@@ -121,13 +121,15 @@ export default function PAPView({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 transition-colors">
               <Printer className="h-4 w-4" /> Imprimer
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
-              <X className="h-4 w-4" />
+            <button onClick={onClose}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 text-sm hover:bg-slate-100 transition-colors"
+              title="Fermer">
+              <X className="h-4 w-4" /> Fermer
             </button>
           </div>
         </div>
 
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 overflow-y-auto flex-1">
           <Section title="Informations générales">
             {pap.date_redaction && (
               <div className="mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
