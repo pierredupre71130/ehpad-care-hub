@@ -583,6 +583,13 @@ function PAPPageInner() {
 
   const papsDueThisMonth = paps.filter(p => p.date_reevaluation?.slice(0, 7) === currentYearMonth);
 
+  const reunionsPrevues = paps
+    .filter(p => p.date_reunion)
+    .map(p => ({ ...p, _date: new Date(p.date_reunion) }))
+    .filter(p => p._date >= today)
+    .sort((a, b) => a._date.getTime() - b._date.getTime())
+    .slice(0, 5);
+
   const prochaines4 = paps
     .filter(p => p.date_reevaluation)
     .map(p => ({ ...p, _date: new Date(p.date_reevaluation) }))
@@ -662,6 +669,30 @@ function PAPPageInner() {
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4 flex-shrink-0" />
             Vous consultez cette page en lecture seule.
+          </div>
+        )}
+
+        {/* Réunions prévues */}
+        {reunionsPrevues.length > 0 && (
+          <div className="mb-4 bg-violet-50 border border-violet-200 rounded-xl p-4 flex gap-3 items-start">
+            <CalendarClock className="h-5 w-5 text-violet-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="font-semibold text-violet-800 text-sm mb-2">Réunions prévues</div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                {reunionsPrevues.map(p => {
+                  const res = residents.find(r => r.id === p.resident_id);
+                  const diffDays = Math.round((p._date.getTime() - today.getTime()) / 86400000);
+                  const label = diffDays === 0 ? "Aujourd'hui" : diffDays === 1 ? 'Demain' : `Dans ${diffDays}j`;
+                  return (
+                    <button key={p.id} onClick={() => setEditingId(p.resident_id)}
+                      className="text-left bg-white border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100 transition-colors">
+                      <div className="text-xs font-semibold text-violet-900">{res ? `${res.last_name} ${res.first_name}` : p.resident_name}</div>
+                      <div className="text-xs text-violet-500 mt-0.5">{p._date.toLocaleDateString('fr-FR')} · <span className="font-medium">{label}</span></div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
