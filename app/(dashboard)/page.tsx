@@ -9,6 +9,7 @@ import { BentoDashboardGrid } from '@/components/dashboard/bento-dashboard-grid'
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
+import { PapUpcomingWidget } from '@/components/dashboard/pap-upcoming-widget';
 import { EntreesWidget } from '@/components/dashboard/entrees-widget';
 import { RoleSummaryPanel } from '@/components/dashboard/role-summary-panel';
 import { MessagingHeaderButton } from '@/components/dashboard/messaging-header-button';
@@ -340,6 +341,9 @@ export default function DashboardPage() {
               Tableau de bord PAP
             </p>
             <PapStatsWidget />
+            <div className="mt-4">
+              <PapUpcomingWidget />
+            </div>
           </div>
         )}
 
