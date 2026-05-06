@@ -772,7 +772,7 @@ export default function GIRNiveauSoinPage() {
           En dehors du niveau de soins indiqué, le médecin contacté définira la conduite à tenir.
         </div>
 
-        <style>{`@page { size: A4 landscape; margin: 6mm; } @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`}</style>
+        <style>{`@page { size: A4 portrait; margin: 6mm; } @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`}</style>
       </div>
 
       {/* ══ MODALES ══════════════════════════════════════════════ */}
