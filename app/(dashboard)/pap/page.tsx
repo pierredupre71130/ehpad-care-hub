@@ -615,6 +615,157 @@ function PAPPageInner() {
     setDeleteTarget(null);
   };
 
+  const handlePrintBlank = () => {
+    const RISQUES_LABELS = [
+      'Risques de fugue ou de disparition',
+      'Risques liés aux addictions et / ou aux conduites dangereuses',
+      'Risques liés aux chutes',
+      'Risques liés à la dénutrition / malnutrition et / ou troubles de la déglutition',
+      'Risques liés à la sexualité',
+      'Risques de harcèlement et / ou d\'abus de faiblesse',
+      'Risque de radicalisation et / ou de prosélytisme',
+      'Risque suicidaire',
+    ];
+    const blank = (h = '24px') => `<div class="line" style="height:${h}"></div>`;
+    const sec = (title: string, content: string) =>
+      `<div class="section"><div class="section-title">${title}</div>${content}</div>`;
+    const f = (label: string, h = '20px') =>
+      `<div class="field"><div class="field-label">${label}</div>${blank(h)}</div>`;
+    const fGrid2 = (items: { label: string; h?: string }[]) =>
+      `<div class="grid2">${items.map(i => f(i.label, i.h)).join('')}</div>`;
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>PAP — Feuille vierge</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;background:white;padding:10mm}
+  @page{size:A4 portrait;margin:10mm}
+  h1{font-size:16px;font-weight:bold;color:#0f172a;margin-bottom:2px}
+  .subtitle{font-size:10px;color:#64748b;margin-bottom:12px}
+  .header-bar{border:1px solid #cbd5e1;border-radius:4px;padding:6px 10px;margin-bottom:10px;background:#f8fafc;display:flex;gap:14px;flex-wrap:wrap;font-size:10px}
+  .header-bar .item{display:flex;align-items:center;gap:6px}
+  .header-bar .item b{color:#0f172a}
+  .header-bar .item .blank{display:inline-block;border-bottom:1px solid #94a3b8;min-width:140px;height:14px}
+  .section{margin-bottom:9px;page-break-inside:avoid}
+  .section-title{font-size:9px;font-weight:bold;color:white;background:#334155;text-transform:uppercase;letter-spacing:.06em;padding:3px 7px;border-radius:3px;margin-bottom:5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  .field{margin-bottom:5px;page-break-inside:avoid}
+  .field-label{font-size:9px;font-weight:bold;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+  .line{border:1px solid #cbd5e1;border-radius:3px;background:#fafafa}
+  .risks{display:flex;flex-direction:column;gap:3px;margin-bottom:4px}
+  .risks .risk{display:flex;align-items:center;gap:6px;font-size:10px}
+  .checkbox{width:11px;height:11px;border:1.4px solid #475569;border-radius:2px;display:inline-block;flex-shrink:0}
+  .signature-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:10px}
+  .signature-label{font-size:8px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:3px}
+  .signature-area{border:1px solid #cbd5e1;border-radius:4px;height:42px;background:#fafafa}
+  .footer-note{margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic;text-align:right}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head><body>
+
+<h1>PAP — Projet d'Accompagnement Personnalisé</h1>
+<div class="subtitle">Feuille vierge à remplir</div>
+
+<div class="header-bar">
+  <div class="item"><b>Nom :</b> <span class="blank"></span></div>
+  <div class="item"><b>Prénom :</b> <span class="blank"></span></div>
+  <div class="item"><b>Chambre :</b> <span class="blank" style="min-width:80px"></span></div>
+  <div class="item"><b>Date de rédaction :</b> <span class="blank" style="min-width:120px"></span></div>
+</div>
+
+${sec('Informations générales',
+  fGrid2([
+    { label: 'Date de naissance' },
+    { label: 'Service - Chambre' },
+    { label: 'Date de la réunion' },
+    { label: 'Date de réévaluation' },
+  ]) +
+  f('Personnes présentes', '24px')
+)}
+
+${sec('Souhait de la personne concernant son PAP et capacité',
+  f('Capacité de la personne', '32px') +
+  f('Souhait de réaliser le projet personnalisé', '32px') +
+  f('Souhait de participer à la réalisation du projet personnalisé', '32px') +
+  f('Souhait de faire participer son entourage et de l\'informer', '32px')
+)}
+
+${sec('Renseignements généraux',
+  f('Données d\'identité / identification du résident', '40px') +
+  f('Souhait de la personne en lien avec sa dénomination', '28px') +
+  f('Contexte d\'entrée', '40px') +
+  f('Souhaits de fin de vie', '32px') +
+  f('Entourage', '32px') +
+  f('Droit à l\'image', '24px')
+)}
+
+${sec('Histoire de vie',
+  f('Situation familiale', '40px') +
+  f('Vie professionnelle', '32px') +
+  f('Épisodes importants de sa vie', '40px')
+)}
+
+${sec('Habitudes de vie / souhaits exprimés',
+  fGrid2([
+    { label: 'Boire et manger', h: '28px' },
+    { label: 'Éliminer', h: '28px' },
+    { label: 'Se mouvoir et maintenir une bonne posture', h: '28px' },
+    { label: 'Dormir et se reposer', h: '28px' },
+    { label: 'Se vêtir et se dévêtir', h: '28px' },
+    { label: 'Être propre, protéger ses téguments', h: '28px' },
+    { label: 'Éviter les dangers', h: '28px' },
+    { label: 'Communication', h: '28px' },
+    { label: 'Agir selon ses croyances et ses valeurs', h: '28px' },
+    { label: 'S\'occuper / se récréer', h: '28px' },
+    { label: 'Besoin d\'apprendre', h: '28px' },
+    { label: 'Ressenti / Adaptation', h: '28px' },
+  ])
+)}
+
+${sec('Identification des risques',
+  `<div class="risks">${RISQUES_LABELS.map(l =>
+    `<div class="risk"><span class="checkbox"></span><span>${l}</span></div>`).join('')}</div>` +
+  f('Autres risques', '28px')
+)}
+
+${sec('Remarques particulières',
+  f('Accueil des premiers jours', '24px') +
+  f('Les soins', '24px') +
+  f('Les repas', '24px') +
+  f('Ambiance générale', '24px') +
+  f('Autres remarques', '32px')
+)}
+
+${sec('Objectifs et signature',
+  f('L\'équipe pluridisciplinaire retient les objectifs ci-dessous', '60px') +
+  `<div class="field"><div class="field-label">Capacité concernant l'information</div>
+    <div class="risks" style="margin-top:2px">
+      <div class="risk"><span class="checkbox"></span><span>La personne a la capacité d'être informée sur son PAP</span></div>
+      <div class="risk"><span class="checkbox"></span><span>La personne a la capacité de signer son PAP</span></div>
+      <div class="risk"><span class="checkbox"></span><span>La personne refuse de signer son PAP</span></div>
+      <div class="risk"><span class="checkbox"></span><span>A eu l'information mais n'a pas la capacité de signer</span></div>
+      <div class="risk"><span class="checkbox"></span><span>N'a pas la capacité de recevoir l'information ni de signer</span></div>
+    </div>
+  </div>` +
+  f('Date de signature', '20px') +
+  `<div class="signature-row">
+    <div><div class="signature-label">Signature du résident</div><div class="signature-area"></div></div>
+    <div><div class="signature-label">Signature du référent</div><div class="signature-area"></div></div>
+  </div>`
+)}
+
+<div class="footer-note">Document imprimé le ${new Date().toLocaleDateString('fr-FR')}</div>
+
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
+
   const editingPap = editingId ? paps.find(p => p.resident_id === editingId) : null;
   const editingResident = editingId ? residents.find(r => r.id === editingId) : null;
 
@@ -764,6 +915,11 @@ function PAPPageInner() {
             className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-slate-100 transition-colors ml-auto">
             <Printer className="h-5 w-5 text-slate-500" />
             <div className="text-left"><div className="text-sm font-bold text-slate-700">Tableau référents</div><div className="text-xs text-slate-400">Imprimer la liste</div></div>
+          </button>
+          <button onClick={handlePrintBlank}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-slate-100 transition-colors">
+            <Printer className="h-5 w-5 text-slate-500" />
+            <div className="text-left"><div className="text-sm font-bold text-slate-700">Feuille vierge</div><div className="text-xs text-slate-400">PAP à remplir à la main</div></div>
           </button>
           <button onClick={() => setShowGestionReferents(true)} disabled={readOnly}
             className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-indigo-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
