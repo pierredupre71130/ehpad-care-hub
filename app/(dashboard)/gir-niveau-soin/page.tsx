@@ -669,6 +669,7 @@ export default function GIRNiveauSoinPage() {
               };
               const girBg = girMap[rec.gir] ?? '#e2e8f0';
               const girFg = ['3'].includes(rec.gir) ? '#0f172a' : 'white';
+              const girLabel = rec.gir === 'N/A' ? '< 60 ans' : rec.gir;
 
               const niveauMap: Record<string, string> = {
                 A: '#2563eb', B: '#60a5fa', C: '#818cf8', D: '#c7d2fe', 'En cours': '#fbbf24',
@@ -693,7 +694,7 @@ export default function GIRNiveauSoinPage() {
                     {r.title} {r.last_name?.toUpperCase()} <span style={{ fontWeight: 400 }}>{r.first_name ?? ''}</span>
                   </td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center', fontWeight: 600 }}>{r.room}</td>
-                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(rec.gir, girBg, girFg)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(girLabel, girBg, girFg)}</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(rec.niveau_soin, niveauBg, niveauFg)}</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(appelTxt, appelBg, 'white')}</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.appel_nuit_info ? '#0f172a' : '#cbd5e1' }}>
@@ -727,7 +728,7 @@ export default function GIRNiveauSoinPage() {
                 { v: '2', bg: '#fb923c', fg: 'white', txt: 'Dépendant' },
                 { v: '3', bg: '#facc15', fg: '#0f172a', txt: 'Moyennement dép.' },
                 { v: '4', bg: '#4ade80', fg: 'white', txt: 'Peu dépendant' },
-                { v: 'N/A', bg: '#64748b', fg: 'white', txt: 'Non renseigné' },
+                { v: '< 60 ans', bg: '#64748b', fg: 'white', txt: 'GIR non applicable' },
               ].map(g => (
                 <div key={g.v} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{
@@ -875,6 +876,19 @@ export default function GIRNiveauSoinPage() {
           <span className="text-xs text-amber-500 font-semibold mt-1">Sans appel nuit défini</span>
         </button>
         <div className="border border-slate-300 rounded-xl px-4 py-3 bg-white text-xs text-slate-700 leading-5 max-w-sm">
+          <p className="font-bold text-slate-800 mb-1">Légende — GIR</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1.5">
+            <span><span className="inline-block px-1.5 rounded bg-red-500 text-white font-bold mr-1">1</span>très dépendant</span>
+            <span><span className="inline-block px-1.5 rounded bg-orange-400 text-white font-bold mr-1">2</span>dépendant</span>
+            <span><span className="inline-block px-1.5 rounded bg-yellow-400 text-slate-800 font-bold mr-1">3</span>moyennement</span>
+            <span><span className="inline-block px-1.5 rounded bg-green-400 text-white font-bold mr-1">4</span>peu dép.</span>
+          </div>
+          <p className="italic text-slate-600">
+            <span className="inline-block px-1.5 rounded bg-slate-500 text-white font-bold mr-1">⊘ &lt;60 ans</span>
+            résident de moins de 60 ans — GIR non applicable
+          </p>
+        </div>
+        <div className="border border-slate-300 rounded-xl px-4 py-3 bg-white text-xs text-slate-700 leading-5 max-w-sm">
           <p className="font-bold text-slate-800 mb-1">Légende — Niveau de soin</p>
           <p><span className="font-bold text-blue-700">A</span> : Prolonger la vie par tous les soins nécessaires</p>
           <p><span className="font-bold text-blue-500">B</span> : Prolonger la vie par des soins limités</p>
@@ -910,6 +924,14 @@ export default function GIRNiveauSoinPage() {
                       {saving[r.id] && <Loader2 className="h-3 w-3 animate-spin text-slate-400 flex-shrink-0" />}
                       <span>{r.title} {r.last_name} {r.first_name ?? ''}</span>
                       <span className="text-xs text-slate-400 ml-1">Ch.{r.room}</span>
+                      {rec.gir === 'N/A' && (
+                        <span
+                          title="Résident de moins de 60 ans — GIR non applicable"
+                          className="ml-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-slate-200 text-slate-700 border border-slate-300 rounded-full px-1.5 py-0.5"
+                        >
+                          ⊘ &lt;60 ans
+                        </span>
+                      )}
                       <button
                         onClick={() => setHistoryResident(r)}
                         title="Voir l'historique des modifications"
