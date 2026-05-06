@@ -940,6 +940,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
         return na - nb;
       });
 
+    let toPrepareCount = 0;
     const rows = list.map(r => {
       const rec = getVaccinsForResident(r).find(v => v.year === CURRENT_YEAR);
       const raw = rec?.[sheetType] as string | null | undefined;
@@ -966,6 +967,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
         checkCell = '<td class="check muted">—</td>';
       } else {
         statusCell = '<td class="status accept">À vacciner</td>';
+        toPrepareCount++;
       }
 
       return `<tr>
@@ -988,8 +990,10 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
   .lot{font-size:13px;border:1px solid #94a3b8;border-radius:5px;padding:6px 10px;margin-bottom:10px;background:#f8fafc}
   .lot b{color:#0f172a;margin-right:6px}
   .lot-value{display:inline-block;min-width:240px;border-bottom:1px dashed #64748b;padding:0 4px;font-weight:600;color:#0f766e}
-  .meta{display:flex;gap:18px;margin-bottom:10px;font-size:11px}
+  .meta{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:10px;font-size:11px;align-items:center}
   .meta b{color:#0f172a}
+  .meta .to-prepare{background:#0f766e;color:white;padding:4px 10px;border-radius:4px;font-weight:600}
+  .meta .to-prepare b{color:white}
   table{width:100%;border-collapse:collapse;margin-top:6px}
   th{background:#0f766e;color:white;padding:7px 8px;text-align:left;font-size:11px;border:1px solid #0f766e}
   td{border:1px solid #cbd5e1;padding:6px 8px;font-size:12px}
@@ -1021,6 +1025,7 @@ td{border:1px solid #e2e8f0;padding:4px 8px}tr:nth-child(even){background:#f8faf
   <div><b>Étage :</b> ${floorLabel}</div>
   <div><b>Année :</b> ${CURRENT_YEAR}</div>
   <div><b>Résidents :</b> ${list.length}</div>
+  <div class="to-prepare"><b>Vaccins à préparer :</b> ${toPrepareCount}</div>
 </div>
 <table>
   <thead>
