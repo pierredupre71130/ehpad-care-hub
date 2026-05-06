@@ -627,12 +627,15 @@ function PAPPageInner() {
       'Risque suicidaire',
     ];
     const blank = (h = '24px') => `<div class="line" style="height:${h}"></div>`;
-    const sec = (title: string, content: string) =>
-      `<div class="section"><div class="section-title">${title}</div>${content}</div>`;
-    const f = (label: string, h = '20px') =>
-      `<div class="field"><div class="field-label">${label}</div>${blank(h)}</div>`;
-    const fGrid2 = (items: { label: string; h?: string }[]) =>
-      `<div class="grid2">${items.map(i => f(i.label, i.h)).join('')}</div>`;
+    const sec = (title: string, content: string, reserved = false) =>
+      `<div class="section${reserved ? ' reserved-section' : ''}">` +
+      `<div class="section-title">${title}${reserved ? ' — Réservé Psychologue / Admin' : ''}</div>` +
+      (reserved ? '<div class="section-note">Cette section ne doit être complétée que par la psychologue ou un administrateur.</div>' : '') +
+      `${content}</div>`;
+    const f = (label: string, h = '20px', reserved = false) =>
+      `<div class="field${reserved ? ' reserved' : ''}"><div class="field-label">${label}${reserved ? ' <span class="badge">Psychologue / Admin</span>' : ''}</div>${blank(h)}</div>`;
+    const fGrid2 = (items: { label: string; h?: string; reserved?: boolean }[]) =>
+      `<div class="grid2">${items.map(i => f(i.label, i.h, i.reserved)).join('')}</div>`;
 
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
 <title>PAP — Feuille vierge</title>
@@ -659,6 +662,11 @@ function PAPPageInner() {
   .signature-label{font-size:8px;font-weight:bold;color:#64748b;text-transform:uppercase;margin-bottom:3px}
   .signature-area{border:1px solid #cbd5e1;border-radius:4px;height:42px;background:#fafafa}
   .footer-note{margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic;text-align:right}
+  .field.reserved .line{background:#fef3c7;border-color:#f59e0b}
+  .field .badge{display:inline-block;background:#f59e0b;color:white;font-size:7.5px;font-weight:700;padding:1px 5px;border-radius:8px;text-transform:none;letter-spacing:0;margin-left:4px;vertical-align:1px}
+  .section.reserved-section{border:1.5px solid #f59e0b;border-radius:5px;padding:6px;background:#fffbeb}
+  .section.reserved-section .section-title{background:#f59e0b}
+  .section-note{font-size:9px;color:#b45309;font-style:italic;margin-bottom:5px;padding:2px 7px;background:#fef3c7;border-radius:3px;display:inline-block}
   @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head><body>
@@ -677,10 +685,10 @@ ${sec('Informations générales',
   fGrid2([
     { label: 'Date de naissance' },
     { label: 'Service - Chambre' },
-    { label: 'Date de la réunion' },
-    { label: 'Date de réévaluation' },
+    { label: 'Date de la réunion', reserved: true },
+    { label: 'Date de réévaluation', reserved: true },
   ]) +
-  f('Personnes présentes', '24px')
+  f('Personnes présentes', '24px', true)
 )}
 
 ${sec('Souhait de la personne concernant son PAP et capacité',
@@ -751,7 +759,8 @@ ${sec('Objectifs et signature',
   `<div class="signature-row">
     <div><div class="signature-label">Signature du résident</div><div class="signature-area"></div></div>
     <div><div class="signature-label">Signature du référent</div><div class="signature-area"></div></div>
-  </div>`
+  </div>`,
+  true
 )}
 
 <div class="footer-note">Document imprimé le ${new Date().toLocaleDateString('fr-FR')}</div>
