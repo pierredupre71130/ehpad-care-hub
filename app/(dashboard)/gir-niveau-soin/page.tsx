@@ -447,49 +447,161 @@ export default function GIRNiveauSoinPage() {
       </header>
 
       {/* ══ VERSION IMPRESSION ══════════════════════════════════ */}
-      <div className="hidden print:block" style={{ padding: '4mm', fontFamily: 'Arial, sans-serif' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: 'bold', textAlign: 'center', marginBottom: '8px' }}>
-          GIR / Niveau de soin / Appel Nuit
-        </h2>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <div className="hidden print:block" style={{ padding: '6mm', fontFamily: 'Arial, sans-serif', color: '#0f172a' }}>
+        {/* En-tête */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'linear-gradient(90deg,#581c87,#7c3aed)',
+          color: 'white', padding: '8px 14px', borderRadius: '6px', marginBottom: '8px',
+        }}>
+          <div>
+            <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '0.02em' }}>
+              GIR · Niveau de soin · Appel nuit
+            </div>
+            <div style={{ fontSize: '9px', opacity: 0.85, marginTop: '1px' }}>
+              EHPAD Care Hub — Récapitulatif des résidents
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', fontSize: '9px', opacity: 0.9 }}>
+            <div><b>{sorted.length}</b> résidents</div>
+            <div>Imprimé le {new Date().toLocaleDateString('fr-FR')}</div>
+          </div>
+        </div>
+
+        {/* Tableau */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '4%' }} />
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '21%' }} />
+          </colgroup>
           <thead>
-            <tr style={{ background: '#581c87', color: 'white' }}>
-              {['Résident', 'Chambre', 'GIR', 'Niveau de soin', 'Appel nuit', 'Info appel nuit', 'Pompes funèbres'].map(h => (
-                <th key={h} style={{ border: '1px solid #ccc', padding: '6px 9px', textAlign: h === 'Résident' || h === 'Info appel nuit' || h === 'Pompes funèbres' ? 'left' : 'center' }}>{h}</th>
+            <tr style={{ background: '#1e1b4b', color: 'white' }}>
+              {['#', 'Résident', 'Chambre', 'GIR', 'Niveau soin', 'Appel nuit', 'Info appel nuit', 'Pompes funèbres'].map((h, i) => (
+                <th key={h} style={{
+                  border: '1px solid #1e1b4b', padding: '5px 7px',
+                  textAlign: i === 1 || i === 6 || i === 7 ? 'left' : 'center',
+                  fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {sorted.map((r, idx) => {
               const rec = getRec(r.id);
+              const girMap: Record<string, string> = {
+                '1': '#ef4444', '2': '#fb923c', '3': '#facc15', '4': '#4ade80', 'N/A': '#64748b',
+              };
+              const girBg = girMap[rec.gir] ?? '#e2e8f0';
+              const girFg = ['3'].includes(rec.gir) ? '#0f172a' : 'white';
+
+              const niveauMap: Record<string, string> = {
+                A: '#2563eb', B: '#60a5fa', C: '#818cf8', D: '#c7d2fe', 'En cours': '#fbbf24',
+              };
+              const niveauBg = niveauMap[rec.niveau_soin] ?? '#e2e8f0';
+              const niveauFg = ['D', 'En cours'].includes(rec.niveau_soin) ? '#0f172a' : 'white';
+
+              const appelBg = rec.appel_nuit === true ? '#dc2626' : rec.appel_nuit === false ? '#16a34a' : '#cbd5e1';
+              const appelTxt = rec.appel_nuit === true ? 'OUI' : rec.appel_nuit === false ? 'Non' : '—';
+
+              const badge = (txt: string, bg: string, fg: string) =>
+                <span style={{
+                  display: 'inline-block', minWidth: '26px', padding: '2px 7px',
+                  background: bg, color: fg, borderRadius: '10px',
+                  fontWeight: 700, fontSize: '10.5px', letterSpacing: '0.02em',
+                }}>{txt || '—'}</span>;
+
               return (
-                <tr key={r.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px', fontWeight: 600 }}>
-                    {r.title} {r.last_name} {r.first_name ?? ''}
+                <tr key={r.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc', pageBreakInside: 'avoid' }}>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center', color: '#94a3b8', fontSize: '9px' }}>{idx + 1}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontWeight: 600 }}>
+                    {r.title} {r.last_name?.toUpperCase()} <span style={{ fontWeight: 400 }}>{r.first_name ?? ''}</span>
                   </td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px', textAlign: 'center' }}>{r.room}</td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px', textAlign: 'center', fontWeight: 700 }}>{rec.gir || '—'}</td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px', textAlign: 'center', fontWeight: 700 }}>{rec.niveau_soin || '—'}</td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px', textAlign: 'center' }}>
-                    {rec.appel_nuit === true ? 'Oui' : rec.appel_nuit === false ? 'Non' : '—'}
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center', fontWeight: 600 }}>{r.room}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(rec.gir, girBg, girFg)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(rec.niveau_soin, niveauBg, niveauFg)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(appelTxt, appelBg, 'white')}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.appel_nuit_info ? '#0f172a' : '#cbd5e1' }}>
+                    {rec.appel_nuit_info || '—'}
                   </td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px' }}>{rec.appel_nuit_info}</td>
-                  <td style={{ border: '1px solid #ccc', padding: '5px 9px' }}>{rec.pompes_funebres}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.pompes_funebres ? '#0f172a' : '#cbd5e1' }}>
+                    {rec.pompes_funebres || '—'}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        <div style={{ marginTop: '12px', border: '1px solid #94a3b8', borderRadius: '8px', padding: '8px 12px', fontSize: '9px', lineHeight: '1.6', color: '#1e293b', pageBreakInside: 'avoid' }}>
-          <p style={{ fontWeight: 700, marginBottom: '4px' }}>Légende — Niveau de soin</p>
-          <p><strong>A</strong> : Prolonger la vie par tous les soins nécessaires</p>
-          <p><strong>B</strong> : Prolonger la vie par des soins limités</p>
-          <p><strong>C</strong> : Assurer le confort prioritairement à prolonger la vie</p>
-          <p><strong>D</strong> : Assurer le confort sans viser à prolonger la vie</p>
-          <p style={{ marginTop: '6px', fontStyle: 'italic', color: '#475569' }}>
-            En dehors de niveau de soins indiqué, le médecin contacté définira la conduite à tenir.
-          </p>
+
+        {/* Légende */}
+        <div style={{
+          marginTop: '10px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '8px',
+          pageBreakInside: 'avoid',
+        }}>
+          {/* GIR */}
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '5px', padding: '8px 10px', fontSize: '9px', background: '#fafafa' }}>
+            <div style={{ fontWeight: 700, marginBottom: '5px', color: '#1e1b4b', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Légende GIR
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', lineHeight: 1.4 }}>
+              {[
+                { v: '1', bg: '#ef4444', fg: 'white', txt: 'Très dépendant' },
+                { v: '2', bg: '#fb923c', fg: 'white', txt: 'Dépendant' },
+                { v: '3', bg: '#facc15', fg: '#0f172a', txt: 'Moyennement dép.' },
+                { v: '4', bg: '#4ade80', fg: 'white', txt: 'Peu dépendant' },
+                { v: 'N/A', bg: '#64748b', fg: 'white', txt: 'Non renseigné' },
+              ].map(g => (
+                <div key={g.v} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{
+                    background: g.bg, color: g.fg, fontWeight: 700,
+                    padding: '1px 6px', borderRadius: '8px', fontSize: '9px',
+                  }}>{g.v}</span>
+                  <span>{g.txt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Niveau de soin */}
+          <div style={{ border: '1px solid #cbd5e1', borderRadius: '5px', padding: '8px 10px', fontSize: '9px', background: '#fafafa' }}>
+            <div style={{ fontWeight: 700, marginBottom: '5px', color: '#1e1b4b', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Légende Niveau de soin
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', lineHeight: 1.4 }}>
+              {[
+                { v: 'A', bg: '#2563eb', fg: 'white', txt: 'Prolonger la vie par tous les soins nécessaires' },
+                { v: 'B', bg: '#60a5fa', fg: 'white', txt: 'Prolonger la vie par des soins limités' },
+                { v: 'C', bg: '#818cf8', fg: 'white', txt: 'Assurer le confort prioritairement à prolonger la vie' },
+                { v: 'D', bg: '#c7d2fe', fg: '#0f172a', txt: 'Assurer le confort sans viser à prolonger la vie' },
+              ].map(n => (
+                <div key={n.v} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{
+                    background: n.bg, color: n.fg, fontWeight: 700,
+                    padding: '1px 7px', borderRadius: '8px', fontSize: '9px', minWidth: '16px', textAlign: 'center',
+                  }}>{n.v}</span>
+                  <span>{n.txt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+
+        <div style={{
+          marginTop: '6px', fontSize: '8.5px', fontStyle: 'italic',
+          color: '#475569', textAlign: 'center', pageBreakInside: 'avoid',
+        }}>
+          En dehors du niveau de soins indiqué, le médecin contacté définira la conduite à tenir.
+        </div>
+
+        <style>{`@page { size: A4 landscape; margin: 6mm; } @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`}</style>
       </div>
 
       {/* ══ MODALES ══════════════════════════════════════════════ */}
