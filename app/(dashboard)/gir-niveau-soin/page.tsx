@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X, Printer, Eye } from 'lucide-react';
+import { Loader2, X, Printer, Eye, History, RotateCcw } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
 import { useEffectiveRole } from '@/lib/use-effective-role';
@@ -148,6 +148,19 @@ async function fetchNiveaux(): Promise<NiveauSoinRecord[]> {
   return (data ?? []) as NiveauSoinRecord[];
 }
 
+async function snapshotNiveau(record: NiveauSoinRecord): Promise<void> {
+  if (!record.id) return;
+  const sb = createClient();
+  // Erreur silencieuse si la table de versions n'existe pas encore — l'écriture principale doit aboutir.
+  await sb.from('niveau_soin_version').insert({
+    niveau_soin_id: record.id,
+    resident_id: record.resident_id,
+    resident_name: record.resident_name,
+    saved_at: new Date().toISOString(),
+    data: record,
+  });
+}
+
 async function upsertNiveau(
   existing: NiveauSoinRecord | undefined,
   resident: Resident,
@@ -157,6 +170,8 @@ async function upsertNiveau(
   const residentName = `${resident.last_name} ${resident.first_name ?? ''}`.trim();
 
   if (existing?.id) {
+    // Snapshot avant modification (best-effort)
+    snapshotNiveau(existing).catch(() => {});
     const { data, error } = await sb
       .from('niveau_soin')
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -281,6 +296,131 @@ function ConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel
   );
 }
 
+interface NiveauSoinVersion {
+  id: string;
+  niveau_soin_id: string | null;
+  resident_id: string;
+  resident_name: string | null;
+  saved_at: string;
+  data: NiveauSoinRecord;
+}
+
+function HistoryModal({
+  resident, current, onClose, onRestore, readOnly,
+}: {
+  resident: Resident;
+  current: NiveauSoinRecord | undefined;
+  onClose: () => void;
+  onRestore: (data: NiveauSoinRecord) => void;
+  readOnly: boolean;
+}) {
+  const { data: versions = [], isLoading } = useQuery({
+    queryKey: ['niveau_soin_versions', resident.id],
+    queryFn: async () => {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from('niveau_soin_version')
+        .select('*')
+        .eq('resident_id', resident.id)
+        .order('saved_at', { ascending: false })
+        .limit(50);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as NiveauSoinVersion[];
+    },
+  });
+
+  const fmt = (v: string | null | undefined) => v && v !== '' ? v : '—';
+  const fmtAppel = (v: boolean | null | undefined) =>
+    v === true ? 'Oui' : v === false ? 'Non' : '—';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-semibold text-slate-900">Historique des modifications</h2>
+            <p className="text-xs text-slate-500">
+              {resident.title} {resident.last_name} {resident.first_name} · Ch.{resident.room}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-3">
+          {/* Version actuelle */}
+          {current && (
+            <div className="border-2 border-purple-300 bg-purple-50 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Version actuelle</span>
+                <span className="text-xs text-purple-600">en cours</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div><span className="text-slate-500">GIR :</span> <b>{fmt(current.gir)}</b></div>
+                <div><span className="text-slate-500">Niveau de soin :</span> <b>{fmt(current.niveau_soin)}</b></div>
+                <div><span className="text-slate-500">Appel nuit :</span> <b>{fmtAppel(current.appel_nuit)}</b></div>
+                <div><span className="text-slate-500">Info appel :</span> <b>{fmt(current.appel_nuit_info)}</b></div>
+                <div className="col-span-2"><span className="text-slate-500">Pompes funèbres :</span> <b>{fmt(current.pompes_funebres)}</b></div>
+              </div>
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
+          )}
+
+          {!isLoading && versions.length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-6">
+              Aucune version archivée.<br />
+              <span className="text-xs">Les modifications seront archivées automatiquement.</span>
+            </p>
+          )}
+
+          {versions.map((v, i) => {
+            const d = v.data || ({} as NiveauSoinRecord);
+            return (
+              <div key={v.id} className="border border-slate-200 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-semibold text-slate-800">
+                      Version {versions.length - i}
+                    </span>
+                    <span className="text-xs text-slate-500 ml-2">
+                      {new Date(v.saved_at).toLocaleString('fr-FR')}
+                    </span>
+                  </div>
+                  {!readOnly && (
+                    <button onClick={() => onRestore(d)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors">
+                      <RotateCcw className="h-3 w-3" /> Restaurer
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div><span className="text-slate-500">GIR :</span> <b>{fmt(d.gir)}</b></div>
+                  <div><span className="text-slate-500">Niveau de soin :</span> <b>{fmt(d.niveau_soin)}</b></div>
+                  <div><span className="text-slate-500">Appel nuit :</span> <b>{fmtAppel(d.appel_nuit)}</b></div>
+                  <div><span className="text-slate-500">Info appel :</span> <b>{fmt(d.appel_nuit_info)}</b></div>
+                  <div className="col-span-2"><span className="text-slate-500">Pompes funèbres :</span> <b>{fmt(d.pompes_funebres)}</b></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="p-3 border-t flex justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // PAGE PRINCIPALE
 // ─────────────────────────────────────────────────────────────
@@ -312,6 +452,7 @@ export default function GIRNiveauSoinPage() {
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [localUpdates, setLocalUpdates] = useState<Record<string, Partial<NiveauSoinRecord>>>({});
+  const [historyResident, setHistoryResident] = useState<Resident | null>(null);
 
   // ── Data ──
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
@@ -338,6 +479,30 @@ export default function GIRNiveauSoinPage() {
     records[residentId] ?? { resident_id: residentId, resident_name: '', gir: '', niveau_soin: '', appel_nuit: null, appel_nuit_info: '', pompes_funebres: '' },
     [records]
   );
+
+  const restoreVersion = useCallback(async (resident: Resident, data: NiveauSoinRecord) => {
+    if (!confirm('Restaurer cette version ? La version actuelle sera archivée avant remplacement.')) return;
+    const existing = records[resident.id];
+    const patch: Partial<NiveauSoinRecord> = {
+      gir: data.gir ?? '',
+      niveau_soin: data.niveau_soin ?? '',
+      appel_nuit: data.appel_nuit ?? null,
+      appel_nuit_info: data.appel_nuit_info ?? '',
+      pompes_funebres: data.pompes_funebres ?? '',
+    };
+    try {
+      await upsertNiveau(existing, resident, patch);
+      if ((data.appel_nuit ?? null) !== (existing?.appel_nuit ?? null)) {
+        await syncAppelNuit(resident.id, data.appel_nuit ?? null);
+      }
+      queryClient.invalidateQueries({ queryKey: ['niveau_soin'] });
+      queryClient.invalidateQueries({ queryKey: ['niveau_soin_versions', resident.id] });
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      setHistoryResident(null);
+    } catch (e) {
+      alert(`Erreur lors de la restauration : ${(e as Error).message}`);
+    }
+  }, [records, queryClient]);
 
   // ── Update logic ──
   const doUpdate = useCallback(async (
@@ -605,6 +770,16 @@ export default function GIRNiveauSoinPage() {
       </div>
 
       {/* ══ MODALES ══════════════════════════════════════════════ */}
+      {historyResident && (
+        <HistoryModal
+          resident={historyResident}
+          current={records[historyResident.id]}
+          onClose={() => setHistoryResident(null)}
+          onRestore={data => restoreVersion(historyResident, data)}
+          readOnly={readOnly}
+        />
+      )}
+
       {pendingChange && (
         <ConfirmModal onConfirm={handleConfirm} onCancel={() => setPendingChange(null)} />
       )}
@@ -730,6 +905,13 @@ export default function GIRNiveauSoinPage() {
                       {saving[r.id] && <Loader2 className="h-3 w-3 animate-spin text-slate-400 flex-shrink-0" />}
                       <span>{r.title} {r.last_name} {r.first_name ?? ''}</span>
                       <span className="text-xs text-slate-400 ml-1">Ch.{r.room}</span>
+                      <button
+                        onClick={() => setHistoryResident(r)}
+                        title="Voir l'historique des modifications"
+                        className="ml-1 p-1 rounded hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition-colors"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </td>
 
