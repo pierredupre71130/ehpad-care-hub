@@ -1210,21 +1210,45 @@ ${sec('Objectifs et signature',
                       </button>
                     </div>
                     {assigningReferentFor === r.id && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                      <div className="mt-2 space-y-2">
                         {allReferents.length === 0 && <span className="text-xs text-slate-400">Aucun référent existant.</span>}
-                        {allReferents.map(ref => {
-                          const refCount = residents.filter(res2 => res2.referent === ref).length;
-                          return (
-                            <button key={ref}
-                              onClick={async () => {
-                                await updateResidentMutation.mutateAsync({ id: r.id, referent: ref });
-                                setAssigningReferentFor(null);
-                              }}
-                              className="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md font-medium transition-colors">
-                              {ref} <span className="opacity-60">({refCount})</span>
-                            </button>
-                          );
-                        })}
+                        {(() => {
+                          const refsByCount = allReferents.map(ref => ({
+                            name: ref,
+                            count: residents.filter(res2 => res2.referent === ref).length,
+                          }));
+                          const groups = [...new Set(refsByCount.map(r => r.count))].sort((a, b) => a - b);
+                          const groupStyle = (n: number) => {
+                            if (n === 0) return { bg: 'bg-emerald-100', hover: 'hover:bg-emerald-200', text: 'text-emerald-800', border: 'border-emerald-300', label: 'Aucun résident', tag: 'bg-emerald-600 text-white' };
+                            if (n === 1) return { bg: 'bg-sky-100', hover: 'hover:bg-sky-200', text: 'text-sky-800', border: 'border-sky-300', label: '1 résident', tag: 'bg-sky-600 text-white' };
+                            if (n === 2) return { bg: 'bg-amber-100', hover: 'hover:bg-amber-200', text: 'text-amber-800', border: 'border-amber-300', label: '2 résidents', tag: 'bg-amber-600 text-white' };
+                            return { bg: 'bg-rose-100', hover: 'hover:bg-rose-200', text: 'text-rose-800', border: 'border-rose-300', label: `${n} résidents`, tag: 'bg-rose-600 text-white' };
+                          };
+                          return groups.map(grp => {
+                            const s = groupStyle(grp);
+                            const refs = refsByCount.filter(rc => rc.count === grp).sort((a, b) => a.name.localeCompare(b.name));
+                            return (
+                              <div key={grp} className={`border ${s.border} rounded-lg p-2 bg-white`}>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${s.tag} px-2 py-0.5 rounded-full`}>{s.label}</span>
+                                  <span className="text-[10px] text-slate-400">{refs.length} référent{refs.length > 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {refs.map(({ name, count }) => (
+                                    <button key={name}
+                                      onClick={async () => {
+                                        await updateResidentMutation.mutateAsync({ id: r.id, referent: name });
+                                        setAssigningReferentFor(null);
+                                      }}
+                                      className={`text-xs ${s.bg} ${s.hover} ${s.text} border ${s.border} px-2 py-1 rounded-md font-medium transition-colors`}>
+                                      {name} <span className="opacity-60">({count})</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
                   </div>
