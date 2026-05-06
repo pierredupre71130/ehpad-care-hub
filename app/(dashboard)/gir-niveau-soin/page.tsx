@@ -151,14 +151,17 @@ async function fetchNiveaux(): Promise<NiveauSoinRecord[]> {
 async function snapshotNiveau(record: NiveauSoinRecord): Promise<void> {
   if (!record.id) return;
   const sb = createClient();
-  // Erreur silencieuse si la table de versions n'existe pas encore — l'écriture principale doit aboutir.
-  await sb.from('niveau_soin_version').insert({
+  const { error } = await sb.from('niveau_soin_version').insert({
     niveau_soin_id: record.id,
     resident_id: record.resident_id,
     resident_name: record.resident_name,
     saved_at: new Date().toISOString(),
     data: record,
   });
+  if (error) {
+    console.error('[niveau_soin_version] snapshot failed:', error);
+    throw new Error(error.message);
+  }
 }
 
 async function upsertNiveau(
@@ -170,8 +173,10 @@ async function upsertNiveau(
   const residentName = `${resident.last_name} ${resident.first_name ?? ''}`.trim();
 
   if (existing?.id) {
-    // Snapshot avant modification (best-effort)
-    snapshotNiveau(existing).catch(() => {});
+    // Snapshot avant modification — l'erreur est loggée mais ne bloque pas l'écriture principale
+    snapshotNiveau(existing).catch(err => {
+      console.error('[GIR/Niveau] Archivage impossible :', err);
+    });
     const { data, error } = await sb
       .from('niveau_soin')
       .update({ ...patch, updated_at: new Date().toISOString() })
