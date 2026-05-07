@@ -110,21 +110,48 @@ function displayDate(val: string): string {
   return val;
 }
 
-function parseInfos(infos: string | null | undefined): { covid: string; grippe: string } {
-  if (!infos) return { covid: '', grippe: '' };
-  const parts: Record<string, string> = {};
+function parseInfosMap(infos: string | null | undefined): Record<string, string> {
+  if (!infos) return {};
+  const map: Record<string, string> = {};
   infos.split('|').forEach(p => {
-    const [k, v] = p.split(':');
-    if (k && v) parts[k.trim()] = v.trim();
+    const idx = p.indexOf(':');
+    if (idx > 0) {
+      const k = p.slice(0, idx).trim();
+      const v = p.slice(idx + 1).trim();
+      if (k) map[k] = v;
+    }
   });
-  return { covid: parts.covid || '', grippe: parts.grippe || '' };
+  return map;
 }
 
-function encodeInfos(covid: string, grippe: string): string | null {
-  const parts: string[] = [];
-  if (covid) parts.push(`covid:${covid}`);
-  if (grippe) parts.push(`grippe:${grippe}`);
+function encodeInfosMap(map: Record<string, string>): string | null {
+  const parts = Object.entries(map)
+    .filter(([, v]) => v && v.trim())
+    .map(([k, v]) => `${k}:${v.trim()}`);
   return parts.join('|') || null;
+}
+
+function parseInfos(infos: string | null | undefined): { covid: string; grippe: string } {
+  const m = parseInfosMap(infos);
+  return { covid: m.covid || '', grippe: m.grippe || '' };
+}
+
+function getLotFor(infos: string | null | undefined, column: string): string {
+  return parseInfosMap(infos)[`lot_${column}`] || '';
+}
+
+function withLot(infos: string | null | undefined, column: string, lot: string): string | null {
+  const map = parseInfosMap(infos);
+  if (lot && lot.trim()) map[`lot_${column}`] = lot.trim();
+  else delete map[`lot_${column}`];
+  return encodeInfosMap(map);
+}
+
+function withCovidGrippe(infos: string | null | undefined, covid: string, grippe: string): string | null {
+  const map = parseInfosMap(infos);
+  if (covid) map.covid = covid; else delete map.covid;
+  if (grippe) map.grippe = grippe; else delete map.grippe;
+  return encodeInfosMap(map);
 }
 
 function nextTetanosDate(isoDate: string | null | undefined): string {
@@ -162,13 +189,14 @@ function CellDisplay({ value }: { value: string | null | undefined }) {
 
 // ── EditableCell ──────────────────────────────────────────────────────────────
 
-function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccination', readOnly }: {
+function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccination', readOnly, lotValue }: {
   value: string | null | undefined;
   field: string;
   recordId: string;
   onSaved: () => void;
   tableName?: string;
   readOnly?: boolean;
+  lotValue?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value || '');
@@ -177,14 +205,18 @@ function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccinatio
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setVal(value || ''); }, [value]);
+  useEffect(() => { if (editing) setLot(lotValue || ''); }, [editing, lotValue]);
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
 
   const save = async (newVal: string, lotVal: string) => {
     setSaving(true);
     const toSave = normalizeDate(newVal) || null;
     const updates: Record<string, string | null> = { [field]: toSave, updated_at: new Date().toISOString() };
-    if (lotVal && tableName === 'vaccination') updates.infos = `Lot: ${lotVal}`;
     const sb = createClient();
+    if (lotVal && tableName === 'vaccination') {
+      const { data: cur } = await sb.from(tableName).select('infos').eq('id', recordId).maybeSingle();
+      updates.infos = withLot((cur?.infos as string) ?? null, field, lotVal);
+    }
     const { error } = await sb.from(tableName).update(updates).eq('id', recordId);
     setSaving(false);
     setEditing(false);
@@ -249,9 +281,14 @@ function EditableCell({ value, field, recordId, onSaved, tableName = 'vaccinatio
   return (
     <div
       onClick={readOnly ? undefined : () => setEditing(true)}
-      className={`${readOnly ? 'cursor-default' : 'cursor-pointer'} px-1 py-0.5 rounded hover:bg-slate-100 min-w-[60px] min-h-[22px] flex items-center justify-center`}
+      className={`${readOnly ? 'cursor-default' : 'cursor-pointer'} px-1 py-0.5 rounded hover:bg-slate-100 min-w-[60px] min-h-[22px] flex flex-col items-center justify-center`}
     >
       <CellDisplay value={value} />
+      {lotValue && (
+        <span className="text-[9px] text-slate-400 leading-tight" title={`Numéro de lot : ${lotValue}`}>
+          Lot {lotValue}
+        </span>
+      )}
     </div>
   );
 }
@@ -267,7 +304,7 @@ function InfosCell({ record, onSaved, readOnly }: { record: Vaccination; onSaved
     const newCovid = type === 'covid' ? (opt?.value || '') : covidVal;
     const newGrippe = type === 'grippe' ? (opt?.value || '') : grippeVal;
     const updates: Record<string, string | null> = {
-      infos: encodeInfos(newCovid, newGrippe),
+      infos: withCovidGrippe(record.infos, newCovid, newGrippe),
       updated_at: new Date().toISOString(),
     };
 
@@ -412,7 +449,7 @@ function BulkInjectModal({ column, label, records, onClose, onDone }: {
         [column]: normalized,
         updated_at: new Date().toISOString(),
       };
-      if (lot && !rec.infos) updates.infos = `Lot: ${lot}`;
+      if (lot && lot.trim()) updates.infos = withLot(rec.infos, column, lot);
       return sb.from('vaccination').update(updates).eq('id', rec.id);
     }));
     setSaving(false);
@@ -594,16 +631,16 @@ function VacRow({ resident, record, onSaved, showYear = false, onCreateRecord, r
       {record ? (
         <>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj1} field="covid_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
+            <EditableCell value={record.covid_inj1} field="covid_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} lotValue={getLotFor(record.infos, 'covid_inj1')} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj2} field="covid_inj2" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
+            <EditableCell value={record.covid_inj2} field="covid_inj2" recordId={record.id} onSaved={onSaved} readOnly={readOnly} lotValue={getLotFor(record.infos, 'covid_inj2')} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.covid_inj3} field="covid_inj3" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
+            <EditableCell value={record.covid_inj3} field="covid_inj3" recordId={record.id} onSaved={onSaved} readOnly={readOnly} lotValue={getLotFor(record.infos, 'covid_inj3')} />
           </td>
           <td className="px-2 py-1.5 text-center">
-            <EditableCell value={record.grippe_inj1} field="grippe_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} />
+            <EditableCell value={record.grippe_inj1} field="grippe_inj1" recordId={record.id} onSaved={onSaved} readOnly={readOnly} lotValue={getLotFor(record.infos, 'grippe_inj1')} />
           </td>
           <td className="px-2 py-1.5">
             <InfosCell record={record} onSaved={onSaved} readOnly={readOnly} />
@@ -889,14 +926,21 @@ export default function VaccinationPage() {
         if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return displayDate(v);
         return v;
       };
+      const cell = (val: string | null | undefined, col: string) => {
+        const main = d(val);
+        const lot = getLotFor(rec?.infos, col);
+        return `<td style="text-align:center">${main}${lot ? `<div style="font-size:9px;color:#64748b">Lot ${lot}</div>` : ''}</td>`;
+      };
+      const map = parseInfosMap(rec?.infos);
+      const statut = [map.covid && `Covid : ${map.covid}`, map.grippe && `Grippe : ${map.grippe}`].filter(Boolean).join(' • ');
       return `<tr>
         <td>${(r.last_name || '').toUpperCase()} ${r.first_name || ''}</td>
         <td style="text-align:center">${r.room || '—'}</td>
-        <td style="text-align:center">${d(rec?.covid_inj1)}</td>
-        <td style="text-align:center">${d(rec?.covid_inj2)}</td>
-        <td style="text-align:center">${d(rec?.covid_inj3)}</td>
-        <td style="text-align:center">${d(rec?.grippe_inj1)}</td>
-        <td>${rec?.infos || ''}</td>
+        ${cell(rec?.covid_inj1, 'covid_inj1')}
+        ${cell(rec?.covid_inj2, 'covid_inj2')}
+        ${cell(rec?.covid_inj3, 'covid_inj3')}
+        ${cell(rec?.grippe_inj1, 'grippe_inj1')}
+        <td>${statut}</td>
       </tr>`;
     }).join('');
     const win = window.open('', '_blank')!;
