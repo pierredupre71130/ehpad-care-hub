@@ -38,6 +38,7 @@ interface BasContentionRecord {
   prioritize_mollet: boolean;
   date_cmd_1: string | null;
   date_cmd_2: string | null;
+  taille_recommandee?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -293,6 +294,14 @@ function recordToForm(r: BasContentionRecord): FormState {
 }
 
 function formToInput(f: FormState, result: Result): BasContentionInput {
+  // Extrait "Taille X (LONG|COURT|NORMAL)" depuis result.text pour respecter
+  // la contrainte NOT NULL de la colonne taille_recommandee
+  const tMatch = result?.text?.match(/Taille\s*:?\s*([0-9]+)/i);
+  const variantMatch = result?.text?.match(/(LONG|COURT|NORMAL)/i);
+  const taille_recommandee = tMatch
+    ? `${tMatch[1]}${variantMatch ? ' ' + variantMatch[1].toUpperCase() : ''}`
+    : (result?.text ?? '');
+
   return {
     // resident_id reste null tant que la synchro n'est pas activée :
     // residents.id n'est pas un UUID dans cette base, on le réintégrera
@@ -308,6 +317,7 @@ function formToInput(f: FormState, result: Result): BasContentionInput {
     prioritize_mollet: f.prioritize_mollet,
     date_cmd_1: f.date_cmd_1 || null,
     date_cmd_2: f.date_cmd_2 || null,
+    taille_recommandee,
   };
 }
 
@@ -992,19 +1002,60 @@ export default function BasDeContentionPage() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       if (!Array.isArray(parsed)) throw new Error('Format JSON invalide');
-      const inputs: BasContentionInput[] = parsed.map((r: Partial<BasContentionRecord>) => ({
-        resident_id: null,
-        chambre: String(r.chambre ?? ''),
-        nom: String(r.nom ?? ''),
-        prenom: String(r.prenom ?? ''),
-        sexe: (r.sexe === 'Homme' ? 'Homme' : 'Femme') as Sexe,
-        product_type: (r.product_type === 'Bas' ? 'Bas' : 'Chaussette') as ProductType,
-        raw_mesures: (r.raw_mesures ?? {}) as RawMesures,
-        result: (r.result ?? {}) as Result,
-        prioritize_mollet: r.prioritize_mollet !== false,
-        date_cmd_1: r.date_cmd_1 ?? null,
-        date_cmd_2: r.date_cmd_2 ?? null,
-      }));
+
+      // Support des deux formats : nouveau (snake_case) et legacy (camelCase
+      // avec productType/rawMesures/date1/date2 issu de l'ancienne app)
+      const frToIso = (s: unknown): string | null => {
+        if (typeof s !== 'string' || !s.trim()) return null;
+        const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+        if (!m) return null;
+        const day = m[1].padStart(2, '0');
+        const month = m[2].padStart(2, '0');
+        const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+        return `${year}-${month}-${day}`;
+      };
+      const isoOrAsIs = (v: unknown): string | null => {
+        if (typeof v !== 'string' || !v.trim()) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+        return frToIso(v);
+      };
+      const extractTaille = (resultText: string | undefined | null): string => {
+        if (!resultText) return '';
+        // Récupère le numéro après "Taille :" puis ajoute LONG/COURT/NORMAL
+        const tMatch = resultText.match(/Taille\s*:?\s*([0-9]+)/i);
+        const variantMatch = resultText.match(/(LONG|COURT|NORMAL)/i);
+        if (!tMatch) return resultText;
+        return `${tMatch[1]}${variantMatch ? ' ' + variantMatch[1].toUpperCase() : ''}`;
+      };
+
+      const inputs: BasContentionInput[] = parsed.map((r: Record<string, unknown>) => {
+        const product_type =
+          (r.product_type ?? r.productType) === 'Bas' ? 'Bas' : 'Chaussette';
+        const raw_mesures = (r.raw_mesures ?? r.rawMesures ?? {}) as RawMesures;
+        const result = (r.result ?? {}) as Result;
+        const date_cmd_1 = isoOrAsIs(r.date_cmd_1 ?? r.date1);
+        const date_cmd_2 = isoOrAsIs(r.date_cmd_2 ?? r.date2);
+        const prioritize_mollet =
+          typeof result?.text === 'string'
+            ? /priorit[ée]\s*mollet/i.test(result.text)
+            : r.prioritize_mollet !== false;
+        const taille_recommandee = extractTaille(result?.text);
+
+        return {
+          resident_id: null,
+          chambre: String(r.chambre ?? ''),
+          nom: String(r.nom ?? '').toUpperCase(),
+          prenom: formatProperCase(String(r.prenom ?? '')),
+          sexe: (r.sexe === 'Homme' ? 'Homme' : 'Femme') as Sexe,
+          product_type: product_type as ProductType,
+          raw_mesures,
+          result,
+          prioritize_mollet,
+          date_cmd_1,
+          date_cmd_2,
+          taille_recommandee,
+        } as BasContentionInput;
+      });
       importMut.mutate(inputs);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Import échoué');
