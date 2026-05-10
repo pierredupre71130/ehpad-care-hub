@@ -17,6 +17,7 @@ import {
   GraduationCap,
   TriangleAlert,
   Footprints,
+  BedDouble,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -216,6 +217,19 @@ export const MODULES: ModuleConfig[] = [
     categoryId: 'medical',
   },
   {
+    id: 'matelasCoussins',
+    label: 'Matelas / Coussins',
+    description: 'Inventaire et affectation des matelas et coussins antiescarres',
+    href: '/matelas-coussins',
+    icon: BedDouble,
+    cardFrom: '#0ea5a4',
+    cardTo: '#0d6e6d',
+    colorClass: 'border-teal-100 hover:border-teal-300 hover:bg-teal-50/60',
+    iconBg: 'bg-teal-100 text-teal-600',
+    visibleRoles: ['ide', 'cadre', 'admin'],
+    categoryId: 'medical',
+  },
+  {
     id: 'declarationChutes',
     label: 'Déclaration de Chutes',
     description: 'Fiches de déclaration et suivi des chutes',
@@ -273,10 +287,10 @@ export const ROLE_MODULES: Record<string, string[] | null> = {
   admin: null,
   psychologue: ['pap'],
   dieteticienne: ['surveillancePoids'],
-  cadre: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants'],
+  cadre: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins'],
   'aide-soignante': ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes'],
   as: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes'],
-  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'peremptions', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants'],
+  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'peremptions', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins'],
   secretaire: ['residents'],
   medecin: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'pap', 'surveillancePoids', 'basDeContention', 'declarationChutes'],
 };
