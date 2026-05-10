@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Footprints, ChevronRight, Plus, Pencil, Trash2, X, Check,
   Eye, Loader2, Search, ArrowLeft, Calculator, Sliders,
-  Printer, Upload, Download, Link2, Link2Off, Gamepad2,
+  Printer, Upload, Download, Link2, Link2Off, Gamepad2, FileText,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -903,6 +903,7 @@ export default function BasDeContentionPage() {
   const [search, setSearch] = useState('');
   const [editTarget, setEditTarget] = useState<BasContentionRecord | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BasContentionRecord | null>(null);
+  const [bonCmd, setBonCmd] = useState<BasContentionRecord | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [gameOpen, setGameOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1350,24 +1351,33 @@ export default function BasDeContentionPage() {
                         <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{fmtDateFR(r.date_cmd_1)}</td>
                         <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{fmtDateFR(r.date_cmd_2)}</td>
                         <td className="px-3 py-2 print:hidden">
-                          {canEdit && (
-                            <div className="flex gap-1 justify-end">
-                              <button
-                                onClick={() => setEditTarget(r)}
-                                title="Modifier"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => setConfirmDelete(r)}
-                                title="Supprimer"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex gap-1 justify-end">
+                            <button
+                              onClick={() => setBonCmd(r)}
+                              title="Bon de commande pharmacie"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </button>
+                            {canEdit && (
+                              <>
+                                <button
+                                  onClick={() => setEditTarget(r)}
+                                  title="Modifier"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete(r)}
+                                  title="Supprimer"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     </Fragment>
@@ -1478,6 +1488,203 @@ export default function BasDeContentionPage() {
           </div>
         </div>
       )}
+
+      {bonCmd && (
+        <BonCommandeModal record={bonCmd} onClose={() => setBonCmd(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BON DE COMMANDE — modale + génération PDF (via fenêtre d'impression)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BonCommandeModal({ record, onClose }: { record: BasContentionRecord; onClose: () => void }) {
+  const [quantity, setQuantity] = useState(1);
+  const [orderRef, setOrderRef] = useState(`BC-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
+  const today = new Date().toLocaleDateString('fr-FR');
+
+  const handlePrint = () => {
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Autorisez les popups pour imprimer'); return; }
+
+    const m = record.raw_mesures || {};
+    const measureRow = (label: string, val: string | undefined) =>
+      `<tr><td class="ml">${label}</td><td class="mv">${val ? `${val} cm` : '—'}</td></tr>`;
+
+    const isBas = record.product_type === 'Bas';
+    const result = record.result?.text || '—';
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>Bon de commande — ${record.nom} ${record.prenom}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;color:#0f172a;padding:14mm;font-size:11pt;line-height:1.45}
+  @page{size:A4 portrait;margin:0}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0e7490;padding-bottom:8mm;margin-bottom:8mm}
+  .ehpad{font-size:18pt;font-weight:700;color:#0e7490;letter-spacing:0.02em}
+  .ehpad-sub{font-size:10pt;color:#64748b;margin-top:1mm}
+  .meta{text-align:right;font-size:10pt;color:#475569}
+  .meta b{color:#0f172a}
+  h2{font-size:13pt;color:#0e7490;border-left:4px solid #0e7490;padding-left:6px;margin:6mm 0 3mm}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:3mm 8mm}
+  .field{padding:3mm 4mm;border:1px solid #cbd5e1;border-radius:3mm;background:#f8fafc}
+  .field .label{font-size:8.5pt;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:1mm;font-weight:700}
+  .field .value{font-size:11pt;color:#0f172a;font-weight:500}
+  .product-box{border:2px solid #0e7490;border-radius:4mm;padding:5mm;background:#ecfeff;margin-top:3mm}
+  .product-title{font-size:14pt;font-weight:700;color:#0e7490;margin-bottom:2mm}
+  .badges{display:flex;flex-wrap:wrap;gap:3mm;margin-top:2mm}
+  .badge{display:inline-block;background:#0e7490;color:white;padding:1.5mm 4mm;border-radius:3mm;font-size:10pt;font-weight:600}
+  .badge.alt{background:white;color:#0e7490;border:1.5px solid #0e7490}
+  .qty{font-size:13pt;font-weight:700;color:#0f172a}
+  table.measures{width:100%;border-collapse:collapse;margin-top:2mm}
+  table.measures th{background:#475569;color:white;padding:2.5mm;text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:0.04em}
+  table.measures td{border:1px solid #cbd5e1;padding:2.5mm;font-size:10.5pt}
+  table.measures td.ml{font-weight:600;width:55%;color:#475569}
+  table.measures td.mv{font-weight:700;color:#0f172a;text-align:right}
+  .signature-row{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:14mm}
+  .signature-box .label{font-size:9.5pt;color:#64748b;font-weight:600;margin-bottom:1mm;text-transform:uppercase}
+  .signature-box .area{border-bottom:1px solid #94a3b8;height:18mm}
+  .footer{margin-top:14mm;padding-top:4mm;border-top:1px dashed #94a3b8;font-size:8.5pt;color:#94a3b8;text-align:center}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head><body>
+
+<div class="header">
+  <div>
+    <div class="ehpad">EHPAD GUEUGNON</div>
+    <div class="ehpad-sub">Bon de commande — Bas / Chaussettes de contention</div>
+  </div>
+  <div class="meta">
+    <div><b>Bon n° :</b> ${orderRef}</div>
+    <div><b>Date :</b> ${today}</div>
+  </div>
+</div>
+
+<h2>Patient</h2>
+<div class="grid2">
+  <div class="field">
+    <div class="label">Nom</div>
+    <div class="value">${(record.nom || '').toUpperCase()}</div>
+  </div>
+  <div class="field">
+    <div class="label">Prénom</div>
+    <div class="value">${record.prenom || ''}</div>
+  </div>
+  <div class="field">
+    <div class="label">Chambre</div>
+    <div class="value">${record.chambre || '—'}</div>
+  </div>
+  <div class="field">
+    <div class="label">Sexe</div>
+    <div class="value">${record.sexe || '—'}</div>
+  </div>
+</div>
+
+<h2>Produit demandé</h2>
+<div class="product-box">
+  <div class="product-title">${record.product_type === 'Bas' ? 'Bas de contention' : 'Chaussettes de contention'}</div>
+  <div class="badges">
+    <span class="badge">${result}</span>
+    ${record.prioritize_mollet ? '<span class="badge alt">Priorité mollet</span>' : ''}
+    <span class="badge alt">Sexe : ${record.sexe}</span>
+    <span class="badge alt qty">Quantité : ${quantity} paire${quantity > 1 ? 's' : ''}</span>
+  </div>
+</div>
+
+<h2>Mesures détaillées</h2>
+<table class="measures">
+  <thead><tr><th style="width:55%">Mesure</th><th style="text-align:right">Valeur</th></tr></thead>
+  <tbody>
+    ${measureRow('A — Tour de cheville', m.a)}
+    ${isBas
+      ? measureRow('C — Tour mi-cuisse / cuisse', m.c)
+      : measureRow('B — Tour de mollet', m.b)}
+    ${isBas
+      ? measureRow('E — Hauteur (sol → pli inguinal)', m.e)
+      : measureRow('D — Hauteur (sol → creux poplité)', m.d)}
+    ${m.f ? measureRow('F — Mesure complémentaire', m.f) : ''}
+  </tbody>
+</table>
+
+<div class="signature-row">
+  <div class="signature-box">
+    <div class="label">Cachet / Signature prescripteur</div>
+    <div class="area"></div>
+  </div>
+  <div class="signature-box">
+    <div class="label">Pharmacie — réception</div>
+    <div class="area"></div>
+  </div>
+</div>
+
+<div class="footer">
+  EHPAD Gueugnon — Document généré le ${today}
+</div>
+
+</body></html>`;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  };
+
+  const m = record.raw_mesures || {};
+  const isBas = record.product_type === 'Bas';
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-semibold text-slate-900">Bon de commande</h2>
+            <p className="text-xs text-slate-500">{record.nom?.toUpperCase()} {record.prenom} · Ch. {record.chambre}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">N° de bon</label>
+              <input value={orderRef} onChange={e => setOrderRef(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:border-teal-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Quantité (paires)</label>
+              <input type="number" min={1} max={20} value={quantity}
+                onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-teal-400" />
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-1">
+            <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Récapitulatif</div>
+            <div><b>Produit :</b> {isBas ? 'Bas de contention' : 'Chaussettes'} {record.sexe === 'Homme' ? '(Homme)' : '(Femme)'}</div>
+            <div><b>Taille :</b> {record.result?.text || '—'}</div>
+            {record.prioritize_mollet && <div className="text-amber-700 text-xs">Priorité mollet</div>}
+            <div className="text-xs text-slate-500 pt-1">
+              Mesures : {summarizeMesures(m) || '—'}
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500 italic">
+            Ouvre une fenêtre d&apos;impression — choisis « Enregistrer en PDF » dans la boîte de dialogue d&apos;impression pour envoyer le fichier à la pharmacie.
+          </p>
+        </div>
+        <div className="flex gap-2 justify-end p-4 border-t">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+            Annuler
+          </button>
+          <button onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 transition-colors">
+            <Printer className="h-4 w-4" /> Générer le bon
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
