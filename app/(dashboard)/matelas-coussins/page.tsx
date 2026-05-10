@@ -813,37 +813,75 @@ body{margin:0;padding:8mm;font-family:Arial,sans-serif}
 
 function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (text: string) => void }) {
   const containerId = 'mat-couss-qr-scanner';
-  const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scannerRef = useRef<any>(null);
+  const onResultRef = useRef(onResult);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(true);
+  const [manual, setManual] = useState('');
+
+  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
 
   useEffect(() => {
     let cancelled = false;
+    let scanner: { stop: () => Promise<void>; clear: () => void } | null = null;
+
     (async () => {
       try {
-        // Dynamic import to avoid SSR issues
+        if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Caméra non disponible sur ce navigateur');
+        }
         const mod = await import('html5-qrcode');
         if (cancelled) return;
         const { Html5Qrcode } = mod;
-        const scanner = new Html5Qrcode(containerId);
-        scannerRef.current = scanner as unknown as typeof scannerRef.current;
-        await scanner.start(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const inst = new Html5Qrcode(containerId) as any;
+        scanner = inst;
+        scannerRef.current = inst;
+        await inst.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 240, height: 240 } },
-          decoded => {
-            scanner.stop().finally(() => onResult(decoded));
+          (decoded: string) => {
+            const text = decoded.trim();
+            if (!text) return;
+            inst.stop()
+              .catch(() => {})
+              .finally(() => onResultRef.current(text));
           },
           () => { /* ignore frame errors */ },
         );
+        if (cancelled) {
+          await inst.stop().catch(() => {});
+        } else {
+          setStarting(false);
+        }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Caméra inaccessible');
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Caméra inaccessible');
+          setStarting(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
-      const s = scannerRef.current;
-      if (s) s.stop().catch(() => {}).finally(() => s.clear());
+      const s = scanner ?? scannerRef.current;
+      if (s) {
+        Promise.resolve(s.stop?.()).catch(() => {}).finally(() => {
+          try { s.clear?.(); } catch { /* noop */ }
+        });
+      }
     };
-  }, [onResult]);
+    // Le scanner ne doit démarrer/s'arrêter qu'au montage et au démontage —
+    // les callbacks lus via une ref pour éviter le redémarrage à chaque render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submitManual = () => {
+    const t = manual.trim();
+    if (!t) return;
+    onResultRef.current(t);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -853,10 +891,39 @@ function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (t
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
         </div>
         <div className="p-4 space-y-3">
-          {error
-            ? <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>
-            : <p className="text-xs text-slate-500">Pointez la caméra vers le QR code du matelas ou coussin.</p>}
-          <div id={containerId} className="rounded-lg overflow-hidden bg-black" />
+          {error ? (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+              {error}
+              <span className="block mt-1 text-xs text-red-500">
+                Vérifiez que vous êtes en HTTPS et que la caméra est autorisée pour ce site.
+              </span>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Pointez la caméra vers le QR code du matelas ou coussin.
+              {starting && ' Initialisation…'}
+            </p>
+          )}
+          <div
+            id={containerId}
+            className="rounded-lg overflow-hidden bg-black mx-auto"
+            style={{ width: '100%', maxWidth: 360, minHeight: 280 }}
+          />
+          <div className="border-t pt-3">
+            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">
+              Ou saisir le n° de série manuellement
+            </label>
+            <div className="flex gap-2">
+              <input value={manual} onChange={e => setManual(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submitManual()}
+                placeholder="Ex : MAT-001"
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:border-teal-400" />
+              <button onClick={submitManual} disabled={!manual.trim()}
+                className="px-3 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-40">
+                Valider
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
