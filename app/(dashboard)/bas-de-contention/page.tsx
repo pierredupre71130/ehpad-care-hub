@@ -1502,7 +1502,6 @@ export default function BasDeContentionPage() {
 
 function BonCommandeModal({ record, onClose }: { record: BasContentionRecord; onClose: () => void }) {
   const [quantity, setQuantity] = useState(1);
-  const [orderRef, setOrderRef] = useState(`BC-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
   const today = new Date().toLocaleDateString('fr-FR');
 
   const handlePrint = () => {
@@ -1557,7 +1556,6 @@ function BonCommandeModal({ record, onClose }: { record: BasContentionRecord; on
     <div class="ehpad-sub">Bon de commande — Bas / Chaussettes de contention</div>
   </div>
   <div class="meta">
-    <div><b>Bon n° :</b> ${orderRef}</div>
     <div><b>Date :</b> ${today}</div>
   </div>
 </div>
@@ -1608,17 +1606,6 @@ function BonCommandeModal({ record, onClose }: { record: BasContentionRecord; on
   </tbody>
 </table>
 
-<div class="signature-row">
-  <div class="signature-box">
-    <div class="label">Cachet / Signature prescripteur</div>
-    <div class="area"></div>
-  </div>
-  <div class="signature-box">
-    <div class="label">Pharmacie — réception</div>
-    <div class="area"></div>
-  </div>
-</div>
-
 <div class="footer">
   EHPAD Gueugnon — Document généré le ${today}
 </div>
@@ -1646,18 +1633,11 @@ function BonCommandeModal({ record, onClose }: { record: BasContentionRecord; on
           </button>
         </div>
         <div className="p-5 space-y-4 overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">N° de bon</label>
-              <input value={orderRef} onChange={e => setOrderRef(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:border-teal-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Quantité (paires)</label>
-              <input type="number" min={1} max={20} value={quantity}
-                onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-teal-400" />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Quantité (paires)</label>
+            <input type="number" min={1} max={20} value={quantity}
+              onChange={e => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-teal-400" />
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-1">
