@@ -812,9 +812,7 @@ body{margin:0;padding:8mm;font-family:Arial,sans-serif}
 // ── QR scanner modal ─────────────────────────────────────────────────────────
 
 function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (text: string) => void }) {
-  const containerId = 'mat-couss-qr-scanner';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scannerRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const onResultRef = useRef(onResult);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
@@ -824,37 +822,91 @@ function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (t
 
   useEffect(() => {
     let cancelled = false;
-    let scanner: { stop: () => Promise<void>; clear: () => void } | null = null;
+    let stream: MediaStream | null = null;
+    let rafId = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let html5Scanner: any = null;
+    let stoppedHtml5 = false;
+
+    const finish = (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (rafId) cancelAnimationFrame(rafId);
+      if (html5Scanner && !stoppedHtml5) {
+        stoppedHtml5 = true;
+        Promise.resolve(html5Scanner.stop?.()).catch(() => {});
+      }
+      onResultRef.current(t);
+    };
+
+    const startNative = async (): Promise<boolean> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      if (typeof w.BarcodeDetector !== 'function') return false;
+      const formats = await w.BarcodeDetector.getSupportedFormats?.() ?? [];
+      if (formats.length && !formats.includes('qr_code')) return false;
+
+      const detector = new w.BarcodeDetector({ formats: ['qr_code'] });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      const video = videoRef.current;
+      if (!video) return false;
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      video.muted = true;
+      await video.play().catch(() => {});
+
+      const tick = async () => {
+        if (cancelled) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes && codes.length > 0 && codes[0].rawValue) {
+            finish(codes[0].rawValue);
+            return;
+          }
+        } catch { /* ignore frame errors */ }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+      return true;
+    };
+
+    const startHtml5 = async (): Promise<boolean> => {
+      try {
+        const mod = await import('html5-qrcode');
+        if (cancelled) return false;
+        const { Html5Qrcode } = mod;
+        const containerId = 'mat-couss-qr-fallback';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const inst = new Html5Qrcode(containerId) as any;
+        html5Scanner = inst;
+        await inst.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (text: string) => finish(text),
+          () => { /* ignore frame errors */ },
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     (async () => {
       try {
         if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
           throw new Error('Caméra non disponible sur ce navigateur');
         }
-        const mod = await import('html5-qrcode');
+        const okNative = await startNative();
         if (cancelled) return;
-        const { Html5Qrcode } = mod;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const inst = new Html5Qrcode(containerId) as any;
-        scanner = inst;
-        scannerRef.current = inst;
-        await inst.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          (decoded: string) => {
-            const text = decoded.trim();
-            if (!text) return;
-            inst.stop()
-              .catch(() => {})
-              .finally(() => onResultRef.current(text));
-          },
-          () => { /* ignore frame errors */ },
-        );
-        if (cancelled) {
-          await inst.stop().catch(() => {});
-        } else {
-          setStarting(false);
-        }
+        if (okNative) { setStarting(false); return; }
+        const okFallback = await startHtml5();
+        if (cancelled) return;
+        if (okFallback) { setStarting(false); return; }
+        throw new Error('Aucun moteur de scan QR disponible');
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Caméra inaccessible');
@@ -865,15 +917,15 @@ function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (t
 
     return () => {
       cancelled = true;
-      const s = scanner ?? scannerRef.current;
-      if (s) {
-        Promise.resolve(s.stop?.()).catch(() => {}).finally(() => {
-          try { s.clear?.(); } catch { /* noop */ }
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (html5Scanner && !stoppedHtml5) {
+        stoppedHtml5 = true;
+        Promise.resolve(html5Scanner.stop?.()).catch(() => {}).finally(() => {
+          try { html5Scanner.clear?.(); } catch { /* noop */ }
         });
       }
     };
-    // Le scanner ne doit démarrer/s'arrêter qu'au montage et au démontage —
-    // les callbacks lus via une ref pour éviter le redémarrage à chaque render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -885,7 +937,7 @@ function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (t
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold text-slate-900">Scanner un QR code</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
@@ -895,20 +947,18 @@ function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (t
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
               {error}
               <span className="block mt-1 text-xs text-red-500">
-                Vérifiez que vous êtes en HTTPS et que la caméra est autorisée pour ce site.
+                Utilisez la saisie manuelle ci-dessous.
               </span>
             </p>
           ) : (
             <p className="text-xs text-slate-500">
-              Pointez la caméra vers le QR code du matelas ou coussin.
-              {starting && ' Initialisation…'}
+              Pointez la caméra vers le QR code{starting ? ' — initialisation…' : ''}.
             </p>
           )}
-          <div
-            id={containerId}
-            className="rounded-lg overflow-hidden bg-black mx-auto"
-            style={{ width: '100%', maxWidth: 360, minHeight: 280 }}
-          />
+          <div className="rounded-lg overflow-hidden bg-black mx-auto relative" style={{ width: '100%', maxWidth: 360, minHeight: 280 }}>
+            <video ref={videoRef} className="w-full h-full object-cover block" playsInline muted />
+            <div id="mat-couss-qr-fallback" className="absolute inset-0" />
+          </div>
           <div className="border-t pt-3">
             <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">
               Ou saisir le n° de série manuellement
