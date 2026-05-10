@@ -80,6 +80,7 @@ export default function MatelasCoussinsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [assigning, setAssigning] = useState<Item | null>(null);
+  const [alreadyAssigned, setAlreadyAssigned] = useState<Item | null>(null);
   const [qrTarget, setQrTarget] = useState<Item | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [printAll, setPrintAll] = useState<Kind | null>(null);
@@ -398,6 +399,22 @@ export default function MatelasCoussinsPage() {
           onAssign={r => assignToResident.mutate({ itemId: assigning.id, resident: r })}
         />
       )}
+      {alreadyAssigned && (
+        <AlreadyAssignedModal
+          item={alreadyAssigned}
+          onClose={() => setAlreadyAssigned(null)}
+          onUnassign={() => {
+            assignToResident.mutate({ itemId: alreadyAssigned.id, resident: null });
+            setAlreadyAssigned(null);
+          }}
+          onReassign={() => {
+            const it = alreadyAssigned;
+            setAlreadyAssigned(null);
+            setAssigning(it);
+          }}
+          readOnly={readOnly}
+        />
+      )}
       {qrTarget && <QRPreviewModal item={qrTarget} onClose={() => setQrTarget(null)} />}
       {showTypes && (
         <TypesModal
@@ -414,7 +431,8 @@ export default function MatelasCoussinsPage() {
             setScanOpen(false);
             if (!found) { toast.error(`Aucun matériel avec n° ${serial}`); return; }
             setActiveTab(found.kind);
-            setAssigning(found);
+            if (found.resident_id) setAlreadyAssigned(found);
+            else setAssigning(found);
           }}
         />
       )}
@@ -582,6 +600,98 @@ function AssignModal({
 }
 
 // ── Types management modal ──────────────────────────────────────────────────
+
+// ── Already-assigned modal (after scan of an item already linked) ────────────
+
+function AlreadyAssignedModal({
+  item, onClose, onUnassign, onReassign, readOnly,
+}: {
+  item: Item;
+  onClose: () => void;
+  onUnassign: () => void;
+  onReassign: () => void;
+  readOnly: boolean;
+}) {
+  const kindLabel = item.kind === 'matelas' ? 'Matelas' : 'Coussin';
+  const assignedDate = item.assigned_at
+    ? new Date(item.assigned_at).toLocaleDateString('fr-FR')
+    : null;
+
+  // Cherche la chambre dans le cache résidents si possible
+  const supabase = createClient();
+  const { data: residentInfo } = useQuery({
+    queryKey: ['resident-room', item.resident_id],
+    queryFn: async () => {
+      if (!item.resident_id) return null;
+      const { data } = await supabase
+        .from('residents')
+        .select('room, title, first_name, last_name')
+        .eq('id', item.resident_id)
+        .maybeSingle();
+      return data as { room: string; title: string; first_name: string; last_name: string } | null;
+    },
+    enabled: !!item.resident_id,
+    staleTime: 60_000,
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b bg-amber-50 rounded-t-2xl">
+          <div>
+            <h2 className="font-semibold text-amber-900">⚠ Déjà attribué</h2>
+            <p className="text-xs text-amber-700">Ce {item.kind} est déjà affecté à un résident.</p>
+          </div>
+          <button onClick={onClose} className="text-amber-700/70 hover:text-amber-900">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+            <div className="text-xs font-semibold text-slate-500 uppercase">Matériel</div>
+            <div className="font-mono font-bold text-slate-800">{item.serial_number}</div>
+            <div className="text-sm text-slate-600">
+              {kindLabel}{item.type_name && ` — ${item.type_name}`}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5">
+            <div className="text-xs font-semibold text-blue-700 uppercase">Affecté à</div>
+            <div className="text-base font-bold text-slate-800">
+              {residentInfo
+                ? `${residentInfo.title} ${residentInfo.last_name} ${residentInfo.first_name}`.trim()
+                : item.resident_name || '—'}
+            </div>
+            {residentInfo?.room && (
+              <div className="text-sm text-slate-600">Chambre <b>{residentInfo.room}</b></div>
+            )}
+            {assignedDate && (
+              <div className="text-xs text-slate-500">Depuis le {assignedDate}</div>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 justify-end p-4 border-t">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+            Fermer
+          </button>
+          {!readOnly && (
+            <>
+              <button onClick={onUnassign}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50">
+                <UserMinus className="h-4 w-4" /> Retirer l&apos;affectation
+              </button>
+              <button onClick={onReassign}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700">
+                <UserPlus className="h-4 w-4" /> Réaffecter
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TypesModal({
   kind, types, onClose,
