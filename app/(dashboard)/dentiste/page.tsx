@@ -75,6 +75,7 @@ export default function DentistePage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [search, setSearch] = useState('');
+  const [floor, setFloor] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
   const [showAlertSetting, setShowAlertSetting] = useState(false);
   const [showAlertList, setShowAlertList] = useState(false);
 
@@ -190,6 +191,7 @@ export default function DentistePage() {
   const filteredResidents = useMemo(() => {
     const q = search.toLowerCase().trim();
     return residents
+      .filter(r => floor === 'ALL' || (r.floor || '').toUpperCase() === floor)
       .filter(r => !q ||
         `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q))
       .sort((a, b) => {
@@ -197,7 +199,7 @@ export default function DentistePage() {
         const nb = parseInt((b.room || '').replace(/\D/g, '') || '0');
         return na - nb;
       });
-  }, [residents, search]);
+  }, [residents, search, floor]);
 
   if (loadingResidents || loadingVisites) {
     return (
@@ -277,12 +279,22 @@ export default function DentistePage() {
         </div>
 
         {/* Toolbar */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3 flex gap-3 items-center">
-          <div className="relative flex-1">
+        <div className="bg-white rounded-xl border border-slate-200 p-3 flex gap-3 items-center flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Rechercher un résident (nom, chambre)…"
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400" />
+          </div>
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
+            {([['ALL', 'Tous'], ['RDC', 'RDC'], ['1ER', '1er']] as const).map(([val, lbl]) => (
+              <button key={val} onClick={() => setFloor(val)}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                  floor === val ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-white'
+                }`}>
+                {lbl}
+              </button>
+            ))}
           </div>
         </div>
 
