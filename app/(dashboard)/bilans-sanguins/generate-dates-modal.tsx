@@ -320,20 +320,21 @@ export default function GenerateDatesModal({
     const w = window.open('', '_blank');
     if (!w) { toast.error('Autorisez les popups pour imprimer'); return; }
     const monthLabel = MOIS_LABELS[mois - 1];
-    const rows = recapCells.map(({ cell, resident, days }) => {
-      const examens = getExamensForCell(cell, referentiels);
+    const sortedCells = [...recapCells].sort((a, b) => {
+      const da = a.days[0] ?? 99;
+      const db = b.days[0] ?? 99;
+      if (da !== db) return da - db;
+      return String(a.resident?.room ?? '').localeCompare(String(b.resident?.room ?? ''), undefined, { numeric: true });
+    });
+    const rows = sortedCells.map(({ cell, resident, days }) => {
       const jours = days.length > 0 ? days.join(', ') : '—';
-      const aJeun = aJeunMap[cell.id] ? 'Oui' : '';
-      const examensStr = examens.length > 0 ? examens.join(', ') : '';
       const safe = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return `<tr>
+        <td class="day">${jours}</td>
         <td class="ch">${safe(resident?.room || '')}</td>
         <td class="nom"><b>${safe((resident?.last_name || '').toUpperCase())}</b> ${safe(resident?.first_name || '')}</td>
         <td class="md">${safe(resident?.medecin || '—')}</td>
         <td class="lab">${safe(cell.bilan_label || '')}</td>
-        <td class="day">${jours}</td>
-        <td class="ajn">${aJeun}</td>
-        <td class="exam">${safe(examensStr)}</td>
       </tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
@@ -341,22 +342,20 @@ export default function GenerateDatesModal({
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,sans-serif;font-size:10pt;color:#0f172a;padding:8mm}
-  @page{size:A4 landscape;margin:8mm}
+  @page{size:A4 portrait;margin:8mm}
   h1{font-size:16pt;font-weight:700;color:#0f172a;margin-bottom:1mm}
   .sub{font-size:10pt;color:#64748b;margin-bottom:5mm}
   .stats{display:flex;gap:14px;font-size:10pt;color:#475569;margin-bottom:4mm}
   .stats b{color:#0f172a}
-  table{width:100%;border-collapse:collapse;font-size:9.5pt}
-  th{background:#1e293b;color:white;padding:4px 7px;text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:0.04em}
-  td{border:1px solid #cbd5e1;padding:4px 7px;vertical-align:top}
+  table{width:100%;border-collapse:collapse;font-size:10pt}
+  th{background:#1e293b;color:white;padding:5px 8px;text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:0.04em}
+  td{border:1px solid #cbd5e1;padding:5px 8px;vertical-align:top}
   tr:nth-child(even) td{background:#f8fafc}
-  td.ch{text-align:center;font-weight:600;width:28mm}
-  td.nom{width:50mm}
-  td.md{width:40mm;color:#475569}
-  td.lab{width:50mm}
-  td.day{width:22mm;text-align:center;font-weight:600}
-  td.ajn{width:14mm;text-align:center;font-weight:700;color:#b45309}
-  td.exam{font-size:8.5pt;color:#475569}
+  td.day{width:18mm;text-align:center;font-weight:700;color:#1e293b}
+  td.ch{text-align:center;font-weight:600;width:22mm}
+  td.nom{width:60mm}
+  td.md{width:45mm;color:#475569}
+  td.lab{color:#475569}
   @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head><body>
@@ -367,15 +366,13 @@ export default function GenerateDatesModal({
 </div>
 <table>
   <thead><tr>
+    <th>Jour(s)</th>
     <th>Chambre</th>
     <th>Résident</th>
     <th>Médecin</th>
     <th>Bilan</th>
-    <th>Jour(s)</th>
-    <th>À jeun</th>
-    <th>Examens</th>
   </tr></thead>
-  <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">Aucun bilan planifié</td></tr>'}</tbody>
+  <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:14px">Aucun bilan planifié</td></tr>'}</tbody>
 </table>
 </body></html>`;
     w.document.write(html);
