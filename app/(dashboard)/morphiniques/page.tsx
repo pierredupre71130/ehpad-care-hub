@@ -27,7 +27,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Trash2, Printer, Pill, ChevronRight, ArrowLeft, Eye } from 'lucide-react';
+import { Plus, Save, Trash2, Printer, Pill, ChevronRight, ArrowLeft, Eye, CalendarClock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
@@ -575,6 +575,8 @@ export default function MorphiniquesPage() {
 
   const [panelMode, setPanelMode] = useState<PanelMode>('list');
   const [selectedFiche, setSelectedFiche] = useState<SuiviAntalgique | null>(null);
+  const [editDateOpen, setEditDateOpen] = useState(false);
+  const [editDateValue, setEditDateValue] = useState('');
   const [wizard, setWizard] = useState<WizardState>(EMPTY_WIZARD);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; nom: string } | null>(null);
 
@@ -627,6 +629,28 @@ export default function MorphiniquesPage() {
       if (selectedFiche?.id === deleteTarget?.id) { setSelectedFiche(null); setPanelMode('list'); }
       setDeleteTarget(null);
       toast.success('Fiche supprimée');
+    },
+    onError: (e: Error) => toast.error(`Erreur : ${e.message}`),
+  });
+
+  // Mise à jour ciblée de la date de début (réédition d'une fiche existante)
+  const updateDateMutation = useMutation({
+    mutationFn: async ({ id, date }: { id: string; date: string }) => {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from('suivi_antalgique')
+        .update({ date_debut: date || null })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data as SuiviAntalgique;
+    },
+    onSuccess: updated => {
+      qc.invalidateQueries({ queryKey: ['suivi_antalgique'] });
+      setSelectedFiche(updated);
+      setEditDateOpen(false);
+      toast.success('Date de début mise à jour');
     },
     onError: (e: Error) => toast.error(`Erreur : ${e.message}`),
   });
@@ -840,15 +864,29 @@ export default function MorphiniquesPage() {
               </div>
             ) : (
               <div id="morphiniques-print-area" className="w-full" style={{ maxWidth: '210mm' }}>
-                <div className="flex items-center justify-between mb-4 print:hidden">
+                <div className="flex items-center justify-between mb-4 print:hidden flex-wrap gap-2">
                   <span className="text-sm text-slate-500 font-medium">Aperçu avant impression</span>
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors shadow"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Imprimer
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {selectedFiche.type_suivi === 'calendrier' && !readOnly && (
+                      <button
+                        onClick={() => {
+                          setEditDateValue(selectedFiche.date_debut || '');
+                          setEditDateOpen(true);
+                        }}
+                        className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors shadow"
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                        Modifier date de début
+                      </button>
+                    )}
+                    <button
+                      onClick={handlePrint}
+                      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors shadow"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Imprimer
+                    </button>
+                  </div>
                 </div>
                 <div className="shadow-xl rounded-lg overflow-hidden border border-slate-200">
                   <ResidentSheet fiche={selectedFiche} />
@@ -880,6 +918,44 @@ export default function MorphiniquesPage() {
               <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Annuler</button>
               <button onClick={() => deleteMutation.mutate(deleteTarget.id)} disabled={deleteMutation.isPending || readOnly} className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors disabled:opacity-60">
                 {deleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modifier date de début ── */}
+      {editDateOpen && selectedFiche && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setEditDateOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                <CalendarClock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Modifier la date de début</h3>
+                <p className="text-sm text-slate-500 truncate">{selectedFiche.nom}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              Seule la date de début peut être modifiée ici. Pour changer d&apos;autres champs, supprimez et recréez la fiche.
+            </p>
+            <input type="date" autoFocus value={editDateValue}
+              onChange={e => setEditDateValue(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 mb-4" />
+            <div className="flex gap-2">
+              <button onClick={() => setEditDateOpen(false)}
+                className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">
+                Annuler
+              </button>
+              <button
+                onClick={() => updateDateMutation.mutate({ id: selectedFiche.id, date: editDateValue })}
+                disabled={updateDateMutation.isPending || !editDateValue}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-colors disabled:opacity-60">
+                {updateDateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Enregistrer
               </button>
             </div>
           </div>
