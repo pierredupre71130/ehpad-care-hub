@@ -146,13 +146,16 @@ export default function DentistePage() {
   });
 
   // ── Derived ────────────────────────────────────────────────
-  // Tous les onglets d'année (basé sur visites + année courante)
+  // Toutes les années stockées (hors année 0 = visite d'entrée) + l'année courante + N-1
+  const [extraYears, setExtraYears] = useState<number[]>([]);
   const availableYears = useMemo(() => {
-    const ys = new Set<number>(allVisites.map(v => v.annee));
+    const ys = new Set<number>();
+    allVisites.forEach(v => { if (v.annee > 0) ys.add(v.annee); });
     ys.add(currentYear);
     ys.add(currentYear - 1);
-    return [...ys].sort((a, b) => b - a);
-  }, [allVisites, currentYear]);
+    extraYears.forEach(y => ys.add(y));
+    return [...ys].sort((a, b) => a - b);
+  }, [allVisites, currentYear, extraYears]);
 
   const visitesByResidentAndYear = useMemo(() => {
     const map = new Map<string, Visite>();
@@ -260,6 +263,15 @@ export default function DentistePage() {
 
         {/* Year tabs */}
         <div className="bg-white border border-slate-200 rounded-2xl p-1.5 shadow-sm flex flex-wrap gap-1">
+          <button onClick={() => setYear(0)}
+            className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
+              year === 0
+                ? 'bg-violet-600 text-white'
+                : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200'
+            }`}>
+            Visite d&apos;entrée
+          </button>
+          <div className="w-px self-stretch bg-slate-200 mx-1" />
           {availableYears.map(y => (
             <button key={y} onClick={() => setYear(y)}
               className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
@@ -269,11 +281,24 @@ export default function DentistePage() {
             </button>
           ))}
           <button onClick={() => {
-            const minYear = availableYears[availableYears.length - 1];
-            setYear(minYear - 1);
+            const min = availableYears[0] ?? currentYear;
+            const max = availableYears[availableYears.length - 1] ?? currentYear;
+            const def = String(max + 1);
+            const input = window.prompt(
+              `Quelle année ajouter ?\n(Années existantes : ${min} → ${max})`,
+              def,
+            );
+            if (!input) return;
+            const y = parseInt(input.trim());
+            if (!Number.isInteger(y) || y < 1900 || y > 2200) {
+              toast.error('Année invalide');
+              return;
+            }
+            setExtraYears(prev => prev.includes(y) ? prev : [...prev, y]);
+            setYear(y);
           }}
-            title="Ajouter une année plus ancienne"
-            className="px-3 py-1.5 rounded-xl text-sm text-slate-400 hover:bg-slate-50">
+            title="Ajouter une année (passée ou future)"
+            className="px-3 py-1.5 rounded-xl text-sm text-slate-400 hover:bg-slate-50 hover:text-slate-700">
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -305,8 +330,12 @@ export default function DentistePage() {
               <tr className="bg-slate-50 border-b text-xs uppercase tracking-wide text-slate-500">
                 <th className="text-left px-3 py-2 w-20">Chambre</th>
                 <th className="text-left px-3 py-2">Résident</th>
-                <th className="text-left px-3 py-2 w-40">Visite dentiste {year}</th>
-                <th className="text-left px-3 py-2 w-40">RDV Cabinet {year}</th>
+                <th className="text-left px-3 py-2 w-40">
+                  {year === 0 ? "Date visite d'entrée" : `Visite dentiste ${year}`}
+                </th>
+                <th className="text-left px-3 py-2 w-40">
+                  {year === 0 ? 'RDV Cabinet (entrée)' : `RDV Cabinet ${year}`}
+                </th>
                 <th className="text-left px-3 py-2">Notes</th>
                 <th className="text-left px-3 py-2 w-28">Dernière visite</th>
               </tr>
