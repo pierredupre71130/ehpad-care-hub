@@ -315,6 +315,74 @@ export default function GenerateDatesModal({
   const handlePrintAll = () => printBatch(recapCells);
   const handlePrintSelected = () => printBatch(recapCells.filter(({ cell }) => selectedIds.has(cell.id)));
 
+  // ── Liste récapitulative du mois (PDF via fenêtre d'impression) ───────────
+  const handlePrintList = () => {
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Autorisez les popups pour imprimer'); return; }
+    const monthLabel = MOIS_LABELS[mois - 1];
+    const rows = recapCells.map(({ cell, resident, days }) => {
+      const examens = getExamensForCell(cell, referentiels);
+      const jours = days.length > 0 ? days.join(', ') : '—';
+      const aJeun = aJeunMap[cell.id] ? 'Oui' : '';
+      const examensStr = examens.length > 0 ? examens.join(', ') : '';
+      const safe = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<tr>
+        <td class="ch">${safe(resident?.room || '')}</td>
+        <td class="nom"><b>${safe((resident?.last_name || '').toUpperCase())}</b> ${safe(resident?.first_name || '')}</td>
+        <td class="md">${safe(resident?.medecin || '—')}</td>
+        <td class="lab">${safe(cell.bilan_label || '')}</td>
+        <td class="day">${jours}</td>
+        <td class="ajn">${aJeun}</td>
+        <td class="exam">${safe(examensStr)}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>Bilans sanguins — ${monthLabel} ${annee}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:10pt;color:#0f172a;padding:8mm}
+  @page{size:A4 landscape;margin:8mm}
+  h1{font-size:16pt;font-weight:700;color:#0f172a;margin-bottom:1mm}
+  .sub{font-size:10pt;color:#64748b;margin-bottom:5mm}
+  .stats{display:flex;gap:14px;font-size:10pt;color:#475569;margin-bottom:4mm}
+  .stats b{color:#0f172a}
+  table{width:100%;border-collapse:collapse;font-size:9.5pt}
+  th{background:#1e293b;color:white;padding:4px 7px;text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:0.04em}
+  td{border:1px solid #cbd5e1;padding:4px 7px;vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  td.ch{text-align:center;font-weight:600;width:28mm}
+  td.nom{width:50mm}
+  td.md{width:40mm;color:#475569}
+  td.lab{width:50mm}
+  td.day{width:22mm;text-align:center;font-weight:600}
+  td.ajn{width:14mm;text-align:center;font-weight:700;color:#b45309}
+  td.exam{font-size:8.5pt;color:#475569}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head><body>
+<h1>Bilans sanguins — ${monthLabel} ${annee}</h1>
+<div class="sub">Imprimé le ${new Date().toLocaleDateString('fr-FR')}</div>
+<div class="stats">
+  <span><b>Total :</b> ${recapCells.length} bilan(s)</span>
+</div>
+<table>
+  <thead><tr>
+    <th>Chambre</th>
+    <th>Résident</th>
+    <th>Médecin</th>
+    <th>Bilan</th>
+    <th>Jour(s)</th>
+    <th>À jeun</th>
+    <th>Examens</th>
+  </tr></thead>
+  <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">Aucun bilan planifié</td></tr>'}</tbody>
+</table>
+</body></html>`;
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 300);
+  };
+
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -361,7 +429,7 @@ export default function GenerateDatesModal({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
           <div>
@@ -393,7 +461,7 @@ export default function GenerateDatesModal({
                 <div key={cell.id} className={`flex items-center justify-between gap-3 border rounded-lg px-3 py-2 transition-colors ${
                   selectedIds.has(cell.id) ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-100'
                 }`}>
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <button onClick={() => toggleSelected(cell.id)}
                       className="text-slate-400 hover:text-indigo-600 transition-colors shrink-0"
                       title={selectedIds.has(cell.id) ? 'Désélectionner' : 'Sélectionner pour impression'}>
@@ -401,13 +469,13 @@ export default function GenerateDatesModal({
                         ? <CheckSquare className="h-4 w-4 text-indigo-600" />
                         : <Square className="h-4 w-4" />}
                     </button>
-                    <span className="text-xs font-bold text-slate-500 w-8 shrink-0">Ch.{resident!.room}</span>
-                    <span className="text-sm font-semibold text-slate-800 truncate">
+                    <span className="text-xs font-bold text-slate-500 w-12 shrink-0">Ch.{resident!.room}</span>
+                    <span className="text-sm font-semibold text-slate-800 truncate min-w-0">
                       {resident!.last_name} {resident!.first_name || ''}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-medium max-w-[160px] truncate" title={cell.bilan_label ?? ''}>
+                    <span className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-medium max-w-[220px] truncate" title={cell.bilan_label ?? ''}>
                       {cell.bilan_label}
                     </span>
                     {days.length > 0 ? (
@@ -450,6 +518,12 @@ export default function GenerateDatesModal({
                   </button>
                 )}
                 <div className="flex flex-wrap gap-2">
+                  <button onClick={handlePrintList}
+                    disabled={recapCells.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 text-sm hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+                    <Printer className="h-3.5 w-3.5" />
+                    Imprimer la liste du mois
+                  </button>
                   <button onClick={handlePrintAll}
                     disabled={printingId !== null || printingBatch || recapCells.length === 0}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50 transition-colors">
