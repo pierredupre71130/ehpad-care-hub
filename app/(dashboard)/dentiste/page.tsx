@@ -323,7 +323,7 @@ export default function DentistePage() {
             <thead>
               <tr className="bg-slate-50 border-b text-xs uppercase tracking-wide text-slate-500">
                 <th className="text-center px-1.5 py-2 sticky left-0 bg-slate-50 z-10 w-12 border-r">Ch.</th>
-                <th className="text-left px-2 py-2 sticky left-12 bg-slate-50 z-10 border-r" style={{ minWidth: 110 }}>Résident</th>
+                <th className="text-left px-2 py-2 sticky left-12 bg-slate-50 z-10 border-r whitespace-nowrap" style={{ width: '1%' }}>Résident</th>
                 <th className="text-left px-2 py-2 bg-violet-50 border-r border-violet-200" style={{ minWidth: 170 }}>
                   Visite d&apos;entrée
                 </th>
