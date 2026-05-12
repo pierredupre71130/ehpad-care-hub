@@ -35,6 +35,7 @@ interface Item {
   status: 'disponible' | 'attribue' | 'maintenance' | 'rebut';
   notes: string | null;
   assigned_at: string | null;
+  maintenance_at: string | null;
   created_at: string;
 }
 
@@ -141,7 +142,24 @@ export default function MatelasCoussinsPage() {
   // ── Mutations ───────────────────────────────────────────────
   const saveItem = useMutation({
     mutationFn: async (input: Partial<Item>) => {
-      const payload = { ...input, updated_at: new Date().toISOString() };
+      const previous = input.id ? items.find(i => i.id === input.id) : undefined;
+      const now = new Date().toISOString();
+      const payload: Partial<Item> = { ...input, updated_at: now };
+
+      // Synchronisation automatique des dates de statut
+      if (input.status === 'maintenance' && previous?.status !== 'maintenance') {
+        payload.maintenance_at = now;
+      } else if (input.status && input.status !== 'maintenance' && previous?.status === 'maintenance') {
+        payload.maintenance_at = null;
+      }
+      if (input.status === 'attribue' && previous?.status !== 'attribue' && !payload.assigned_at) {
+        payload.assigned_at = now;
+      } else if (input.status && input.status !== 'attribue' && previous?.status === 'attribue' && payload.resident_id === undefined) {
+        payload.assigned_at = null;
+        payload.resident_id = null;
+        payload.resident_name = null;
+      }
+
       if (input.id) {
         const { error } = await supabase.from('mat_couss_items').update(payload).eq('id', input.id);
         if (error) throw error;
@@ -168,20 +186,23 @@ export default function MatelasCoussinsPage() {
 
   const assignToResident = useMutation({
     mutationFn: async ({ itemId, resident }: { itemId: string; resident: Resident | null }) => {
+      const now = new Date().toISOString();
       const payload = resident
         ? {
             resident_id: resident.id,
             resident_name: `${resident.last_name} ${resident.first_name}`.trim(),
             status: 'attribue',
-            assigned_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            assigned_at: now,
+            maintenance_at: null,
+            updated_at: now,
           }
         : {
             resident_id: null,
             resident_name: null,
             status: 'disponible',
             assigned_at: null,
-            updated_at: new Date().toISOString(),
+            maintenance_at: null,
+            updated_at: now,
           };
       const { error } = await supabase.from('mat_couss_items').update(payload).eq('id', itemId);
       if (error) throw error;
@@ -324,10 +345,26 @@ export default function MatelasCoussinsPage() {
                       <td className="px-3 py-2 font-mono text-slate-800 font-semibold">{it.serial_number}</td>
                       <td className="px-3 py-2 text-slate-600">{it.type_name || <span className="text-slate-300 italic">—</span>}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${s.color}`}>{s.label}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border w-fit ${s.color}`}>{s.label}</span>
+                          {it.status === 'maintenance' && it.maintenance_at && (
+                            <span className="text-[10px] text-amber-700">
+                              depuis le {new Date(it.maintenance_at).toLocaleDateString('fr-FR')}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-slate-700">
-                        {it.resident_name || <span className="text-slate-300 italic">—</span>}
+                        {it.resident_name ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span>{it.resident_name}</span>
+                            {it.assigned_at && (
+                              <span className="text-[10px] text-slate-400">
+                                depuis le {new Date(it.assigned_at).toLocaleDateString('fr-FR')}
+                              </span>
+                            )}
+                          </div>
+                        ) : <span className="text-slate-300 italic">—</span>}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1 justify-end flex-wrap">
