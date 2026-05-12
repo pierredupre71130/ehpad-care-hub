@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Smile, Search, Loader2, ChevronRight, Eye, AlertTriangle, CalendarClock,
-  Settings, X, Save, Trash2, Plus,
+  Settings, X, Save, Plus, Trash2, MessageSquare, Pencil,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -29,9 +29,10 @@ interface Visite {
   id: string;
   resident_id: string;
   resident_name: string | null;
-  annee: number;
+  annee: number; // 0 = visite d'entrée
   date_visite: string | null;
-  rdv_cabinet: string | null;
+  rdv_cabinet: string | null;      // legacy single date
+  rdv_cabinets: string | null;     // CSV ISO dates
   notes: string | null;
   created_at?: string;
   updated_at?: string;
@@ -48,11 +49,37 @@ function fmtFR(iso: string | null | undefined): string {
   return d.toLocaleDateString('fr-FR');
 }
 
+function shortInitial(prenom: string | null | undefined): string {
+  if (!prenom) return '';
+  const first = prenom.trim().charAt(0);
+  if (!first) return '';
+  return first.toUpperCase() + '.';
+}
+
 function monthsBetween(isoDate: string, ref: Date = new Date()): number {
   const d = new Date(isoDate + 'T12:00:00');
   if (Number.isNaN(d.getTime())) return Infinity;
   return (ref.getFullYear() - d.getFullYear()) * 12 + (ref.getMonth() - d.getMonth())
     - (ref.getDate() < d.getDate() ? 1 : 0);
+}
+
+function parseCsvDates(csv: string | null | undefined): string[] {
+  if (!csv) return [];
+  return csv.split(',').map(s => s.trim()).filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
+}
+
+function joinCsvDates(arr: string[]): string | null {
+  const filtered = arr.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  return filtered.length ? filtered.sort().join(',') : null;
+}
+
+function allRdvDates(v: Visite | undefined): string[] {
+  if (!v) return [];
+  const list = parseCsvDates(v.rdv_cabinets);
+  if (v.rdv_cabinet && /^\d{4}-\d{2}-\d{2}$/.test(v.rdv_cabinet) && !list.includes(v.rdv_cabinet)) {
+    list.push(v.rdv_cabinet);
+  }
+  return list.sort();
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -73,11 +100,13 @@ export default function DentistePage() {
   const colorTo = colorOverrides['dentiste']?.to ?? mod?.cardTo ?? '#075985';
 
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
   const [search, setSearch] = useState('');
   const [floor, setFloor] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
+  const [extraYears, setExtraYears] = useState<number[]>([]);
   const [showAlertSetting, setShowAlertSetting] = useState(false);
   const [showAlertList, setShowAlertList] = useState(false);
+  const [editingNote, setEditingNote] = useState<{ resident: Resident; annee: number; current: string } | null>(null);
+  const [editingRdvs, setEditingRdvs] = useState<{ resident: Resident; annee: number; current: string[] } | null>(null);
 
   // ── Settings (alert threshold) ──────────────────────────────
   const { data: alertMonths = 12 } = useQuery({
@@ -136,19 +165,9 @@ export default function DentistePage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const deleteVisite = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('dentiste_visites').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['dentiste_visites'] }); toast.success('Effacé'); },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   // ── Derived ────────────────────────────────────────────────
   // Toutes les années stockées (hors année 0 = visite d'entrée) + l'année courante + N-1
-  const [extraYears, setExtraYears] = useState<number[]>([]);
-  const availableYears = useMemo(() => {
+  const yearColumns = useMemo(() => {
     const ys = new Set<number>();
     allVisites.forEach(v => { if (v.annee > 0) ys.add(v.annee); });
     ys.add(currentYear);
@@ -163,7 +182,7 @@ export default function DentistePage() {
     return map;
   }, [allVisites]);
 
-  const visitesByResidentAll = useMemo(() => {
+  const visitesByResident = useMemo(() => {
     const map = new Map<string, Visite[]>();
     allVisites.forEach(v => {
       const list = map.get(v.resident_id) ?? [];
@@ -174,17 +193,21 @@ export default function DentistePage() {
   }, [allVisites]);
 
   const lastVisitDate = (residentId: string): string | null => {
-    const all = visitesByResidentAll.get(residentId) ?? [];
-    const dates = all.map(v => v.date_visite).filter((d): d is string => !!d);
+    const all = visitesByResident.get(residentId) ?? [];
+    const dates: string[] = [];
+    all.forEach(v => {
+      if (v.date_visite) dates.push(v.date_visite);
+      dates.push(...allRdvDates(v));
+    });
     if (dates.length === 0) return null;
     return dates.sort().pop()!;
   };
 
-  // ── Alertes (résidents non vus depuis > alertMonths) ────────
+  // ── Alertes ─────────────────────────────────────────────────
   const residentsAlert = useMemo(() => {
     return residents.filter(r => {
       const last = lastVisitDate(r.id);
-      if (!last) return true; // jamais vu = alerte
+      if (!last) return true;
       return monthsBetween(last) >= alertMonths;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +227,18 @@ export default function DentistePage() {
       });
   }, [residents, search, floor]);
 
+  const addYearColumn = () => {
+    const max = yearColumns[yearColumns.length - 1] ?? currentYear;
+    const def = String(max + 1);
+    const input = window.prompt(`Quelle année ajouter ?`, def);
+    if (!input) return;
+    const y = parseInt(input.trim());
+    if (!Number.isInteger(y) || y < 1900 || y > 2200) {
+      toast.error('Année invalide'); return;
+    }
+    setExtraYears(prev => prev.includes(y) ? prev : [...prev, y]);
+  };
+
   if (loadingResidents || loadingVisites) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -215,7 +250,7 @@ export default function DentistePage() {
   return (
     <div className="min-h-screen" style={{ background: '#dde4ee' }}>
       <div className="relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${colorFrom}, ${colorTo})` }}>
-        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+        <div className="relative z-10 max-w-7xl mx-auto px-6 py-5">
           <div className="flex items-center gap-1.5 text-white/60 text-xs mb-4">
             <Link href="/" className="hover:text-white/90">Accueil</Link>
             <ChevronRight className="h-3 w-3" />
@@ -237,14 +272,13 @@ export default function DentistePage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
         {readOnly && (
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4" /> Vous consultez cette page en lecture seule.
           </div>
         )}
 
-        {/* Alerte > X mois */}
         {residentsAlert.length > 0 && (
           <button onClick={() => setShowAlertList(true)}
             className="w-full bg-amber-50 border border-amber-300 rounded-xl p-4 flex gap-3 items-start hover:bg-amber-100 transition-colors text-left">
@@ -253,62 +287,18 @@ export default function DentistePage() {
               <div className="font-semibold text-amber-900 text-sm">
                 {residentsAlert.length} résident{residentsAlert.length > 1 ? 's' : ''} non vu{residentsAlert.length > 1 ? 's' : ''} depuis plus de {alertMonths} mois
               </div>
-              <div className="text-xs text-amber-700 mt-0.5">
-                Cliquez pour voir la liste détaillée
-              </div>
+              <div className="text-xs text-amber-700 mt-0.5">Cliquez pour voir la liste détaillée</div>
             </div>
             <ChevronRight className="h-4 w-4 text-amber-600" />
           </button>
         )}
-
-        {/* Year tabs */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-1.5 shadow-sm flex flex-wrap gap-1">
-          <button onClick={() => setYear(0)}
-            className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
-              year === 0
-                ? 'bg-violet-600 text-white'
-                : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200'
-            }`}>
-            Visite d&apos;entrée
-          </button>
-          <div className="w-px self-stretch bg-slate-200 mx-1" />
-          {availableYears.map(y => (
-            <button key={y} onClick={() => setYear(y)}
-              className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
-                year === y ? 'bg-sky-600 text-white' : 'text-slate-500 hover:bg-slate-100'
-              }`}>
-              {y}
-            </button>
-          ))}
-          <button onClick={() => {
-            const min = availableYears[0] ?? currentYear;
-            const max = availableYears[availableYears.length - 1] ?? currentYear;
-            const def = String(max + 1);
-            const input = window.prompt(
-              `Quelle année ajouter ?\n(Années existantes : ${min} → ${max})`,
-              def,
-            );
-            if (!input) return;
-            const y = parseInt(input.trim());
-            if (!Number.isInteger(y) || y < 1900 || y > 2200) {
-              toast.error('Année invalide');
-              return;
-            }
-            setExtraYears(prev => prev.includes(y) ? prev : [...prev, y]);
-            setYear(y);
-          }}
-            title="Ajouter une année (passée ou future)"
-            className="px-3 py-1.5 rounded-xl text-sm text-slate-400 hover:bg-slate-50 hover:text-slate-700">
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
 
         {/* Toolbar */}
         <div className="bg-white rounded-xl border border-slate-200 p-3 flex gap-3 items-center flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher un résident (nom, chambre)…"
+              placeholder="Rechercher (nom, chambre)…"
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-slate-400" />
           </div>
           <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-1">
@@ -321,43 +311,87 @@ export default function DentistePage() {
               </button>
             ))}
           </div>
+          <button onClick={addYearColumn}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">
+            <Plus className="h-3.5 w-3.5" /> Ajouter une année
+          </button>
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <table className="text-sm border-collapse" style={{ minWidth: '100%' }}>
             <thead>
               <tr className="bg-slate-50 border-b text-xs uppercase tracking-wide text-slate-500">
-                <th className="text-left px-3 py-2 w-20">Chambre</th>
-                <th className="text-left px-3 py-2">Résident</th>
-                <th className="text-left px-3 py-2 w-40">
-                  {year === 0 ? "Date visite d'entrée" : `Visite dentiste ${year}`}
+                <th className="text-center px-1.5 py-2 sticky left-0 bg-slate-50 z-10 w-12 border-r">Ch.</th>
+                <th className="text-left px-2 py-2 sticky left-12 bg-slate-50 z-10 border-r" style={{ minWidth: 110 }}>Résident</th>
+                <th className="text-left px-2 py-2 bg-violet-50 border-r border-violet-200" style={{ minWidth: 170 }}>
+                  Visite d&apos;entrée
                 </th>
-                <th className="text-left px-3 py-2 w-40">
-                  {year === 0 ? 'RDV Cabinet (entrée)' : `RDV Cabinet ${year}`}
-                </th>
-                <th className="text-left px-3 py-2">Notes</th>
-                <th className="text-left px-3 py-2 w-28">Dernière visite</th>
+                {yearColumns.map(y => (
+                  <th key={y} className="text-left px-2 py-2 border-r" style={{ minWidth: 170 }}>
+                    Visite dentiste {y}
+                  </th>
+                ))}
+                <th className="text-left px-2 py-2 w-28">Dernière</th>
               </tr>
             </thead>
             <tbody>
               {filteredResidents.map(r => {
-                const v = visitesByResidentAndYear.get(`${r.id}_${year}`);
                 const last = lastVisitDate(r.id);
-                const overdueMonths = last ? monthsBetween(last) : Infinity;
-                const isOverdue = overdueMonths >= alertMonths;
+                const overdue = !last || monthsBetween(last) >= alertMonths;
                 return (
-                  <ResidentRow
-                    key={r.id}
-                    resident={r}
-                    visite={v}
-                    year={year}
-                    overdue={isOverdue}
-                    lastDate={last}
-                    readOnly={readOnly}
-                    onSave={patch => saveVisite.mutate({ resident: r, annee: year, patch })}
-                    onClear={() => v && deleteVisite.mutate(v.id)}
-                  />
+                  <tr key={r.id} className={`border-b last:border-0 ${overdue ? 'bg-amber-50/30' : ''} hover:bg-slate-50/40`}>
+                    <td className="px-1.5 py-1.5 text-center font-semibold text-slate-700 sticky left-0 bg-white z-10 border-r whitespace-nowrap">
+                      {r.room}
+                    </td>
+                    <td className="px-2 py-1.5 sticky left-12 bg-white z-10 border-r whitespace-nowrap">
+                      <span className="font-medium text-slate-800">
+                        {(r.last_name || '').toUpperCase()} {shortInitial(r.first_name)}
+                      </span>
+                      {overdue && (
+                        <AlertTriangle className="h-3 w-3 text-amber-600 inline-block ml-1" />
+                      )}
+                    </td>
+                    <YearCell
+                      resident={r}
+                      annee={0}
+                      visite={visitesByResidentAndYear.get(`${r.id}_0`)}
+                      readOnly={readOnly}
+                      tone="violet"
+                      onSave={patch => saveVisite.mutate({ resident: r, annee: 0, patch })}
+                      onEditNote={() => setEditingNote({
+                        resident: r, annee: 0,
+                        current: visitesByResidentAndYear.get(`${r.id}_0`)?.notes || '',
+                      })}
+                      onEditRdvs={() => setEditingRdvs({
+                        resident: r, annee: 0,
+                        current: allRdvDates(visitesByResidentAndYear.get(`${r.id}_0`)),
+                      })}
+                    />
+                    {yearColumns.map(y => (
+                      <YearCell
+                        key={y}
+                        resident={r}
+                        annee={y}
+                        visite={visitesByResidentAndYear.get(`${r.id}_${y}`)}
+                        readOnly={readOnly}
+                        onSave={patch => saveVisite.mutate({ resident: r, annee: y, patch })}
+                        onEditNote={() => setEditingNote({
+                          resident: r, annee: y,
+                          current: visitesByResidentAndYear.get(`${r.id}_${y}`)?.notes || '',
+                        })}
+                        onEditRdvs={() => setEditingRdvs({
+                          resident: r, annee: y,
+                          current: allRdvDates(visitesByResidentAndYear.get(`${r.id}_${y}`)),
+                        })}
+                      />
+                    ))}
+                    <td className="px-2 py-1.5 text-xs whitespace-nowrap">
+                      {last
+                        ? <span className={overdue ? 'text-amber-700 font-semibold' : 'text-slate-500'}>{fmtFR(last)}</span>
+                        : <span className="text-slate-300 italic">Jamais</span>}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -377,96 +411,224 @@ export default function DentistePage() {
           onClose={() => setShowAlertList(false)}
         />
       )}
+
+      {editingNote && (
+        <NoteEditModal
+          title={`Note — ${(editingNote.resident.last_name || '').toUpperCase()} ${shortInitial(editingNote.resident.first_name)}`}
+          subtitle={editingNote.annee === 0 ? "Visite d'entrée" : `Année ${editingNote.annee}`}
+          initial={editingNote.current}
+          onClose={() => setEditingNote(null)}
+          onSave={v => {
+            saveVisite.mutate({ resident: editingNote.resident, annee: editingNote.annee, patch: { notes: v.trim() || null } });
+            setEditingNote(null);
+          }}
+        />
+      )}
+
+      {editingRdvs && (
+        <RdvEditModal
+          title={`RDV Cabinet — ${(editingRdvs.resident.last_name || '').toUpperCase()} ${shortInitial(editingRdvs.resident.first_name)}`}
+          subtitle={editingRdvs.annee === 0 ? "Visite d'entrée" : `Année ${editingRdvs.annee}`}
+          initial={editingRdvs.current}
+          onClose={() => setEditingRdvs(null)}
+          onSave={list => {
+            saveVisite.mutate({
+              resident: editingRdvs.resident,
+              annee: editingRdvs.annee,
+              patch: { rdv_cabinets: joinCsvDates(list), rdv_cabinet: null },
+            });
+            setEditingRdvs(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ── Resident row with inline editable cells ─────────────────────────────────
+// ── Year cell ────────────────────────────────────────────────────────────────
 
-function ResidentRow({
-  resident, visite, year, overdue, lastDate, readOnly, onSave, onClear,
+function YearCell({
+  resident, annee, visite, readOnly, onSave, onEditNote, onEditRdvs, tone,
 }: {
   resident: Resident;
+  annee: number;
   visite?: Visite;
-  year: number;
-  overdue: boolean;
-  lastDate: string | null;
   readOnly: boolean;
   onSave: (patch: Partial<Visite>) => void;
-  onClear: () => void;
+  onEditNote: () => void;
+  onEditRdvs: () => void;
+  tone?: 'violet';
 }) {
   const [dateVisite, setDateVisite] = useState(visite?.date_visite || '');
-  const [rdvCabinet, setRdvCabinet] = useState(visite?.rdv_cabinet || '');
-  const [notes, setNotes] = useState(visite?.notes || '');
-  const [editingNotes, setEditingNotes] = useState(false);
-
   useEffect(() => { setDateVisite(visite?.date_visite || ''); }, [visite?.date_visite]);
-  useEffect(() => { setRdvCabinet(visite?.rdv_cabinet || ''); }, [visite?.rdv_cabinet]);
-  useEffect(() => { setNotes(visite?.notes || ''); }, [visite?.notes]);
 
-  const commitField = (field: keyof Visite, value: string) => {
-    const trimmed = value.trim() || null;
-    onSave({ [field]: trimmed });
+  const commit = () => {
+    const trimmed = dateVisite.trim() || null;
+    if (trimmed !== (visite?.date_visite || null)) {
+      onSave({ date_visite: trimmed });
+    }
   };
 
+  const rdvs = allRdvDates(visite);
+  const note = visite?.notes || '';
+  const bg = tone === 'violet' ? 'bg-violet-50/30' : '';
+  const border = tone === 'violet' ? 'border-violet-200' : '';
+
+  // void unused
+  void resident; void annee;
+
   return (
-    <tr className={`border-b last:border-0 ${overdue ? 'bg-amber-50/40' : ''} hover:bg-slate-50/40`}>
-      <td className="px-3 py-2 font-semibold text-slate-700">{resident.room}</td>
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-800">
-            {resident.title} {resident.last_name} {resident.first_name}
-          </span>
-          {overdue && (
-            <span title="Non vu depuis longtemps"
-              className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full">
-              <AlertTriangle className="h-3 w-3" /> Alerte
-            </span>
-          )}
-        </div>
-      </td>
-      <td className="px-3 py-2">
+    <td className={`px-2 py-1.5 border-r align-top ${bg} ${border}`} style={{ minWidth: 170 }}>
+      <div className="space-y-1">
         <input type="date" value={dateVisite || ''}
           onChange={e => setDateVisite(e.target.value)}
-          onBlur={() => dateVisite !== (visite?.date_visite || '') && commitField('date_visite', dateVisite)}
+          onBlur={commit}
           disabled={readOnly}
-          className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none focus:border-sky-400" />
-      </td>
-      <td className="px-3 py-2">
-        <input type="date" value={rdvCabinet || ''}
-          onChange={e => setRdvCabinet(e.target.value)}
-          onBlur={() => rdvCabinet !== (visite?.rdv_cabinet || '') && commitField('rdv_cabinet', rdvCabinet)}
-          disabled={readOnly}
-          className="w-full px-2 py-1 border border-slate-200 rounded text-sm outline-none focus:border-sky-400" />
-      </td>
-      <td className="px-3 py-2">
-        {editingNotes ? (
-          <div className="flex gap-1 items-center">
-            <input value={notes} onChange={e => setNotes(e.target.value)} autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') { commitField('notes', notes); setEditingNotes(false); } }}
-              onBlur={() => { if (notes !== (visite?.notes || '')) commitField('notes', notes); setEditingNotes(false); }}
-              className="flex-1 px-2 py-1 border border-sky-300 rounded text-sm outline-none" />
+          className="w-full px-1.5 py-0.5 border border-slate-200 rounded text-xs outline-none focus:border-sky-400" />
+
+        <div className="flex items-center gap-1">
+          <button onClick={onEditRdvs} disabled={readOnly}
+            title="RDV au cabinet du dentiste"
+            className="flex-1 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors text-left">
+            <CalendarClock className="h-3 w-3 text-sky-600 shrink-0" />
+            <span className="truncate text-slate-600">
+              {rdvs.length === 0
+                ? <span className="text-slate-400 italic">RDV cabinet</span>
+                : rdvs.map(d => fmtFR(d)).join(', ')}
+            </span>
+          </button>
+          <button onClick={onEditNote} disabled={readOnly}
+            title="Note"
+            className={`px-1.5 py-0.5 rounded border transition-colors ${
+              note
+                ? 'border-amber-300 bg-amber-50 text-amber-700'
+                : 'border-slate-200 text-slate-400 hover:bg-slate-50'
+            } disabled:opacity-50`}>
+            <MessageSquare className="h-3 w-3" />
+          </button>
+        </div>
+        {note && (
+          <div className="text-[10px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 truncate" title={note}>
+            {note}
           </div>
-        ) : (
-          <button onClick={() => !readOnly && setEditingNotes(true)} disabled={readOnly}
-            className="w-full text-left text-sm text-slate-600 px-2 py-1 hover:bg-slate-100 rounded min-h-[24px]">
-            {notes || <span className="text-slate-300 italic">—</span>}
-          </button>
         )}
-      </td>
-      <td className="px-3 py-2 text-xs whitespace-nowrap">
-        {lastDate
-          ? <span className={overdue ? 'text-amber-700 font-semibold' : 'text-slate-500'}>{fmtFR(lastDate)}</span>
-          : <span className="text-slate-300 italic">Jamais</span>}
-        {visite && !readOnly && (
-          <button onClick={onClear}
-            title="Effacer cette année"
-            className="ml-2 p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-600">
-            <Trash2 className="h-3 w-3 inline" />
+      </div>
+    </td>
+  );
+}
+
+// ── Note edit modal ──────────────────────────────────────────────────────────
+
+function NoteEditModal({
+  title, subtitle, initial, onClose, onSave,
+}: {
+  title: string;
+  subtitle: string;
+  initial: string;
+  onClose: () => void;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-semibold text-slate-900">{title}</h2>
+            <p className="text-xs text-slate-500">{subtitle}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5">
+          <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Note</label>
+          <textarea autoFocus value={value} onChange={e => setValue(e.target.value)} rows={4}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-sky-400 resize-y" />
+        </div>
+        <div className="flex gap-2 justify-end p-4 border-t">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
+          <button onClick={() => onSave(value)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">
+            <Save className="h-4 w-4" /> Enregistrer
           </button>
-        )}
-      </td>
-    </tr>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RDV cabinet edit modal (multiple dates) ─────────────────────────────────
+
+function RdvEditModal({
+  title, subtitle, initial, onClose, onSave,
+}: {
+  title: string;
+  subtitle: string;
+  initial: string[];
+  onClose: () => void;
+  onSave: (list: string[]) => void;
+}) {
+  const [list, setList] = useState<string[]>(() => [...initial]);
+  const [newDate, setNewDate] = useState('');
+
+  const add = () => {
+    if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+    if (list.includes(newDate)) return;
+    setList(prev => [...prev, newDate].sort());
+    setNewDate('');
+  };
+
+  const remove = (d: string) => setList(prev => prev.filter(x => x !== d));
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-semibold text-slate-900">{title}</h2>
+            <p className="text-xs text-slate-500">{subtitle}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Ajouter un RDV</label>
+            <div className="flex gap-2">
+              <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && add()}
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-sky-400" />
+              <button onClick={add} disabled={!newDate}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-40">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">RDV enregistrés</label>
+            {list.length === 0 ? (
+              <p className="text-sm text-slate-400 italic">Aucun</p>
+            ) : (
+              <div className="space-y-1.5">
+                {list.map(d => (
+                  <div key={d} className="flex items-center justify-between px-3 py-2 border border-slate-200 rounded-lg">
+                    <span className="text-sm font-medium text-slate-800">{fmtFR(d)}</span>
+                    <button onClick={() => remove(d)} className="p-1 rounded hover:bg-red-50 text-red-500">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end p-4 border-t">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
+          <button onClick={() => onSave(list)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">
+            <Save className="h-4 w-4" /> Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -511,9 +673,7 @@ function AlertSettingsModal({ current, onClose }: { current: number; onClose: ()
           </div>
         </div>
         <div className="flex gap-2 justify-end p-4 border-t">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
-            Annuler
-          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
           <button onClick={save} disabled={saving}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -569,7 +729,7 @@ function AlertListModal({
                 <div key={r.id} className="flex items-center justify-between gap-3 border border-slate-100 rounded-xl px-3 py-2">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-slate-800 truncate">
-                      {r.title} {r.last_name} {r.first_name}
+                      {(r.last_name || '').toUpperCase()} {shortInitial(r.first_name)}
                     </div>
                     <div className="text-xs text-slate-500">Ch. {r.room}</div>
                   </div>
@@ -587,3 +747,6 @@ function AlertListModal({
     </div>
   );
 }
+
+// Silence unused imports warnings if any
+void Pencil;
