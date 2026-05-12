@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Smile, Search, Loader2, ChevronRight, Eye, AlertTriangle, CalendarClock,
-  Settings, X, Save, Plus, Trash2, MessageSquare, Pencil,
+  Settings, X, Save, Plus, Trash2, MessageSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -25,15 +25,23 @@ interface Resident {
   archived?: boolean;
 }
 
+interface VisitEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: 'visite' | 'rdv';
+  note: string | null;
+}
+
 interface Visite {
   id: string;
   resident_id: string;
   resident_name: string | null;
   annee: number; // 0 = visite d'entrée
-  date_visite: string | null;
-  rdv_cabinet: string | null;      // legacy single date
-  rdv_cabinets: string | null;     // CSV ISO dates
-  notes: string | null;
+  date_visite: string | null;        // legacy
+  rdv_cabinet: string | null;        // legacy single
+  rdv_cabinets: string | null;       // legacy CSV
+  notes: string | null;              // legacy single note
+  entries: VisitEntry[] | null;      // nouveau modèle (jsonb)
   created_at?: string;
   updated_at?: string;
 }
@@ -68,11 +76,6 @@ function parseCsvDates(csv: string | null | undefined): string[] {
   return csv.split(',').map(s => s.trim()).filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
 }
 
-function joinCsvDates(arr: string[]): string | null {
-  const filtered = arr.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
-  return filtered.length ? filtered.sort().join(',') : null;
-}
-
 function allRdvDates(v: Visite | undefined): string[] {
   if (!v) return [];
   const list = parseCsvDates(v.rdv_cabinets);
@@ -80,6 +83,27 @@ function allRdvDates(v: Visite | undefined): string[] {
     list.push(v.rdv_cabinet);
   }
   return list.sort();
+}
+
+function newId(): string {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+// Lit la liste des entrées (visites + rdv) en repliant sur les champs legacy
+// si la colonne `entries` n'est pas encore renseignée pour cette ligne.
+function getEntries(v: Visite | undefined): VisitEntry[] {
+  if (!v) return [];
+  if (Array.isArray(v.entries) && v.entries.length > 0) return [...v.entries].sort(byDateAsc);
+  const out: VisitEntry[] = [];
+  if (v.date_visite && /^\d{4}-\d{2}-\d{2}$/.test(v.date_visite)) {
+    out.push({ id: newId(), date: v.date_visite, type: 'visite', note: v.notes || null });
+  }
+  allRdvDates(v).forEach(d => out.push({ id: newId(), date: d, type: 'rdv', note: null }));
+  return out.sort(byDateAsc);
+}
+
+function byDateAsc(a: VisitEntry, b: VisitEntry): number {
+  return a.date.localeCompare(b.date);
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -105,8 +129,7 @@ export default function DentistePage() {
   const [extraYears, setExtraYears] = useState<number[]>([]);
   const [showAlertSetting, setShowAlertSetting] = useState(false);
   const [showAlertList, setShowAlertList] = useState(false);
-  const [editingNote, setEditingNote] = useState<{ resident: Resident; annee: number; current: string } | null>(null);
-  const [editingRdvs, setEditingRdvs] = useState<{ resident: Resident; annee: number; current: string[] } | null>(null);
+  const [editing, setEditing] = useState<{ resident: Resident; annee: number; entries: VisitEntry[] } | null>(null);
 
   // ── Settings (alert threshold) ──────────────────────────────
   const { data: alertMonths = 12 } = useQuery({
@@ -195,10 +218,7 @@ export default function DentistePage() {
   const lastVisitDate = (residentId: string): string | null => {
     const all = visitesByResident.get(residentId) ?? [];
     const dates: string[] = [];
-    all.forEach(v => {
-      if (v.date_visite) dates.push(v.date_visite);
-      dates.push(...allRdvDates(v));
-    });
+    all.forEach(v => getEntries(v).forEach(e => dates.push(e.date)));
     if (dates.length === 0) return null;
     return dates.sort().pop()!;
   };
@@ -353,36 +373,22 @@ export default function DentistePage() {
                       )}
                     </td>
                     <YearCell
-                      resident={r}
-                      annee={0}
                       visite={visitesByResidentAndYear.get(`${r.id}_0`)}
                       readOnly={readOnly}
                       tone="violet"
-                      onSave={patch => saveVisite.mutate({ resident: r, annee: 0, patch })}
-                      onEditNote={() => setEditingNote({
+                      onEdit={() => setEditing({
                         resident: r, annee: 0,
-                        current: visitesByResidentAndYear.get(`${r.id}_0`)?.notes || '',
-                      })}
-                      onEditRdvs={() => setEditingRdvs({
-                        resident: r, annee: 0,
-                        current: allRdvDates(visitesByResidentAndYear.get(`${r.id}_0`)),
+                        entries: getEntries(visitesByResidentAndYear.get(`${r.id}_0`)),
                       })}
                     />
                     {yearColumns.map(y => (
                       <YearCell
                         key={y}
-                        resident={r}
-                        annee={y}
                         visite={visitesByResidentAndYear.get(`${r.id}_${y}`)}
                         readOnly={readOnly}
-                        onSave={patch => saveVisite.mutate({ resident: r, annee: y, patch })}
-                        onEditNote={() => setEditingNote({
+                        onEdit={() => setEditing({
                           resident: r, annee: y,
-                          current: visitesByResidentAndYear.get(`${r.id}_${y}`)?.notes || '',
-                        })}
-                        onEditRdvs={() => setEditingRdvs({
-                          resident: r, annee: y,
-                          current: allRdvDates(visitesByResidentAndYear.get(`${r.id}_${y}`)),
+                          entries: getEntries(visitesByResidentAndYear.get(`${r.id}_${y}`)),
                         })}
                       />
                     ))}
@@ -412,32 +418,26 @@ export default function DentistePage() {
         />
       )}
 
-      {editingNote && (
-        <NoteEditModal
-          title={`Note — ${(editingNote.resident.last_name || '').toUpperCase()} ${shortInitial(editingNote.resident.first_name)}`}
-          subtitle={editingNote.annee === 0 ? "Visite d'entrée" : `Année ${editingNote.annee}`}
-          initial={editingNote.current}
-          onClose={() => setEditingNote(null)}
-          onSave={v => {
-            saveVisite.mutate({ resident: editingNote.resident, annee: editingNote.annee, patch: { notes: v.trim() || null } });
-            setEditingNote(null);
-          }}
-        />
-      )}
-
-      {editingRdvs && (
-        <RdvEditModal
-          title={`RDV Cabinet — ${(editingRdvs.resident.last_name || '').toUpperCase()} ${shortInitial(editingRdvs.resident.first_name)}`}
-          subtitle={editingRdvs.annee === 0 ? "Visite d'entrée" : `Année ${editingRdvs.annee}`}
-          initial={editingRdvs.current}
-          onClose={() => setEditingRdvs(null)}
+      {editing && (
+        <EntriesEditModal
+          title={`${(editing.resident.last_name || '').toUpperCase()} ${shortInitial(editing.resident.first_name)}`}
+          subtitle={editing.annee === 0 ? "Visite d'entrée" : `Année ${editing.annee}`}
+          initial={editing.entries}
+          onClose={() => setEditing(null)}
           onSave={list => {
+            // Migration : on écrit entries, on neutralise les champs legacy
             saveVisite.mutate({
-              resident: editingRdvs.resident,
-              annee: editingRdvs.annee,
-              patch: { rdv_cabinets: joinCsvDates(list), rdv_cabinet: null },
+              resident: editing.resident,
+              annee: editing.annee,
+              patch: {
+                entries: list,
+                date_visite: null,
+                rdv_cabinet: null,
+                rdv_cabinets: null,
+                notes: null,
+              },
             });
-            setEditingRdvs(null);
+            setEditing(null);
           }}
         />
       )}
@@ -448,140 +448,82 @@ export default function DentistePage() {
 // ── Year cell ────────────────────────────────────────────────────────────────
 
 function YearCell({
-  resident, annee, visite, readOnly, onSave, onEditNote, onEditRdvs, tone,
+  visite, readOnly, onEdit, tone,
 }: {
-  resident: Resident;
-  annee: number;
   visite?: Visite;
   readOnly: boolean;
-  onSave: (patch: Partial<Visite>) => void;
-  onEditNote: () => void;
-  onEditRdvs: () => void;
+  onEdit: () => void;
   tone?: 'violet';
 }) {
-  const [dateVisite, setDateVisite] = useState(visite?.date_visite || '');
-  useEffect(() => { setDateVisite(visite?.date_visite || ''); }, [visite?.date_visite]);
-
-  const commit = () => {
-    const trimmed = dateVisite.trim() || null;
-    if (trimmed !== (visite?.date_visite || null)) {
-      onSave({ date_visite: trimmed });
-    }
-  };
-
-  const rdvs = allRdvDates(visite);
-  const note = visite?.notes || '';
+  const entries = getEntries(visite);
   const bg = tone === 'violet' ? 'bg-violet-50/30' : '';
   const border = tone === 'violet' ? 'border-violet-200' : '';
 
-  // void unused
-  void resident; void annee;
-
   return (
-    <td className={`px-2 py-1.5 border-r align-top ${bg} ${border}`} style={{ minWidth: 170 }}>
-      <div className="space-y-1">
-        <input type="date" value={dateVisite || ''}
-          onChange={e => setDateVisite(e.target.value)}
-          onBlur={commit}
-          disabled={readOnly}
-          className="w-full px-1.5 py-0.5 border border-slate-200 rounded text-xs outline-none focus:border-sky-400" />
-
-        <div className="flex items-center gap-1">
-          <button onClick={onEditRdvs} disabled={readOnly}
-            title="RDV au cabinet du dentiste"
-            className="flex-1 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 transition-colors text-left">
-            <CalendarClock className="h-3 w-3 text-sky-600 shrink-0" />
-            <span className="truncate text-slate-600">
-              {rdvs.length === 0
-                ? <span className="text-slate-400 italic">RDV cabinet</span>
-                : rdvs.map(d => fmtFR(d)).join(', ')}
-            </span>
-          </button>
-          <button onClick={onEditNote} disabled={readOnly}
-            title="Note"
-            className={`px-1.5 py-0.5 rounded border transition-colors ${
-              note
-                ? 'border-amber-300 bg-amber-50 text-amber-700'
-                : 'border-slate-200 text-slate-400 hover:bg-slate-50'
-            } disabled:opacity-50`}>
-            <MessageSquare className="h-3 w-3" />
-          </button>
-        </div>
-        {note && (
-          <div className="text-[10px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 truncate" title={note}>
-            {note}
+    <td className={`px-1.5 py-1 border-r align-top ${bg} ${border}`} style={{ minWidth: 170 }}>
+      <button onClick={onEdit} disabled={readOnly}
+        className="w-full text-left space-y-0.5 hover:bg-white rounded p-1 transition-colors disabled:cursor-default">
+        {entries.length === 0 ? (
+          <span className="text-[11px] text-slate-300 italic">Ajouter une visite ou un RDV</span>
+        ) : (
+          entries.map(e => (
+            <div key={e.id} className="flex items-start gap-1 text-[11px] leading-tight">
+              <span className={`shrink-0 text-[9px] font-bold uppercase px-1 py-px rounded ${
+                e.type === 'visite'
+                  ? 'bg-sky-100 text-sky-700'
+                  : 'bg-emerald-100 text-emerald-700'
+              }`} title={e.type === 'visite' ? 'Visite dentiste' : 'RDV au cabinet'}>
+                {e.type === 'visite' ? 'V' : 'C'}
+              </span>
+              <span className="font-semibold text-slate-800 whitespace-nowrap">{fmtFR(e.date)}</span>
+              {e.note && (
+                <MessageSquare className="h-3 w-3 text-amber-600 shrink-0" />
+              )}
+            </div>
+          ))
+        )}
+        {entries.some(e => e.note) && (
+          <div className="text-[10px] text-amber-900 bg-amber-50/60 border border-amber-200 rounded px-1 py-0.5 mt-0.5">
+            {entries.filter(e => e.note).map(e => `${fmtFR(e.date)} : ${e.note}`).join(' · ')}
           </div>
         )}
-      </div>
+      </button>
     </td>
   );
 }
 
-// ── Note edit modal ──────────────────────────────────────────────────────────
+// ── Entries edit modal (multiple visits + multiple RDV, each with note) ─────
 
-function NoteEditModal({
+function EntriesEditModal({
   title, subtitle, initial, onClose, onSave,
 }: {
   title: string;
   subtitle: string;
-  initial: string;
+  initial: VisitEntry[];
   onClose: () => void;
-  onSave: (value: string) => void;
+  onSave: (list: VisitEntry[]) => void;
 }) {
-  const [value, setValue] = useState(initial);
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b">
-          <div>
-            <h2 className="font-semibold text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-500">{subtitle}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-5">
-          <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Note</label>
-          <textarea autoFocus value={value} onChange={e => setValue(e.target.value)} rows={4}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-sky-400 resize-y" />
-        </div>
-        <div className="flex gap-2 justify-end p-4 border-t">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
-          <button onClick={() => onSave(value)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">
-            <Save className="h-4 w-4" /> Enregistrer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── RDV cabinet edit modal (multiple dates) ─────────────────────────────────
-
-function RdvEditModal({
-  title, subtitle, initial, onClose, onSave,
-}: {
-  title: string;
-  subtitle: string;
-  initial: string[];
-  onClose: () => void;
-  onSave: (list: string[]) => void;
-}) {
-  const [list, setList] = useState<string[]>(() => [...initial]);
+  const [list, setList] = useState<VisitEntry[]>(() => [...initial]);
   const [newDate, setNewDate] = useState('');
+  const [newType, setNewType] = useState<'visite' | 'rdv'>('visite');
+
+  const sorted = [...list].sort(byDateAsc);
 
   const add = () => {
     if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
-    if (list.includes(newDate)) return;
-    setList(prev => [...prev, newDate].sort());
+    setList(prev => [...prev, { id: newId(), date: newDate, type: newType, note: null }]);
     setNewDate('');
   };
 
-  const remove = (d: string) => setList(prev => prev.filter(x => x !== d));
+  const update = (id: string, patch: Partial<VisitEntry>) =>
+    setList(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+
+  const remove = (id: string) =>
+    setList(prev => prev.filter(e => e.id !== id));
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b">
           <div>
             <h2 className="font-semibold text-slate-900">{title}</h2>
@@ -589,40 +531,63 @@ function RdvEditModal({
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
         </div>
-        <div className="p-5 space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Ajouter un RDV</label>
-            <div className="flex gap-2">
-              <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && add()}
-                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-sky-400" />
-              <button onClick={add} disabled={!newDate}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-40">
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">RDV enregistrés</label>
-            {list.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">Aucun</p>
-            ) : (
-              <div className="space-y-1.5">
-                {list.map(d => (
-                  <div key={d} className="flex items-center justify-between px-3 py-2 border border-slate-200 rounded-lg">
-                    <span className="text-sm font-medium text-slate-800">{fmtFR(d)}</span>
-                    <button onClick={() => remove(d)} className="p-1 rounded hover:bg-red-50 text-red-500">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+
+        <div className="p-4 border-b space-y-2">
+          <label className="block text-xs font-semibold text-slate-600 uppercase">Ajouter une entrée</label>
+          <div className="flex gap-2">
+            <select value={newType} onChange={e => setNewType(e.target.value as 'visite' | 'rdv')}
+              className="px-2 py-2 border border-slate-200 rounded-lg text-sm focus:border-sky-400 outline-none">
+              <option value="visite">Visite dentiste</option>
+              <option value="rdv">RDV cabinet</option>
+            </select>
+            <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && add()}
+              className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-sky-400" />
+            <button onClick={add} disabled={!newDate}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-40">
+              <Plus className="h-4 w-4" />
+            </button>
           </div>
         </div>
+
+        <div className="overflow-y-auto p-3 space-y-2">
+          {sorted.length === 0 ? (
+            <p className="text-sm text-slate-400 italic text-center py-4">Aucune entrée</p>
+          ) : sorted.map(e => (
+            <div key={e.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <select value={e.type}
+                  onChange={ev => update(e.id, { type: ev.target.value as 'visite' | 'rdv' })}
+                  className={`text-xs font-semibold rounded border px-2 py-1 outline-none ${
+                    e.type === 'visite' ? 'bg-sky-50 border-sky-300 text-sky-800' : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  }`}>
+                  <option value="visite">Visite dentiste</option>
+                  <option value="rdv">RDV cabinet</option>
+                </select>
+                <input type="date" value={e.date}
+                  onChange={ev => update(e.id, { date: ev.target.value })}
+                  className="flex-1 px-2 py-1 border border-slate-200 rounded text-sm outline-none focus:border-sky-400 min-w-[130px]" />
+                <button onClick={() => remove(e.id)}
+                  title="Supprimer cette entrée"
+                  className="p-1 rounded hover:bg-red-50 text-red-500">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <textarea value={e.note || ''} rows={2}
+                placeholder="Note associée à cette date (optionnel)…"
+                onChange={ev => update(e.id, { note: ev.target.value })}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm outline-none focus:border-amber-400 resize-y" />
+            </div>
+          ))}
+        </div>
+
         <div className="flex gap-2 justify-end p-4 border-t">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">Annuler</button>
-          <button onClick={() => onSave(list)}
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+            Annuler
+          </button>
+          <button
+            onClick={() => onSave(list.map(e => ({ ...e, note: e.note?.trim() || null })))}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">
             <Save className="h-4 w-4" /> Enregistrer
           </button>
@@ -631,6 +596,7 @@ function RdvEditModal({
     </div>
   );
 }
+
 
 // ── Alert settings modal ─────────────────────────────────────────────────────
 
@@ -748,5 +714,3 @@ function AlertListModal({
   );
 }
 
-// Silence unused imports warnings if any
-void Pencil;
