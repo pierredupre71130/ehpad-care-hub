@@ -37,6 +37,7 @@ interface Item {
   assigned_at: string | null;
   maintenance_at: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 interface Resident {
