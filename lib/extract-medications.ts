@@ -166,76 +166,113 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
   const out: MedResult[] = [];
   const seen = new Set<string>();
 
+  // Le PDF de planning a souvent un résident par page, mais certains résidents
+  // s'étalent sur plusieurs pages : on garde le dernier "Patient :" rencontré
+  // pour les pages de continuation et on accepte aussi les libellés multi-lignes
+  // (ex. NOM (née XXX)\nPRENOM).
+  let currentPatient = 'Résident inconnu';
+  let currentRoom = '';
+
   for (const text of pageTexts) {
     if (!text.trim()) continue;
 
-    const patientMatch = text.match(/Patient\s*:\s*(.+)/);
-    const patient = patientMatch ? formatPatientName(patientMatch[1]) : 'Résident inconnu';
+    // Cherche TOUS les "Patient : ..." dans la page (parfois plusieurs résidents par page)
+    // et découpe la page en sections par résident.
+    const patientRegex = /Patient\s*:\s*([^\n]+(?:\n[^\n]+)?)/g;
+    const matches: { idx: number; name: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = patientRegex.exec(text)) !== null) {
+      matches.push({ idx: m.index, name: formatPatientName(m[1].replace(/\n/g, ' ').trim()) });
+    }
 
-    const roomMatch = text.match(/Chambre\s*[:\-]?\s*(\w+)/i);
-    const room = roomMatch ? roomMatch[1].trim() : '';
-
-    const blocks = text.split(/Début le \d{2}\/\d{2}\/\d{2,4} à \d{2}:\d{2}/);
-
-    for (let i = 1; i < blocks.length; i++) {
-      const block = blocks[i];
-      const head = block.slice(0, 300);
-      const hasDose = /\d+\s*(mg|mL|UI|µg|mcg|ug|g\b)/i.test(head);
-      const hasForm = /\b(comprim[ée]|g[ée]lule|sachet|ampoule|cpr|g[ée]l|pdr|buvable|sirop|patch|goutte|solution|suspension)\b/i.test(head);
-
-      // Détection rapide d'un mot-clé contentions / compléments
-      // (ces actes peuvent ne pas avoir de posologie classique)
-      const headN = normalize(head);
-      const isNoDoseCategory =
-        MED_CATEGORIES['Contentions'].some(k => headN.includes(k)) ||
-        MED_CATEGORIES['Compléments alimentaires'].some(k => headN.includes(k));
-
-      if (!hasDose && !hasForm && !isNoDoseCategory) continue;
-
-      let drugLine: string | null = null;
-      for (const line of block.split('\n')) {
-        const l = line.trim();
-        if (!l || ['c', 'g', 'j', 'h', 'mg', 'mL'].includes(l)) continue;
-        if (/^\d{2}:\d{2}/.test(l)) continue;
-        if (/^\d+[.,]?\d*\s*(mg|mL|UI|g|µg)/i.test(l)) continue;
-        if (l.length > 3) { drugLine = l; break; }
-      }
-      if (!drugLine) continue;
-
-      const category = classifyMedication(drugLine);
-      // Pour Contentions / Compléments, si la première ligne ne matche pas,
-      // on tente d'extraire un mot-clé directement du bloc complet.
-      let finalCategory: string | null = category;
-      let finalLine = drugLine;
-      if (!finalCategory) {
-        for (const cat of NO_DOSE_REQUIRED_CATEGORIES) {
-          const kws = MED_CATEGORIES[cat] || [];
-          if (kws.some(k => headN.includes(k))) {
-            finalCategory = cat;
-            // Cherche la ligne du bloc contenant le mot-clé pour libellé plus clair
-            for (const line of block.split('\n')) {
-              const lN = normalize(line);
-              if (kws.some(k => lN.includes(k))) {
-                finalLine = line.trim();
-                break;
-              }
-            }
-            break;
-          }
+    // Sections = portions de texte entre deux "Patient :" successifs (si plusieurs)
+    // ou la page entière (si zéro ou un seul).
+    const sections: { patient: string; room: string; body: string }[] = [];
+    if (matches.length === 0) {
+      // Page de continuation, on utilise le dernier patient connu
+      sections.push({ patient: currentPatient, room: currentRoom, body: text });
+    } else {
+      // Éventuel préfixe avant le premier match (rare — appartient au patient précédent)
+      if (matches[0].idx > 0) {
+        const prefix = text.slice(0, matches[0].idx);
+        if (prefix.trim()) {
+          sections.push({ patient: currentPatient, room: currentRoom, body: prefix });
         }
       }
-      if (!finalCategory) continue;
+      for (let i = 0; i < matches.length; i++) {
+        const start = matches[i].idx;
+        const end = i + 1 < matches.length ? matches[i + 1].idx : text.length;
+        const body = text.slice(start, end);
+        const roomMatch = body.match(/Chambre\s*[:\-]?\s*(\w+)/i);
+        const room = roomMatch ? roomMatch[1].trim() : currentRoom;
+        sections.push({ patient: matches[i].name, room, body });
+      }
+      // Mémorise pour les pages suivantes
+      const last = matches[matches.length - 1];
+      currentPatient = last.name;
+      const lastBody = text.slice(last.idx);
+      const lastRoom = lastBody.match(/Chambre\s*[:\-]?\s*(\w+)/i);
+      if (lastRoom) currentRoom = lastRoom[1].trim();
+    }
 
-      const key = `${patient}|${normalize(finalLine.slice(0, 40))}|${finalCategory}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+    for (const { patient, room, body } of sections) {
+      const blocks = body.split(/Début le \d{2}\/\d{2}\/\d{2,4} à \d{2}:\d{2}/);
 
-      out.push({
-        resident: patient,
-        room,
-        drug: finalLine.slice(0, 80).trim(),
-        category: finalCategory,
-      });
+      for (let i = 1; i < blocks.length; i++) {
+        const block = blocks[i];
+        const head = block.slice(0, 300);
+        const hasDose = /\d+\s*(mg|mL|UI|µg|mcg|ug|g\b)/i.test(head);
+        const hasForm = /\b(comprim[ée]|g[ée]lule|sachet|ampoule|cpr|g[ée]l|pdr|buvable|sirop|patch|goutte|solution|suspension)\b/i.test(head);
+
+        const headN = normalize(head);
+        const isNoDoseCategory =
+          MED_CATEGORIES['Contentions'].some(k => headN.includes(k)) ||
+          MED_CATEGORIES['Compléments alimentaires'].some(k => headN.includes(k));
+
+        if (!hasDose && !hasForm && !isNoDoseCategory) continue;
+
+        let drugLine: string | null = null;
+        for (const line of block.split('\n')) {
+          const l = line.trim();
+          if (!l || ['c', 'g', 'j', 'h', 'mg', 'mL'].includes(l)) continue;
+          if (/^\d{2}:\d{2}/.test(l)) continue;
+          if (/^\d+[.,]?\d*\s*(mg|mL|UI|g|µg)/i.test(l)) continue;
+          if (l.length > 3) { drugLine = l; break; }
+        }
+        if (!drugLine) continue;
+
+        const category = classifyMedication(drugLine);
+        let finalCategory: string | null = category;
+        let finalLine = drugLine;
+        if (!finalCategory) {
+          for (const cat of NO_DOSE_REQUIRED_CATEGORIES) {
+            const kws = MED_CATEGORIES[cat] || [];
+            if (kws.some(k => headN.includes(k))) {
+              finalCategory = cat;
+              for (const line of block.split('\n')) {
+                const lN = normalize(line);
+                if (kws.some(k => lN.includes(k))) {
+                  finalLine = line.trim();
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        if (!finalCategory) continue;
+
+        const key = `${patient}|${normalize(finalLine.slice(0, 40))}|${finalCategory}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        out.push({
+          resident: patient,
+          room,
+          drug: finalLine.slice(0, 80).trim(),
+          category: finalCategory,
+        });
+      }
     }
   }
 
