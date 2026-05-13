@@ -19,6 +19,7 @@ import {
   Footprints,
   BedDouble,
   Smile,
+  PillBottle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -268,6 +269,19 @@ export const MODULES: ModuleConfig[] = [
     iconBg: 'bg-violet-100 text-violet-600',
     visibleRoles: null,
     categoryId: 'accompagnement',
+  },
+  {
+    id: 'rechercheOrdonnances',
+    label: "Recherche d'ordonnances",
+    description: 'Recherche de médicaments par catégorie dans un PDF de planning',
+    href: '/recherche-ordonnances',
+    icon: PillBottle,
+    cardFrom: '#FF6B00',
+    cardTo: '#cc4f00',
+    colorClass: 'border-orange-100 hover:border-orange-300 hover:bg-orange-50/60',
+    iconBg: 'bg-orange-100 text-orange-600',
+    visibleRoles: ['admin'],
+    categoryId: 'medical',
   },
   {
     id: 'peremptions',
