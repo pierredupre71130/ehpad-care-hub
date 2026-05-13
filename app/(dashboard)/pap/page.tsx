@@ -1529,7 +1529,7 @@ function PAPWizard({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-5 py-4 border-b flex items-start justify-between gap-3 bg-gradient-to-br from-indigo-50 to-white rounded-t-2xl">
           <div className="min-w-0">
