@@ -431,6 +431,7 @@ function PAPPageInner() {
   const colorTo   = colorOverrides['pap']?.to   ?? papModule?.cardTo   ?? '#a81535';
 
   const [editingId, setEditingId] = useState<string | null>(searchParams.get('edit'));
+  const [showWizard, setShowWizard] = useState(false);
   // Ouvre directement la vue si ?view=RESIDENT_ID est dans l'URL (vient du widget dashboard)
   const [viewingId, setViewingId] = useState<string | null>(searchParams.get('view'));
   const [historyResidentId, setHistoryResidentId] = useState<string | null>(null);
@@ -913,13 +914,11 @@ ${sec('Objectifs et signature',
             <AlertCircle className="h-5 w-5 text-amber-500" />
             <div><div className="text-2xl font-bold text-amber-700">{nbAFaire}</div><div className="text-xs text-amber-600 font-medium">À faire</div></div>
           </button>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3">
-            <div>
-              <div className="text-2xl font-bold text-slate-700">{nbTotal}</div>
-              <div className="text-xs text-slate-500 font-medium">Résidents</div>
-              {nbChambresVides > 0 && <div className="text-xs text-slate-400">{nbChambresVides} chambre{nbChambresVides > 1 ? 's' : ''} vide{nbChambresVides > 1 ? 's' : ''}</div>}
-            </div>
-          </div>
+          <button onClick={() => { setShowSansReferents(true); setAssigningReferentFor(null); }} disabled={readOnly}
+            className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <Users className="h-5 w-5 text-rose-500" />
+            <div className="text-left"><div className="text-sm font-bold text-rose-700">Résidents à assigner</div><div className="text-xs text-rose-600">{nbSansReferent} sans référent</div></div>
+          </button>
           <button onClick={() => setShowPrintReferents(true)}
             className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-slate-100 transition-colors ml-auto">
             <Printer className="h-5 w-5 text-slate-500" />
@@ -935,16 +934,15 @@ ${sec('Objectifs et signature',
             <UserPen className="h-5 w-5 text-indigo-500" />
             <div className="text-left"><div className="text-sm font-bold text-indigo-700">Gestion des référents</div><div className="text-xs text-indigo-500">{allReferents.length} référent{allReferents.length > 1 ? 's' : ''}</div></div>
           </button>
-          <button onClick={() => { setShowSansReferents(true); setAssigningReferentFor(null); }} disabled={readOnly}
-            className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Users className="h-5 w-5 text-rose-500" />
-            <div className="text-left"><div className="text-sm font-bold text-rose-700">Résidents à assigner</div><div className="text-xs text-rose-600">{nbSansReferent} sans référent</div></div>
-          </button>
         </div>
 
         {/* Barre recherche / filtres */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5">
           <div className="flex gap-3 items-center flex-wrap">
+            <button onClick={() => setShowWizard(true)} disabled={readOnly}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-indigo-600 to-indigo-700 text-white text-sm font-bold hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm">
+              <NotebookPen className="h-4 w-4" /> Créer un PAP
+            </button>
             <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input placeholder="Rechercher un résident..."
@@ -1353,7 +1351,349 @@ ${sec('Objectifs et signature',
         </div>
       )}
 
+      {showWizard && (
+        <PAPWizard
+          residents={residents}
+          paps={paps}
+          allReferents={allReferents}
+          saving={saveMutation.isPending}
+          onClose={() => setShowWizard(false)}
+          onSave={(residentId, form) => {
+            saveMutation.mutate({ residentId, form }, {
+              onSuccess: () => setShowWizard(false),
+            });
+          }}
+        />
+      )}
+
       </div>{/* fin z-index: 1 */}
+    </div>
+  );
+}
+
+// ─── PAP Wizard (création guidée pour soignant) ─────────────────────────────
+
+type WizardStepId = 'name' | 'referent' | 'resident' | 'souhaits' | 'general' | 'histoire' | 'habitudes' | 'risques' | 'remarques' | 'save';
+
+const WIZARD_STEPS: { id: WizardStepId; label: string }[] = [
+  { id: 'name', label: 'Votre prénom' },
+  { id: 'referent', label: 'Choix du référent' },
+  { id: 'resident', label: 'Choix du résident' },
+  { id: 'souhaits', label: 'Souhaits et capacité' },
+  { id: 'general', label: 'Renseignements généraux' },
+  { id: 'histoire', label: 'Histoire de vie' },
+  { id: 'habitudes', label: 'Habitudes de vie' },
+  { id: 'risques', label: 'Risques' },
+  { id: 'remarques', label: 'Remarques particulières' },
+  { id: 'save', label: 'Enregistrer' },
+];
+
+const FIELDS_SOUHAITS: { key: keyof PapForm; label: string }[] = [
+  { key: 'capacite', label: 'Capacité de la personne' },
+  { key: 'souhait_projet', label: 'Souhait de réaliser le projet personnalisé' },
+  { key: 'souhait_participation', label: 'Souhait de participer à la réalisation' },
+  { key: 'souhait_entourage', label: "Souhait de faire participer son entourage et de l'informer" },
+];
+
+const FIELDS_GENERAL: { key: keyof PapForm; label: string }[] = [
+  { key: 'donnees_identite', label: "Données d'identité / identification du résident" },
+  { key: 'souhait_denomination', label: 'Souhait de la personne en lien avec sa dénomination' },
+  { key: 'contexte_entree', label: "Contexte d'entrée" },
+  { key: 'souhaits_fin_vie', label: 'Souhaits de fin de vie' },
+  { key: 'entourage', label: 'Entourage' },
+  { key: 'droit_image', label: "Droit à l'image" },
+];
+
+const FIELDS_HISTOIRE: { key: keyof PapForm; label: string }[] = [
+  { key: 'situation_familiale', label: 'Situation familiale' },
+  { key: 'vie_professionnelle', label: 'Vie professionnelle' },
+  { key: 'episodes_importants', label: 'Épisodes importants de sa vie' },
+];
+
+const FIELDS_HABITUDES: { key: keyof PapForm; label: string }[] = [
+  { key: 'besoin_boire_manger', label: 'Boire et manger' },
+  { key: 'eliminer', label: 'Éliminer' },
+  { key: 'mouvoir_posture', label: 'Se mouvoir / maintenir une bonne posture' },
+  { key: 'dormir_reposer', label: 'Dormir et se reposer' },
+  { key: 'vetir_devtir', label: 'Se vêtir et se dévêtir' },
+  { key: 'propre_teguments', label: 'Être propre, protéger ses téguments' },
+  { key: 'eviter_dangers', label: 'Éviter les dangers' },
+  { key: 'communication', label: 'Communication' },
+  { key: 'croyances_valeurs', label: 'Agir selon ses croyances et ses valeurs' },
+  { key: 'occupation_recreation', label: "S'occuper / se récréer" },
+  { key: 'apprendre', label: "Besoin d'apprendre" },
+  { key: 'ressenti_adaptation', label: 'Ressenti / Adaptation' },
+];
+
+const FIELDS_REMARQUES: { key: keyof PapForm; label: string }[] = [
+  { key: 'accueil_premiers_jours', label: "L'accueil des premiers jours" },
+  { key: 'soins', label: 'Les soins' },
+  { key: 'repas', label: 'Les repas' },
+  { key: 'ambiance_generale', label: 'Ambiance générale' },
+  { key: 'remarques_particulieres', label: 'Autres remarques' },
+];
+
+function PAPWizard({
+  residents, paps, allReferents, saving, onClose, onSave,
+}: {
+  residents: Resident[];
+  paps: Pap[];
+  allReferents: string[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (residentId: string, form: PapForm) => void;
+}) {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [prenom, setPrenom] = useState('');
+  const [referent, setReferent] = useState<string | null>(null);
+  const [resident, setResident] = useState<Resident | null>(null);
+  const [form, setForm] = useState<PapForm>({ ...emptyForm });
+
+  const step = WIZARD_STEPS[stepIdx];
+
+  // Préremplit le form quand on choisit un résident
+  useEffect(() => {
+    if (!resident) return;
+    const existing = paps.find(p => p.resident_id === resident.id);
+    if (existing) {
+      setForm({ ...emptyForm, ...existing });
+    } else {
+      setForm({
+        ...emptyForm,
+        date_redaction: new Date().toISOString().split('T')[0],
+        date_naissance: resident.date_naissance || '',
+        service_chambre: [resident.section, resident.room].filter(Boolean).join(' - '),
+      });
+    }
+  }, [resident, paps]);
+
+  const matchingReferents = useMemo(() => {
+    const q = prenom.trim().toLowerCase();
+    if (!q) return [];
+    return allReferents.filter(r => r.toLowerCase().includes(q)).sort();
+  }, [allReferents, prenom]);
+
+  const residentsForReferent = useMemo(() => {
+    if (!referent) return [];
+    const todo = residents.filter(r =>
+      r.referent === referent
+      && r.last_name?.trim()
+      && r.first_name?.trim()
+      && !paps.some(p => p.resident_id === r.id),
+    );
+    return todo.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+  }, [residents, referent, paps]);
+
+  const setField = (key: keyof PapForm, value: string | boolean) =>
+    setForm(prev => ({ ...prev, [key]: value }));
+
+  const canNext = useMemo(() => {
+    switch (step.id) {
+      case 'name': return matchingReferents.length > 0;
+      case 'referent': return !!referent;
+      case 'resident': return !!resident;
+      default: return true;
+    }
+  }, [step.id, matchingReferents.length, referent, resident]);
+
+  const goNext = () => {
+    // Saut auto vers 'referent' si un seul match
+    if (step.id === 'name' && matchingReferents.length === 1 && !referent) {
+      setReferent(matchingReferents[0]);
+      setStepIdx(2);
+      return;
+    }
+    setStepIdx(i => Math.min(WIZARD_STEPS.length - 1, i + 1));
+  };
+  const goPrev = () => setStepIdx(i => Math.max(0, i - 1));
+  const onClickSave = () => {
+    if (!resident) return;
+    onSave(resident.id, form);
+  };
+
+  const fieldList = (fields: { key: keyof PapForm; label: string }[]) => (
+    <div className="space-y-3">
+      {fields.map(f => (
+        <div key={String(f.key)}>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</label>
+          <textarea
+            value={(form[f.key] as string) || ''}
+            onChange={e => setField(f.key, e.target.value)}
+            rows={2}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-y"
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 py-4 border-b flex items-start justify-between gap-3 bg-gradient-to-br from-indigo-50 to-white rounded-t-2xl">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <NotebookPen className="h-4 w-4 text-indigo-600" />
+              <h2 className="font-bold text-slate-900">Créer un PAP</h2>
+            </div>
+            <p className="text-xs text-slate-500">
+              Étape {stepIdx + 1} / {WIZARD_STEPS.length} — <b className="text-slate-700">{step.label}</b>
+              {resident && <span className="ml-2 text-indigo-700">· {resident.last_name?.toUpperCase()} {resident.first_name}</span>}
+            </p>
+            <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5">
+              <div className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                style={{ width: `${((stepIdx + 1) / WIZARD_STEPS.length) * 100}%` }} />
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {step.id === 'name' && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">Entrez votre prénom pour trouver votre nom de référent.</p>
+              <input autoFocus type="text" value={prenom} onChange={e => setPrenom(e.target.value)}
+                placeholder="Ex : Marie"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-base outline-none focus:border-indigo-400" />
+              {prenom.trim() && (
+                <div>
+                  {matchingReferents.length === 0 ? (
+                    <p className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                      Aucun référent trouvé pour « {prenom} ». Ajoute-toi d&apos;abord dans « Gestion des référents ».
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-slate-500 uppercase">{matchingReferents.length} correspondance{matchingReferents.length > 1 ? 's' : ''}</p>
+                      {matchingReferents.map(r => (
+                        <button key={r} onClick={() => { setReferent(r); setStepIdx(2); }}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                            referent === r ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 hover:bg-slate-50'
+                          }`}>
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step.id === 'referent' && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">Confirmez votre nom de référent.</p>
+              {matchingReferents.length === 0 ? (
+                <button onClick={() => setStepIdx(0)}
+                  className="text-sm text-indigo-700 underline">Revenir à la saisie du prénom</button>
+              ) : matchingReferents.map(r => (
+                <button key={r} onClick={() => setReferent(r)}
+                  className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                    referent === r ? 'border-indigo-500 bg-indigo-50 text-indigo-800 font-semibold' : 'border-slate-200 hover:bg-slate-50'
+                  }`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step.id === 'resident' && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Choisissez le résident dont vous voulez créer le PAP.<br />
+                <span className="text-xs text-slate-400">Affichés : résidents dont vous êtes référent et sans PAP encore créé.</span>
+              </p>
+              {residentsForReferent.length === 0 ? (
+                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  Tous vos PAP sont déjà faits 🎉
+                </p>
+              ) : residentsForReferent.map(r => (
+                <button key={r.id} onClick={() => setResident(r)}
+                  className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                    resident?.id === r.id ? 'border-indigo-500 bg-indigo-50 text-indigo-800 font-semibold' : 'border-slate-200 hover:bg-slate-50'
+                  }`}>
+                  <div className="text-sm font-medium">{r.last_name?.toUpperCase()} {r.first_name}</div>
+                  <div className="text-xs text-slate-500">Chambre {r.room} · {r.section}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step.id === 'souhaits' && (
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600">
+                <b>Date de rédaction :</b> {form.date_redaction || '—'} · <b>Naissance :</b> {form.date_naissance || '—'} · <b>Chambre :</b> {form.service_chambre || '—'}
+              </div>
+              {fieldList(FIELDS_SOUHAITS)}
+            </div>
+          )}
+
+          {step.id === 'general' && fieldList(FIELDS_GENERAL)}
+          {step.id === 'histoire' && fieldList(FIELDS_HISTOIRE)}
+          {step.id === 'habitudes' && fieldList(FIELDS_HABITUDES)}
+
+          {step.id === 'risques' && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 uppercase font-semibold tracking-wide">Cochez les risques applicables</p>
+              <div className="space-y-2">
+                {RISQUES.map(({ key, label }) => (
+                  <label key={key} className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={!!(form[key as keyof PapForm])}
+                      onChange={() => setField(key as keyof PapForm, !(form[key as keyof PapForm]))}
+                      className="mt-0.5" />
+                    <span className="text-sm text-slate-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Autres risques</label>
+                <textarea value={form.risques_autres || ''}
+                  onChange={e => setField('risques_autres', e.target.value)} rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 resize-y" />
+              </div>
+            </div>
+          )}
+
+          {step.id === 'remarques' && fieldList(FIELDS_REMARQUES)}
+
+          {step.id === 'save' && (
+            <div className="space-y-3 text-sm">
+              <p className="text-slate-700">Tout est prêt. Vous pouvez maintenant enregistrer le PAP.</p>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 space-y-1">
+                <div><b>Référent :</b> {referent}</div>
+                <div><b>Résident :</b> {resident?.last_name?.toUpperCase()} {resident?.first_name} · Ch. {resident?.room}</div>
+                <div><b>Date de rédaction :</b> {form.date_redaction}</div>
+              </div>
+              <p className="text-xs text-slate-500 italic">
+                Les sections « Informations générales (date réunion / réévaluation / personnes présentes) » et « Objectifs et signature » seront complétées par la psychologue ou un administrateur.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t flex items-center justify-between gap-2">
+          <button onClick={goPrev} disabled={stepIdx === 0}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+            Précédent
+          </button>
+          <div className="flex gap-2">
+            {step.id !== 'save' ? (
+              <button onClick={goNext} disabled={!canNext}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40">
+                Suivant
+              </button>
+            ) : (
+              <button onClick={onClickSave} disabled={saving || !resident}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Enregistrer le PAP
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
