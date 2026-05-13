@@ -203,7 +203,7 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
 
 export async function extractMedicationsFromFile(file: File): Promise<MedResult[]> {
   const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   const buf = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: buf }).promise;
   const pageTexts: string[] = [];
