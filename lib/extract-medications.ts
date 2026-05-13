@@ -159,6 +159,7 @@ export interface MedResult {
   room: string;
   drug: string;
   category: string;
+  startDate: string | null; // 'YYYY-MM-DD'
 }
 
 // Extraction par page (le texte est déjà découpé page par page côté appelant)
@@ -216,10 +217,31 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
     }
 
     for (const { patient, room, body } of sections) {
-      const blocks = body.split(/Début le \d{2}\/\d{2}\/\d{2,4} à \d{2}:\d{2}/);
+      const splitRegex = /Début le (\d{2})\/(\d{2})\/(\d{2,4}) à \d{2}:\d{2}/g;
+      // On découpe en blocs ET on capture la date de début de chaque bloc.
+      const pieces: { date: string | null; content: string }[] = [];
+      let lastIdx = 0;
+      let pendingDate: string | null = null;
+      let mm: RegExpExecArray | null;
+      // 1er morceau (avant tout 'Début le ...') = préambule sans date
+      while ((mm = splitRegex.exec(body)) !== null) {
+        if (mm.index > lastIdx) {
+          pieces.push({ date: pendingDate, content: body.slice(lastIdx, mm.index) });
+        }
+        const dd = mm[1];
+        const mo = mm[2];
+        let yr = mm[3];
+        if (yr.length === 2) yr = '20' + yr;
+        pendingDate = `${yr}-${mo}-${dd}`;
+        lastIdx = mm.index + mm[0].length;
+      }
+      if (lastIdx < body.length) {
+        pieces.push({ date: pendingDate, content: body.slice(lastIdx) });
+      }
+      // On ignore le 1er bloc avant tout 'Début le ...' (préambule sans date)
+      const blocks = pieces.filter(p => p.date !== null);
 
-      for (let i = 1; i < blocks.length; i++) {
-        const block = blocks[i];
+      for (const { date: startDate, content: block } of blocks) {
         const head = block.slice(0, 300);
         const hasDose = /\d+\s*(mg|mL|UI|µg|mcg|ug|g\b)/i.test(head);
         const hasForm = /\b(comprim[ée]|g[ée]lule|sachet|ampoule|cpr|g[ée]l|pdr|buvable|sirop|patch|goutte|solution|suspension)\b/i.test(head);
@@ -271,6 +293,7 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
           room,
           drug: finalLine.slice(0, 80).trim(),
           category: finalCategory,
+          startDate,
         });
       }
     }
