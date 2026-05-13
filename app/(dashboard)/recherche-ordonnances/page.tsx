@@ -80,6 +80,25 @@ export default function RechercheOrdonnancesPage() {
     staleTime: 60_000,
   });
 
+  interface ContentionRow {
+    id: string;
+    nom: string | null;
+    chambre: string | null;
+    type_contention: string | null;
+  }
+  const { data: contentionsList = [] } = useQuery({
+    queryKey: ['contentions-for-ordonnances'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contentions')
+        .select('id, nom, chambre, type_contention')
+        .eq('type_suivi', 'contention');
+      if (error) throw error;
+      return (data ?? []) as ContentionRow[];
+    },
+    staleTime: 60_000,
+  });
+
   const updateResidentFlag = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<ResidentRow> }) => {
       const { error } = await supabase.from('residents').update(patch).eq('id', id);
@@ -311,8 +330,18 @@ export default function RechercheOrdonnancesPage() {
                   const cats = new Set(meds.map(m => m.category));
                   const hasAntico = cats.has('Anticoagulants');
                   const hasVein = cats.has('Contentions veineuses');
+                  const hasPhys = cats.has('Contentions physiques');
+                  // Recherche d'une contention déjà enregistrée dans le module Contentions
+                  const physContention = hasPhys
+                    ? contentionsList.find(c => {
+                        if (room && (c.chambre || '').trim().toLowerCase() === room.trim().toLowerCase()) return true;
+                        const cn = normalizeName(c.nom || '');
+                        const rn = normalizeName(resident.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
+                        return cn && rn && (cn.includes(rn.split(' ')[0]) || rn.includes(cn.split(' ')[0]));
+                      })
+                    : undefined;
                   // Liste des vérifications à faire pour ce résident
-                  const checks: { label: string; isOk: boolean; onFix?: () => void; }[] = [];
+                  const checks: { label: string; isOk: boolean; onFix?: () => void; fixLabel?: string; }[] = [];
                   if (hasAntico && r) {
                     checks.push({
                       label: 'Case "Anticoagulants"',
@@ -328,6 +357,12 @@ export default function RechercheOrdonnancesPage() {
                       isOk: veinOk,
                       onFix: veinOk ? undefined : () =>
                         updateResidentFlag.mutate({ id: r.id, patch: { bas_de_contention: true } }),
+                    });
+                  }
+                  if (hasPhys) {
+                    checks.push({
+                      label: 'Contention physique dans le module Contentions',
+                      isOk: !!physContention,
                     });
                   }
                   return (
@@ -347,7 +382,9 @@ export default function RechercheOrdonnancesPage() {
 
                     {checks.length > 0 && (
                       <div className="mb-2 space-y-1">
-                        {checks.map((c, i) => (
+                        {checks.map((c, i) => {
+                          const isPhys = c.label.includes('Contention physique');
+                          return (
                           <div key={i} className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg border text-xs ${
                             c.isOk ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-300 text-amber-900'
                           }`}>
@@ -355,9 +392,17 @@ export default function RechercheOrdonnancesPage() {
                               {c.isOk
                                 ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                 : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
-                              <span><b>{c.label}</b> : {c.isOk ? 'déjà cochée dans la fiche' : 'NON cochée dans la fiche'}</span>
+                              <span><b>{c.label}</b> : {c.isOk
+                                ? (isPhys ? 'enregistrée' : 'déjà cochée dans la fiche')
+                                : (isPhys ? 'aucune contention enregistrée' : 'NON cochée dans la fiche')}</span>
                             </div>
-                            {!c.isOk && c.onFix && (
+                            {!c.isOk && isPhys && (
+                              <Link href="/contentions"
+                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700">
+                                <Plus className="h-3 w-3" /> Ajouter
+                              </Link>
+                            )}
+                            {!c.isOk && !isPhys && c.onFix && (
                               <button onClick={c.onFix}
                                 disabled={updateResidentFlag.isPending || readOnly}
                                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 disabled:opacity-50">
@@ -365,7 +410,8 @@ export default function RechercheOrdonnancesPage() {
                               </button>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
