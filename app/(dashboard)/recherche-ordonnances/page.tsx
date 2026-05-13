@@ -24,6 +24,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Antibiotiques': 'bg-indigo-100 text-indigo-800 border-indigo-300',
   'Contentions': 'bg-orange-100 text-orange-800 border-orange-300',
   'Compléments alimentaires': 'bg-lime-100 text-lime-800 border-lime-300',
+  'Autres médicaments': 'bg-slate-100 text-slate-700 border-slate-300',
 };
 
 export default function RechercheOrdonnancesPage() {

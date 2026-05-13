@@ -106,6 +106,7 @@ export const MED_CATEGORIES: Record<string, string[]> = {
     'nutridrink', 'ensure', 'fresubin', 'proteine', 'nutrition', 'dietetique',
     'protifar', 'resource',
   ],
+  'Autres médicaments': [],
 };
 
 // Catégories qui ne nécessitent pas la présence d'une posologie (mg, mL, comprimé…)
@@ -281,6 +282,12 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
               break;
             }
           }
+        }
+        // Catch-all : si le bloc ressemble vraiment à un médicament (dose ET forme)
+        // mais que la DCI/nom commercial ne figure pas dans notre dico, on range
+        // dans 'Autres médicaments' pour que le résident apparaisse quand même.
+        if (!finalCategory && hasDose && hasForm) {
+          finalCategory = 'Autres médicaments';
         }
         if (!finalCategory) continue;
 
