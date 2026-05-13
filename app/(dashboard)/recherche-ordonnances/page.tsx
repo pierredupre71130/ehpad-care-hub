@@ -91,10 +91,13 @@ export default function RechercheOrdonnancesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contentions')
-        .select('id, nom, chambre, type_contention')
-        .eq('type_suivi', 'contention');
+        .select('id, nom, chambre, type_contention, type_suivi');
       if (error) throw error;
-      return (data ?? []) as ContentionRow[];
+      // On ne garde que les contentions actives (type_suivi non explicitement
+      // archivé) ; certaines lignes n'ont pas la colonne renseignée.
+      return (data ?? []).filter((c: { type_suivi?: string | null }) =>
+        !c.type_suivi || c.type_suivi === 'contention',
+      ) as ContentionRow[];
     },
     staleTime: 60_000,
   });
@@ -334,10 +337,23 @@ export default function RechercheOrdonnancesPage() {
                   // Recherche d'une contention déjà enregistrée dans le module Contentions
                   const physContention = hasPhys
                     ? contentionsList.find(c => {
-                        if (room && (c.chambre || '').trim().toLowerCase() === room.trim().toLowerCase()) return true;
+                        // Match par chambre (le plus fiable)
+                        const chRoom = (c.chambre || '').trim().toLowerCase();
+                        if (room && chRoom && chRoom === room.trim().toLowerCase()) return true;
+                        if (r && chRoom && chRoom === (r.room || '').trim().toLowerCase()) return true;
+                        // Match par nom (utilise le NOM de famille du résident matché si possible)
                         const cn = normalizeName(c.nom || '');
-                        const rn = normalizeName(resident.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
-                        return cn && rn && (cn.includes(rn.split(' ')[0]) || rn.includes(cn.split(' ')[0]));
+                        if (!cn) return false;
+                        if (r) {
+                          const last = normalizeName(r.last_name);
+                          if (last && cn.includes(last)) return true;
+                        }
+                        // Sinon fallback : essayer chaque mot ≥ 4 lettres du nom PDF
+                        const cleanedPdf = normalizeName(resident.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
+                        for (const w of cleanedPdf.split(' ')) {
+                          if (w.length >= 4 && cn.includes(w)) return true;
+                        }
+                        return false;
                       })
                     : undefined;
                   // Liste des vérifications à faire pour ce résident
