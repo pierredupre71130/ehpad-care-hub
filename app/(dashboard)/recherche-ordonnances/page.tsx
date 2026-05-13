@@ -91,13 +91,9 @@ export default function RechercheOrdonnancesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contentions')
-        .select('id, nom, chambre, type_contention, type_suivi');
+        .select('id, nom, chambre, type_contention');
       if (error) throw error;
-      // On ne garde que les contentions actives (type_suivi non explicitement
-      // archivé) ; certaines lignes n'ont pas la colonne renseignée.
-      return (data ?? []).filter((c: { type_suivi?: string | null }) =>
-        !c.type_suivi || c.type_suivi === 'contention',
-      ) as ContentionRow[];
+      return (data ?? []) as ContentionRow[];
     },
     staleTime: 60_000,
   });
@@ -115,6 +111,14 @@ export default function RechercheOrdonnancesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const normalizeRoom = (s: string | null | undefined) => {
+    if (!s) return '';
+    // Garde uniquement les chiffres (et l'éventuelle lettre suffixe D/G/P/F)
+    const m = s.trim().toLowerCase().match(/^[a-z]?(\d+[a-z]?)$/);
+    if (m) return m[1];
+    return s.trim().toLowerCase();
+  };
+
   const normalizeName = (s: string) =>
     s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -122,7 +126,8 @@ export default function RechercheOrdonnancesPage() {
     const cleaned = normalizeName(displayName.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
     // Préfère un match par chambre quand disponible (très fiable)
     if (room) {
-      const byRoom = residentsList.find(r => (r.room || '').trim().toLowerCase() === room.trim().toLowerCase());
+      const rn = normalizeRoom(room);
+      const byRoom = residentsList.find(r => normalizeRoom(r.room) === rn);
       if (byRoom) {
         const last = normalizeName(byRoom.last_name);
         if (last && cleaned.includes(last)) return byRoom;
@@ -271,7 +276,7 @@ export default function RechercheOrdonnancesPage() {
             </button>
             {results.length > 0 && (
               <span className="text-xs text-slate-500 font-medium ml-2">
-                {results.length} médicaments extraits · {byResident.length} résidents
+                {results.length} médicaments extraits · {byResident.length} résidents · {contentionsList.length} contentions en base · {residentsList.length} résidents en base
               </span>
             )}
           </div>
@@ -337,18 +342,23 @@ export default function RechercheOrdonnancesPage() {
                   // Recherche d'une contention déjà enregistrée dans le module Contentions
                   const physContention = hasPhys
                     ? contentionsList.find(c => {
-                        // Match par chambre (le plus fiable)
-                        const chRoom = (c.chambre || '').trim().toLowerCase();
-                        if (room && chRoom && chRoom === room.trim().toLowerCase()) return true;
-                        if (r && chRoom && chRoom === (r.room || '').trim().toLowerCase()) return true;
-                        // Match par nom (utilise le NOM de famille du résident matché si possible)
+                        // Match par chambre normalisée (strip 'G' éventuel, garde suffixe D/G/P)
+                        const chRoom = normalizeRoom(c.chambre);
+                        const pdfRoom = normalizeRoom(room);
+                        if (pdfRoom && chRoom && chRoom === pdfRoom) return true;
+                        if (r && chRoom && chRoom === normalizeRoom(r.room)) return true;
+                        // Match plus permissif sur les chiffres seuls (POLTURAT "2" vs "G2")
+                        const digitsCh = (chRoom.match(/\d+/) || [''])[0];
+                        const digitsPdf = (pdfRoom.match(/\d+/) || [''])[0];
+                        if (digitsCh && digitsPdf && digitsCh === digitsPdf) return true;
+                        // Match par nom de famille du résident matché
                         const cn = normalizeName(c.nom || '');
                         if (!cn) return false;
                         if (r) {
                           const last = normalizeName(r.last_name);
                           if (last && cn.includes(last)) return true;
                         }
-                        // Sinon fallback : essayer chaque mot ≥ 4 lettres du nom PDF
+                        // Fallback : chaque mot ≥ 4 lettres du nom PDF
                         const cleanedPdf = normalizeName(resident.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
                         for (const w of cleanedPdf.split(' ')) {
                           if (w.length >= 4 && cn.includes(w)) return true;
