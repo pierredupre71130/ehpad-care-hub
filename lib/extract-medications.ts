@@ -97,9 +97,15 @@ export const MED_CATEGORIES: Record<string, string[]> = {
     'linezolide', 'zyvoxid', 'vancomycine', 'clindamycine', 'dalacine',
     'pivmecillinam', 'selexid', 'amikacine', 'gentamicine',
   ],
-  'Contentions': [
-    'contention', 'contentions', 'bas de contention', 'chaussettes de contention',
-    'chaussette de contention', 'bandes', 'bande de contention', 'sangle', 'barriere', 'barrieres',
+  'Contentions veineuses': [
+    'bas de contention', 'chaussettes de contention', 'chaussette de contention',
+    'bande de contention', 'bandes de contention', 'contention veineuse',
+    'contentions veineuses',
+  ],
+  'Contentions physiques': [
+    'contention physique', 'contentions physiques',
+    'sangle', 'sangles', 'barriere', 'barrieres', 'attache', 'attaches',
+    'ceinture de maintien', 'tablette',
   ],
   'Compléments alimentaires': [
     'complement', 'fortimel', 'calcidose', 'optifibre', 'clinutren', 'renutryl',
@@ -112,7 +118,11 @@ export const MED_CATEGORIES: Record<string, string[]> = {
 // Catégories qui ne nécessitent pas la présence d'une posologie (mg, mL, comprimé…)
 // pour être détectées dans un bloc — souvent absentes pour les contentions et
 // compléments alimentaires.
-const NO_DOSE_REQUIRED_CATEGORIES = new Set(['Contentions', 'Compléments alimentaires']);
+const NO_DOSE_REQUIRED_CATEGORIES = new Set([
+  'Contentions veineuses',
+  'Contentions physiques',
+  'Compléments alimentaires',
+]);
 
 function normalize(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -248,9 +258,9 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
         const hasForm = /\b(comprim[ée]|g[ée]lule|sachet|ampoule|cpr|g[ée]l|pdr|buvable|sirop|patch|goutte|solution|suspension)\b/i.test(head);
 
         const headN = normalize(head);
-        const isNoDoseCategory =
-          MED_CATEGORIES['Contentions'].some(k => headN.includes(k)) ||
-          MED_CATEGORIES['Compléments alimentaires'].some(k => headN.includes(k));
+        const isNoDoseCategory = [...NO_DOSE_REQUIRED_CATEGORIES].some(cat =>
+          (MED_CATEGORIES[cat] || []).some(k => headN.includes(k)),
+        );
 
         if (!hasDose && !hasForm && !isNoDoseCategory) continue;
 
