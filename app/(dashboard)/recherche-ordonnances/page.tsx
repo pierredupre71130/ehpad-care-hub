@@ -248,7 +248,12 @@ export default function RechercheOrdonnancesPage() {
                           }`}>
                             {m.category}
                           </span>
-                          <span className="text-slate-800 truncate" title={m.drug}>{m.drug}</span>
+                          <span className="text-slate-800 truncate flex-1" title={m.drug}>{m.drug}</span>
+                          {m.startDate && (
+                            <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0" title="Début de prescription">
+                              dès {new Date(m.startDate + 'T12:00:00').toLocaleDateString('fr-FR')}
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
