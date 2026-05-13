@@ -86,16 +86,21 @@ export default function RechercheOrdonnancesPage() {
     chambre: string | null;
     type_contention: string | null;
   }
-  const { data: contentionsList = [] } = useQuery({
+  const { data: contentionsList = [], error: contentionsError, isLoading: contentionsLoading } = useQuery({
     queryKey: ['contentions-for-ordonnances'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contentions')
-        .select('id, nom, chambre, type_contention');
-      if (error) throw error;
-      return (data ?? []) as ContentionRow[];
+        .select('id, nom, chambre, type_contention, type_suivi');
+      if (error) {
+        console.error('[ordonnances] erreur fetch contentions:', error);
+        throw new Error(error.message);
+      }
+      console.info('[ordonnances] contentions reçues :', data?.length, data);
+      return (data ?? []) as (ContentionRow & { type_suivi?: string })[];
     },
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchOnMount: true,
   });
 
   const updateResidentFlag = useMutation({
@@ -276,10 +281,15 @@ export default function RechercheOrdonnancesPage() {
             </button>
             {results.length > 0 && (
               <span className="text-xs text-slate-500 font-medium ml-2">
-                {results.length} médicaments extraits · {byResident.length} résidents · {contentionsList.length} contentions en base · {residentsList.length} résidents en base
+                {results.length} médicaments extraits · {byResident.length} résidents · {contentionsLoading ? '…' : contentionsList.length} contentions en base · {residentsList.length} résidents en base
               </span>
             )}
           </div>
+          {contentionsError && (
+            <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-2">
+              Erreur fetch contentions : {contentionsError instanceof Error ? contentionsError.message : String(contentionsError)}
+            </p>
+          )}
           {error && (
             <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-2">{error}</p>
           )}
