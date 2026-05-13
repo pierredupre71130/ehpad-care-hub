@@ -903,36 +903,36 @@ ${sec('Objectifs et signature',
         )}
 
         {/* Stats */}
-        <div className="flex gap-3 mb-5 flex-wrap">
+        <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
           <button onClick={() => setFilter(filter === 'faits' ? 'tous' : 'faits')}
-            className={`bg-green-50 border rounded-xl px-4 py-3 flex items-center gap-3 transition-colors ${filter === 'faits' ? 'border-green-500 ring-2 ring-green-300' : 'border-green-200 hover:bg-green-100'}`}>
-            <Check className="h-5 w-5 text-green-600" />
-            <div><div className="text-2xl font-bold text-green-700">{nbFaits}</div><div className="text-xs text-green-600 font-medium">PAP faits</div></div>
+            className={`bg-green-50 border rounded-xl px-3 py-2 flex items-center gap-2 transition-colors shrink-0 ${filter === 'faits' ? 'border-green-500 ring-2 ring-green-300' : 'border-green-200 hover:bg-green-100'}`}>
+            <Check className="h-4 w-4 text-green-600" />
+            <div className="text-left"><div className="text-lg font-bold text-green-700 leading-none">{nbFaits}</div><div className="text-[10px] text-green-600 font-medium">PAP faits</div></div>
           </button>
           <button onClick={() => setFilter(filter === 'a_faire' ? 'tous' : 'a_faire')}
-            className={`bg-amber-50 border rounded-xl px-4 py-3 flex items-center gap-3 transition-colors ${filter === 'a_faire' ? 'border-amber-500 ring-2 ring-amber-300' : 'border-amber-200 hover:bg-amber-100'}`}>
-            <AlertCircle className="h-5 w-5 text-amber-500" />
-            <div><div className="text-2xl font-bold text-amber-700">{nbAFaire}</div><div className="text-xs text-amber-600 font-medium">À faire</div></div>
+            className={`bg-amber-50 border rounded-xl px-3 py-2 flex items-center gap-2 transition-colors shrink-0 ${filter === 'a_faire' ? 'border-amber-500 ring-2 ring-amber-300' : 'border-amber-200 hover:bg-amber-100'}`}>
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <div className="text-left"><div className="text-lg font-bold text-amber-700 leading-none">{nbAFaire}</div><div className="text-[10px] text-amber-600 font-medium">À faire</div></div>
           </button>
           <button onClick={() => { setShowSansReferents(true); setAssigningReferentFor(null); }} disabled={readOnly}
-            className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Users className="h-5 w-5 text-rose-500" />
-            <div className="text-left"><div className="text-sm font-bold text-rose-700">Résidents à assigner</div><div className="text-xs text-rose-600">{nbSansReferent} sans référent</div></div>
+            className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 flex items-center gap-2 hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+            <Users className="h-4 w-4 text-rose-500" />
+            <div className="text-left"><div className="text-xs font-bold text-rose-700 leading-tight">Résidents à assigner</div><div className="text-[10px] text-rose-600">{nbSansReferent} sans référent</div></div>
           </button>
           <button onClick={() => setShowPrintReferents(true)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-slate-100 transition-colors ml-auto">
-            <Printer className="h-5 w-5 text-slate-500" />
-            <div className="text-left"><div className="text-sm font-bold text-slate-700">Tableau référents</div><div className="text-xs text-slate-400">Imprimer la liste</div></div>
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2 hover:bg-slate-100 transition-colors shrink-0">
+            <Printer className="h-4 w-4 text-slate-500" />
+            <div className="text-left"><div className="text-xs font-bold text-slate-700 leading-tight">Tableau référents</div><div className="text-[10px] text-slate-400">Imprimer la liste</div></div>
           </button>
           <button onClick={handlePrintBlank}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-slate-100 transition-colors">
-            <Printer className="h-5 w-5 text-slate-500" />
-            <div className="text-left"><div className="text-sm font-bold text-slate-700">Feuille vierge</div><div className="text-xs text-slate-400">PAP à remplir à la main</div></div>
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2 hover:bg-slate-100 transition-colors shrink-0">
+            <Printer className="h-4 w-4 text-slate-500" />
+            <div className="text-left"><div className="text-xs font-bold text-slate-700 leading-tight">Feuille vierge</div><div className="text-[10px] text-slate-400">PAP à remplir à la main</div></div>
           </button>
           <button onClick={() => setShowGestionReferents(true)} disabled={readOnly}
-            className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-indigo-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <UserPen className="h-5 w-5 text-indigo-500" />
-            <div className="text-left"><div className="text-sm font-bold text-indigo-700">Gestion des référents</div><div className="text-xs text-indigo-500">{allReferents.length} référent{allReferents.length > 1 ? 's' : ''}</div></div>
+            className="bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2 flex items-center gap-2 hover:bg-indigo-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+            <UserPen className="h-4 w-4 text-indigo-500" />
+            <div className="text-left"><div className="text-xs font-bold text-indigo-700 leading-tight">Gestion des référents</div><div className="text-[10px] text-indigo-500">{allReferents.length} référent{allReferents.length > 1 ? 's' : ''}</div></div>
           </button>
         </div>
 
