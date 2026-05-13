@@ -84,20 +84,21 @@ export default function RechercheOrdonnancesPage() {
     id: string;
     nom: string | null;
     chambre: string | null;
-    type_contention: string | null;
+    traitement: string | null;
   }
   const { data: contentionsList = [], error: contentionsError, isLoading: contentionsLoading } = useQuery({
     queryKey: ['contentions-for-ordonnances'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contentions')
-        .select('id, nom, chambre, type_contention, type_suivi');
+        .select('id, nom, chambre, traitement')
+        .eq('type_suivi', 'contention');
       if (error) {
         console.error('[ordonnances] erreur fetch contentions:', error);
         throw new Error(error.message);
       }
       console.info('[ordonnances] contentions reçues :', data?.length, data);
-      return (data ?? []) as (ContentionRow & { type_suivi?: string })[];
+      return (data ?? []) as ContentionRow[];
     },
     staleTime: 30_000,
     refetchOnMount: true,
