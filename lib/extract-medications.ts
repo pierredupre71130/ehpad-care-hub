@@ -97,7 +97,21 @@ export const MED_CATEGORIES: Record<string, string[]> = {
     'linezolide', 'zyvoxid', 'vancomycine', 'clindamycine', 'dalacine',
     'pivmecillinam', 'selexid', 'amikacine', 'gentamicine',
   ],
+  'Contentions': [
+    'contention', 'contentions', 'bas de contention', 'chaussettes de contention',
+    'chaussette de contention', 'bandes', 'bande de contention', 'sangle', 'barriere', 'barrieres',
+  ],
+  'Compléments alimentaires': [
+    'complement', 'fortimel', 'calcidose', 'optifibre', 'clinutren', 'renutryl',
+    'nutridrink', 'ensure', 'fresubin', 'proteine', 'nutrition', 'dietetique',
+    'protifar', 'resource',
+  ],
 };
+
+// Catégories qui ne nécessitent pas la présence d'une posologie (mg, mL, comprimé…)
+// pour être détectées dans un bloc — souvent absentes pour les contentions et
+// compléments alimentaires.
+const NO_DOSE_REQUIRED_CATEGORIES = new Set(['Contentions', 'Compléments alimentaires']);
 
 function normalize(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -168,7 +182,15 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
       const head = block.slice(0, 300);
       const hasDose = /\d+\s*(mg|mL|UI|µg|mcg|ug|g\b)/i.test(head);
       const hasForm = /\b(comprim[ée]|g[ée]lule|sachet|ampoule|cpr|g[ée]l|pdr|buvable|sirop|patch|goutte|solution|suspension)\b/i.test(head);
-      if (!hasDose && !hasForm) continue;
+
+      // Détection rapide d'un mot-clé contentions / compléments
+      // (ces actes peuvent ne pas avoir de posologie classique)
+      const headN = normalize(head);
+      const isNoDoseCategory =
+        MED_CATEGORIES['Contentions'].some(k => headN.includes(k)) ||
+        MED_CATEGORIES['Compléments alimentaires'].some(k => headN.includes(k));
+
+      if (!hasDose && !hasForm && !isNoDoseCategory) continue;
 
       let drugLine: string | null = null;
       for (const line of block.split('\n')) {
@@ -181,17 +203,38 @@ export function extractMedicationsFromPages(pageTexts: string[]): MedResult[] {
       if (!drugLine) continue;
 
       const category = classifyMedication(drugLine);
-      if (!category) continue;
+      // Pour Contentions / Compléments, si la première ligne ne matche pas,
+      // on tente d'extraire un mot-clé directement du bloc complet.
+      let finalCategory: string | null = category;
+      let finalLine = drugLine;
+      if (!finalCategory) {
+        for (const cat of NO_DOSE_REQUIRED_CATEGORIES) {
+          const kws = MED_CATEGORIES[cat] || [];
+          if (kws.some(k => headN.includes(k))) {
+            finalCategory = cat;
+            // Cherche la ligne du bloc contenant le mot-clé pour libellé plus clair
+            for (const line of block.split('\n')) {
+              const lN = normalize(line);
+              if (kws.some(k => lN.includes(k))) {
+                finalLine = line.trim();
+                break;
+              }
+            }
+            break;
+          }
+        }
+      }
+      if (!finalCategory) continue;
 
-      const key = `${patient}|${normalize(drugLine.slice(0, 40))}`;
+      const key = `${patient}|${normalize(finalLine.slice(0, 40))}|${finalCategory}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
       out.push({
         resident: patient,
         room,
-        drug: drugLine.slice(0, 80).trim(),
-        category,
+        drug: finalLine.slice(0, 80).trim(),
+        category: finalCategory,
       });
     }
   }
