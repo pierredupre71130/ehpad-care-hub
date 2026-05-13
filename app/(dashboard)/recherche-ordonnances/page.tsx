@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   PillBottle, Upload, Search, Loader2, ChevronRight, Eye, X, Filter,
+  AlertTriangle, CheckCircle2, Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { fetchColorOverrides, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
@@ -29,6 +31,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function RechercheOrdonnancesPage() {
+  const supabase = createClient();
+  const qc = useQueryClient();
   const access = useModuleAccess('rechercheOrdonnances');
   const readOnly = access === 'read';
 
@@ -50,6 +54,75 @@ export default function RechercheOrdonnancesPage() {
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set(allCategories));
   const [residentQuery, setResidentQuery] = useState('');
   const [drugQuery, setDrugQuery] = useState('');
+
+  // ── Résidents (pour vérifier les cases anticoagulants / contention) ──
+  interface ResidentRow {
+    id: string;
+    title: string | null;
+    first_name: string;
+    last_name: string;
+    room: string;
+    anticoagulants: boolean | null;
+    chaussettes_de_contention: boolean | null;
+    bas_de_contention: boolean | null;
+    bande_de_contention: boolean | null;
+  }
+  const { data: residentsList = [] } = useQuery({
+    queryKey: ['residents-for-ordonnances'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('residents')
+        .select('id, title, first_name, last_name, room, anticoagulants, chaussettes_de_contention, bas_de_contention, bande_de_contention')
+        .eq('archived', false);
+      if (error) throw error;
+      return (data ?? []) as ResidentRow[];
+    },
+    staleTime: 60_000,
+  });
+
+  const updateResidentFlag = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<ResidentRow> }) => {
+      const { error } = await supabase.from('residents').update(patch).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['residents-for-ordonnances'] });
+      qc.invalidateQueries({ queryKey: ['residents'] });
+      toast.success('Fiche résident mise à jour');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const normalizeName = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const matchResident = (displayName: string, room: string): ResidentRow | null => {
+    const cleaned = normalizeName(displayName.replace(/^(M\.|Mme|Mr|Mlle)\s+/i, ''));
+    // Préfère un match par chambre quand disponible (très fiable)
+    if (room) {
+      const byRoom = residentsList.find(r => (r.room || '').trim().toLowerCase() === room.trim().toLowerCase());
+      if (byRoom) {
+        const last = normalizeName(byRoom.last_name);
+        if (last && cleaned.includes(last)) return byRoom;
+      }
+    }
+    // Match par nom + (optionnel) prénom
+    let best: ResidentRow | null = null;
+    let bestScore = 0;
+    for (const r of residentsList) {
+      const last = normalizeName(r.last_name);
+      const first = normalizeName(r.first_name);
+      if (!last) continue;
+      if (!cleaned.includes(last)) continue;
+      let score = 1;
+      if (first && cleaned.includes(first)) score += 2;
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+    return best;
+  };
 
   const toggleCat = (c: string) => {
     setSelectedCats(prev => {
@@ -233,15 +306,68 @@ export default function RechercheOrdonnancesPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {byResident.map(({ room, resident, meds }) => (
+                {byResident.map(({ room, resident, meds }) => {
+                  const r = matchResident(resident, room);
+                  const cats = new Set(meds.map(m => m.category));
+                  const hasAntico = cats.has('Anticoagulants');
+                  const hasVein = cats.has('Contentions veineuses');
+                  // Liste des vérifications à faire pour ce résident
+                  const checks: { label: string; isOk: boolean; onFix?: () => void; }[] = [];
+                  if (hasAntico && r) {
+                    checks.push({
+                      label: 'Case "Anticoagulants"',
+                      isOk: !!r.anticoagulants,
+                      onFix: r.anticoagulants ? undefined : () =>
+                        updateResidentFlag.mutate({ id: r.id, patch: { anticoagulants: true } }),
+                    });
+                  }
+                  if (hasVein && r) {
+                    const veinOk = !!(r.chaussettes_de_contention || r.bas_de_contention || r.bande_de_contention);
+                    checks.push({
+                      label: 'Cases contention veineuse',
+                      isOk: veinOk,
+                      onFix: veinOk ? undefined : () =>
+                        updateResidentFlag.mutate({ id: r.id, patch: { bas_de_contention: true } }),
+                    });
+                  }
+                  return (
                   <div key={`${room}-${resident}`} className="bg-white rounded-xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                       <div>
                         <span className="font-semibold text-slate-800">{resident}</span>
                         {room && <span className="ml-2 text-xs text-slate-500">Ch. {room}</span>}
+                        {!r && (hasAntico || hasVein) && (
+                          <span className="ml-2 text-[10px] uppercase font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded" title="Pas de correspondance dans la base résidents">
+                            Résident non trouvé
+                          </span>
+                        )}
                       </div>
                       <span className="text-xs text-slate-400">{meds.length} traitement{meds.length > 1 ? 's' : ''}</span>
                     </div>
+
+                    {checks.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {checks.map((c, i) => (
+                          <div key={i} className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg border text-xs ${
+                            c.isOk ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-300 text-amber-900'
+                          }`}>
+                            <div className="flex items-center gap-1.5">
+                              {c.isOk
+                                ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                : <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                              <span><b>{c.label}</b> : {c.isOk ? 'déjà cochée dans la fiche' : 'NON cochée dans la fiche'}</span>
+                            </div>
+                            {!c.isOk && c.onFix && (
+                              <button onClick={c.onFix}
+                                disabled={updateResidentFlag.isPending || readOnly}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 disabled:opacity-50">
+                                <Plus className="h-3 w-3" /> Cocher
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
                       {meds.map((m, i) => (
                         <div key={i} className="flex items-center gap-2 px-2 py-1 border border-slate-100 rounded-lg text-sm">
@@ -260,7 +386,8 @@ export default function RechercheOrdonnancesPage() {
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
