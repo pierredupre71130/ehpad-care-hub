@@ -79,6 +79,7 @@ interface NiveauSoinRecord {
   niveau_soin: string;
   appel_nuit: boolean | null;
   appel_nuit_info: string;
+  tutelle: string;
   pompes_funebres: string;
 }
 
@@ -193,6 +194,7 @@ async function upsertNiveau(
       niveau_soin: '',
       appel_nuit: null,
       appel_nuit_info: '',
+      tutelle: '',
       pompes_funebres: '',
       ...patch,
     };
@@ -367,6 +369,7 @@ function HistoryModal({
                 <div><span className="text-slate-500">Niveau de soin :</span> <b>{fmt(current.niveau_soin)}</b></div>
                 <div><span className="text-slate-500">Appel nuit :</span> <b>{fmtAppel(current.appel_nuit)}</b></div>
                 <div><span className="text-slate-500">Info appel :</span> <b>{fmt(current.appel_nuit_info)}</b></div>
+                <div className="col-span-2"><span className="text-slate-500">Tutelle :</span> <b>{fmt(current.tutelle)}</b></div>
                 <div className="col-span-2"><span className="text-slate-500">Pompes funèbres :</span> <b>{fmt(current.pompes_funebres)}</b></div>
               </div>
             </div>
@@ -408,6 +411,7 @@ function HistoryModal({
                   <div><span className="text-slate-500">Niveau de soin :</span> <b>{fmt(d.niveau_soin)}</b></div>
                   <div><span className="text-slate-500">Appel nuit :</span> <b>{fmtAppel(d.appel_nuit)}</b></div>
                   <div><span className="text-slate-500">Info appel :</span> <b>{fmt(d.appel_nuit_info)}</b></div>
+                  <div className="col-span-2"><span className="text-slate-500">Tutelle :</span> <b>{fmt(d.tutelle)}</b></div>
                   <div className="col-span-2"><span className="text-slate-500">Pompes funèbres :</span> <b>{fmt(d.pompes_funebres)}</b></div>
                 </div>
               </div>
@@ -432,8 +436,8 @@ function HistoryModal({
 
 // Champs autorisés par rôle (null = tous les champs autorisés)
 const ROLE_ALLOWED_FIELDS: Record<string, string[] | null> = {
-  secretaire: ['gir', 'appel_nuit', 'appel_nuit_info', 'pompes_funebres'],
-  cadre:      ['gir', 'appel_nuit', 'appel_nuit_info', 'pompes_funebres'],
+  secretaire: ['gir', 'appel_nuit', 'appel_nuit_info', 'tutelle', 'pompes_funebres'],
+  cadre:      ['gir', 'appel_nuit', 'appel_nuit_info', 'tutelle', 'pompes_funebres'],
   medecin:    ['niveau_soin'],
 };
 
@@ -475,13 +479,13 @@ export default function GIRNiveauSoinPage() {
     const map: Record<string, NiveauSoinRecord> = {};
     niveaux.forEach(n => { map[n.resident_id] = n; });
     Object.entries(localUpdates).forEach(([id, patch]) => {
-      map[id] = { ...(map[id] ?? { resident_id: id, resident_name: '', gir: '', niveau_soin: '', appel_nuit: null, appel_nuit_info: '', pompes_funebres: '' }), ...patch };
+      map[id] = { ...(map[id] ?? { resident_id: id, resident_name: '', gir: '', niveau_soin: '', appel_nuit: null, appel_nuit_info: '', tutelle: '', pompes_funebres: '' }), ...patch };
     });
     return map;
   }, [niveaux, localUpdates]);
 
   const getRec = useCallback((residentId: string): NiveauSoinRecord =>
-    records[residentId] ?? { resident_id: residentId, resident_name: '', gir: '', niveau_soin: '', appel_nuit: null, appel_nuit_info: '', pompes_funebres: '' },
+    records[residentId] ?? { resident_id: residentId, resident_name: '', gir: '', niveau_soin: '', appel_nuit: null, appel_nuit_info: '', tutelle: '', pompes_funebres: '' },
     [records]
   );
 
@@ -493,6 +497,7 @@ export default function GIRNiveauSoinPage() {
       niveau_soin: data.niveau_soin ?? '',
       appel_nuit: data.appel_nuit ?? null,
       appel_nuit_info: data.appel_nuit_info ?? '',
+      tutelle: data.tutelle ?? '',
       pompes_funebres: data.pompes_funebres ?? '',
     };
     try {
@@ -641,18 +646,19 @@ export default function GIRNiveauSoinPage() {
         {/* Tableau */}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: '4%' }} />
-            <col style={{ width: '22%' }} />
+            <col style={{ width: '3%' }} />
+            <col style={{ width: '19%' }} />
+            <col style={{ width: '6%' }} />
             <col style={{ width: '7%' }} />
             <col style={{ width: '8%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '21%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '17%' }} />
           </colgroup>
           <thead>
             <tr style={{ background: '#1e1b4b', color: 'white' }}>
-              {['#', 'Résident', 'Chambre', 'GIR', 'Niveau soin', 'Appel nuit', 'Info appel nuit', 'Pompes funèbres'].map((h, i) => (
+              {['#', 'Résident', 'Chambre', 'GIR', 'Niveau soin', 'Appel nuit', 'Info appel nuit', 'Tutelle', 'Pompes funèbres'].map((h, i) => (
                 <th key={h} style={{
                   border: '1px solid #1e1b4b', padding: '5px 7px',
                   textAlign: i === 1 || i === 6 || i === 7 ? 'left' : 'center',
@@ -699,6 +705,9 @@ export default function GIRNiveauSoinPage() {
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', textAlign: 'center' }}>{badge(appelTxt, appelBg, 'white')}</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.appel_nuit_info ? '#0f172a' : '#cbd5e1' }}>
                     {rec.appel_nuit_info || '—'}
+                  </td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.tutelle ? '#0f172a' : '#cbd5e1' }}>
+                    {rec.tutelle || '—'}
                   </td>
                   <td style={{ border: '1px solid #cbd5e1', padding: '4px 7px', fontSize: '10px', color: rec.pompes_funebres ? '#0f172a' : '#cbd5e1' }}>
                     {rec.pompes_funebres || '—'}
@@ -909,6 +918,7 @@ export default function GIRNiveauSoinPage() {
               <th className="border border-purple-700 px-3 py-2 text-center font-semibold w-36">GIR</th>
               <th className="border border-purple-700 px-3 py-2 text-center font-semibold w-52">Niveau de soin</th>
               <th className="border border-purple-700 px-3 py-2 text-center font-semibold w-60">Appel de nuit</th>
+              <th className="border border-purple-700 px-3 py-2 text-left font-semibold w-48">Tutelle</th>
               <th className="border border-purple-700 px-3 py-2 text-left font-semibold">Pompes funèbres</th>
             </tr>
           </thead>
@@ -1001,6 +1011,22 @@ export default function GIRNiveauSoinPage() {
                         />
                       )}
                     </div>
+                  </td>
+
+                  {/* Tutelle */}
+                  <td className="border border-slate-300 px-2 py-1.5 text-sm">
+                    <textarea
+                      value={rec.tutelle ?? ''}
+                      onChange={e => canEdit('tutelle') && setLocalUpdates(prev => ({
+                        ...prev,
+                        [r.id]: { ...(prev[r.id] ?? {}), tutelle: e.target.value },
+                      }))}
+                      onBlur={e => canEdit('tutelle') && doUpdate(r, 'tutelle', e.target.value)}
+                      placeholder="Nom du tuteur..."
+                      rows={2}
+                      readOnly={!canEdit('tutelle')}
+                      className="w-full border border-slate-200 rounded px-2 py-1 text-xs resize-none focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
+                    />
                   </td>
 
                   {/* Pompes funèbres */}
