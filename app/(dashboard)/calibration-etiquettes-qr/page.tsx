@@ -74,6 +74,7 @@ export default function CalibrationEtiquettesQRPage() {
   const [bgUrl, setBgUrl] = useState<string | null>('/etiquettes-test.pdf');
   const [bgFile, setBgFile] = useState<File | null>(null);
   const [useDefaultBg, setUseDefaultBg] = useState(true);
+  const [bgPngUrl, setBgPngUrl] = useState<string | null>(null);
   const [demoQrUrl, setDemoQrUrl] = useState<string>('');
   const bgInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +97,36 @@ export default function CalibrationEtiquettesQRPage() {
   useEffect(() => {
     QRCode.toDataURL('MAT-DEMO', { width: 160, margin: 0 }).then(setDemoQrUrl);
   }, []);
+
+  // Rendu PDF -> PNG via pdfjs pour l'afficher en fond transparent
+  useEffect(() => {
+    if (!bgUrl) { setBgPngUrl(null); return; }
+    const isPdf = useDefaultBg || /\.pdf$/i.test(bgFile?.name || '');
+    if (!isPdf) { setBgPngUrl(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        const data = await fetch(bgUrl).then(r => r.arrayBuffer());
+        if (cancelled) return;
+        const pdf = await pdfjs.getDocument({ data }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+        if (cancelled) return;
+        setBgPngUrl(canvas.toDataURL('image/png'));
+      } catch (e) {
+        console.error('PDF render failed', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bgUrl, bgFile, useDefaultBg]);
 
   // ── Auto-save (debounced)
   useEffect(() => {
@@ -304,9 +335,10 @@ export default function CalibrationEtiquettesQRPage() {
               <img src={bgUrl} alt="fond"
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.5 }} />
             )}
-            {bgUrl && (useDefaultBg || /\.pdf$/i.test(bgFile?.name || '')) && (
-              <object data={bgUrl} type="application/pdf"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.55, pointerEvents: 'none' }} />
+            {bgPngUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={bgPngUrl} alt="fond PDF"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', opacity: 0.55, pointerEvents: 'none' }} />
             )}
             {positions.map(p => (
               <div key={p.idx} style={{
