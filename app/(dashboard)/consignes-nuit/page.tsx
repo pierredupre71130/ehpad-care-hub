@@ -832,8 +832,11 @@ export default function ConsignesNuitPage() {
         return `<span style="${style}" title="${f.traitement}">${labelMap[f.traitement] ?? '?'}</span>`;
       }).join(' ');
 
-      const emojiImg = (src: string, alt: string) =>
-        `<img src="${src}" alt="${alt}" title="${alt}" width="14" height="14" class="emoji-icon-print" style="display:inline-block;vertical-align:middle;filter:drop-shadow(0 0 0.18mm #000) drop-shadow(0 0 0.18mm #000)"/>`;
+      const emojiImg = (src: string, alt: string) => {
+        const isChaussette = /^chaussette/i.test(alt);
+        const filter = isChaussette ? '' : 'filter:drop-shadow(0 0 0.18mm #000) drop-shadow(0 0 0.18mm #000);';
+        return `<img src="${src}" alt="${alt}" title="${alt}" width="14" height="14" class="emoji-icon-print" style="display:inline-block;vertical-align:middle;${filter}"/>`;
+      };
       const contentionEmojis = [
         r.chaussettes_de_contention ? emojiImg(EMOJI_SOCK, 'Chaussettes de contention') : '',
         r.bas_de_contention         ? emojiImg(EMOJI_LEG,  'Bas de contention')         : '',
