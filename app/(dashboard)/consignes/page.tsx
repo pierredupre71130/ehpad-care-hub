@@ -135,6 +135,7 @@ function EmojiImg({ src, alt, size = 14 }: { src: string; alt: string; size?: nu
       title={alt}
       width={size}
       height={size}
+      className="emoji-icon-print"
       style={{ display: 'inline-block', verticalAlign: 'middle' }}
     />
   );
