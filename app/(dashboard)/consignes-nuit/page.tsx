@@ -68,6 +68,7 @@ function EmojiImg({ src, alt, size = 14 }: { src: string; alt: string; size?: nu
       title={alt}
       width={size}
       height={size}
+      className="emoji-icon-print"
       style={{ display: 'inline-block', verticalAlign: 'middle' }}
     />
   );
@@ -832,7 +833,7 @@ export default function ConsignesNuitPage() {
       }).join(' ');
 
       const emojiImg = (src: string, alt: string) =>
-        `<img src="${src}" alt="${alt}" title="${alt}" width="14" height="14" style="display:inline-block;vertical-align:middle"/>`;
+        `<img src="${src}" alt="${alt}" title="${alt}" width="14" height="14" class="emoji-icon-print" style="display:inline-block;vertical-align:middle;filter:drop-shadow(0 0 0.18mm #000) drop-shadow(0 0 0.18mm #000)"/>`;
       const contentionEmojis = [
         r.chaussettes_de_contention ? emojiImg(EMOJI_SOCK, 'Chaussettes de contention') : '',
         r.bas_de_contention         ? emojiImg(EMOJI_LEG,  'Bas de contention')         : '',
