@@ -71,8 +71,9 @@ export default function CalibrationEtiquettesQRPage() {
   const [values, setValues] = useState<LabelCalibration>(DEFAULT_CALIBRATION);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [bgUrl, setBgUrl] = useState<string | null>(null);
+  const [bgUrl, setBgUrl] = useState<string | null>('/etiquettes-test.pdf');
   const [bgFile, setBgFile] = useState<File | null>(null);
+  const [useDefaultBg, setUseDefaultBg] = useState(true);
   const [demoQrUrl, setDemoQrUrl] = useState<string>('');
   const bgInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,9 +115,15 @@ export default function CalibrationEtiquettesQRPage() {
 
   // ── Background upload
   const handleBg = (file: File | null) => {
-    if (bgUrl) URL.revokeObjectURL(bgUrl);
-    if (!file) { setBgFile(null); setBgUrl(null); return; }
+    if (bgUrl && !useDefaultBg) URL.revokeObjectURL(bgUrl);
+    if (!file) {
+      setBgFile(null);
+      setUseDefaultBg(true);
+      setBgUrl('/etiquettes-test.pdf');
+      return;
+    }
     setBgFile(file);
+    setUseDefaultBg(false);
     setBgUrl(URL.createObjectURL(file));
   };
 
@@ -266,6 +273,7 @@ export default function CalibrationEtiquettesQRPage() {
               </button>
               {bgFile && (
                 <button onClick={() => handleBg(null)}
+                  title="Revenir au fond de test par défaut"
                   className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50">
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -273,7 +281,9 @@ export default function CalibrationEtiquettesQRPage() {
               <input ref={bgInputRef} type="file" accept="image/*,application/pdf" className="hidden"
                 onChange={e => handleBg(e.target.files?.[0] || null)} />
             </div>
-            {bgFile && <p className="text-[11px] text-slate-500 mt-1 truncate">{bgFile.name}</p>}
+            <p className="text-[11px] text-slate-500 mt-1 truncate">
+              {bgFile ? bgFile.name : 'Planche de test par défaut (PDF fourni)'}
+            </p>
           </div>
 
           <p className="text-[10px] text-slate-400 italic flex items-center gap-1">
@@ -289,14 +299,14 @@ export default function CalibrationEtiquettesQRPage() {
           </p>
           <div className="border border-slate-300 mx-auto"
             style={{ width: '210mm', height: '297mm', background: 'white', position: 'relative', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
-            {bgUrl && /\.(png|jpe?g|gif|webp)$/i.test(bgFile?.name || '') && (
+            {bgUrl && bgFile && /\.(png|jpe?g|gif|webp)$/i.test(bgFile.name) && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={bgUrl} alt="fond"
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.5 }} />
             )}
-            {bgUrl && /\.pdf$/i.test(bgFile?.name || '') && (
+            {bgUrl && (useDefaultBg || /\.pdf$/i.test(bgFile?.name || '')) && (
               <object data={bgUrl} type="application/pdf"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.5, pointerEvents: 'none' }} />
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.55, pointerEvents: 'none' }} />
             )}
             {positions.map(p => (
               <div key={p.idx} style={{
