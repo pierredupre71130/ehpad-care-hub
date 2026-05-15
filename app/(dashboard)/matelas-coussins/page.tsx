@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BedDouble, Plus, Trash2, Pencil, X, QrCode, Camera, Printer, Search,
-  Loader2, Eye, ChevronRight, UserPlus, UserMinus, Settings, Tag,
+  Loader2, Eye, ChevronRight, UserPlus, UserMinus, Settings, Tag, Sliders,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import { useModuleAccess } from '@/lib/use-module-access';
 import { fetchColorOverrides, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
 import QRCode from 'qrcode';
+import { DEFAULT_CALIBRATION, type LabelCalibration } from '@/app/(dashboard)/calibration-etiquettes-qr/page';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -888,23 +889,37 @@ img{width:80mm;height:80mm}h1{font-size:18pt;margin:8mm 0 2mm}p{font-size:11pt;c
 // ── Print all QR codes ──────────────────────────────────────────────────────
 
 function PrintAllQRModal({ kind, items, onClose }: { kind: Kind; items: Item[]; onClose: () => void }) {
+  const supabase = createClient();
   const [generating, setGenerating] = useState(false);
+  const [mode, setMode] = useState<'simple' | 'autocollants'>('autocollants');
+  const [startIndex, setStartIndex] = useState(1);
 
-  const generate = async () => {
-    if (items.length === 0) { toast.info('Aucun élément à imprimer'); return; }
-    setGenerating(true);
-    try {
-      const cards = await Promise.all(items.map(async it => {
-        const data = await QRCode.toDataURL(it.serial_number, { width: 220, margin: 1 });
-        return `<div class="card">
-          <img src="${data}" alt="${it.serial_number}"/>
-          <div class="serial">${it.serial_number}</div>
-          <div class="meta">${it.type_name || ''}</div>
-        </div>`;
-      }));
-      const w = window.open('', '_blank');
-      if (!w) { toast.error('Autorisez les popups'); return; }
-      w.document.write(`<!DOCTYPE html><html><head><title>QR — ${kind}</title>
+  const { data: calibration = DEFAULT_CALIBRATION } = useQuery({
+    queryKey: ['settings', 'matelas_couss_label_calibration'],
+    queryFn: async () => {
+      const { data } = await supabase.from('settings').select('value')
+        .eq('key', 'matelas_couss_label_calibration').maybeSingle();
+      const v = (data?.value ?? null) as Partial<LabelCalibration> | null;
+      return { ...DEFAULT_CALIBRATION, ...(v || {}) } as LabelCalibration;
+    },
+  });
+
+  const labelsPerPage = calibration.columns * calibration.rows;
+  const skip = Math.max(0, Math.min(labelsPerPage - 1, startIndex - 1));
+
+  // ── Planche A4 simple (3 colonnes)
+  const generateSimple = async () => {
+    const cards = await Promise.all(items.map(async it => {
+      const data = await QRCode.toDataURL(it.serial_number, { width: 220, margin: 1 });
+      return `<div class="card">
+        <img src="${data}" alt="${it.serial_number}"/>
+        <div class="serial">${it.serial_number}</div>
+        <div class="meta">${(it.type_name || '').replace(/</g, '&lt;')}</div>
+      </div>`;
+    }));
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Autorisez les popups'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>QR — ${kind}</title>
 <style>*{box-sizing:border-box}
 body{margin:0;padding:8mm;font-family:Arial,sans-serif}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}
@@ -914,11 +929,68 @@ body{margin:0;padding:8mm;font-family:Arial,sans-serif}
 .meta{font-size:9pt;color:#64748b;margin-top:1mm}
 @page{size:A4 portrait;margin:8mm}
 @media print{body{padding:0}}</style>
-</head><body>
-<div class="grid">${cards.join('')}</div>
-</body></html>`);
-      w.document.close();
-      setTimeout(() => w.print(), 500);
+</head><body><div class="grid">${cards.join('')}</div></body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  };
+
+  // ── Planche d'autocollants (utilise la calibration)
+  const generateAutocollants = async () => {
+    const c = calibration;
+    // Génère les QR
+    const qrUrls = await Promise.all(items.map(it =>
+      QRCode.toDataURL(it.serial_number, { width: 240, margin: 0 }),
+    ));
+    // Construit les pages
+    const pages: string[] = [];
+    let cursor = 0; // index dans items
+    let firstPage = true;
+    while (cursor < items.length) {
+      const cells: string[] = [];
+      // Pages : la 1ère commence à startIndex, les suivantes à 1
+      const offset = firstPage ? skip : 0;
+      firstPage = false;
+      // Cases blanches avant offset
+      for (let i = 0; i < offset; i++) {
+        const row = Math.floor(i / c.columns);
+        const col = i % c.columns;
+        const x = c.page_margin_left + col * (c.label_width + c.col_gap);
+        const y = c.page_margin_top + row * (c.label_height + c.row_gap);
+        cells.push(`<div style="position:absolute;left:${x}mm;top:${y}mm;width:${c.label_width}mm;height:${c.label_height}mm"></div>`);
+      }
+      // Étiquettes pleines jusqu'à la fin de la page
+      for (let i = offset; i < labelsPerPage && cursor < items.length; i++, cursor++) {
+        const row = Math.floor(i / c.columns);
+        const col = i % c.columns;
+        const x = c.page_margin_left + col * (c.label_width + c.col_gap);
+        const y = c.page_margin_top + row * (c.label_height + c.row_gap);
+        const it = items[cursor];
+        const qr = qrUrls[cursor];
+        const tmpl = c.show_type ? `<div style="font-size:${c.font_size}pt;font-family:Arial;line-height:1.05;color:#0f172a;text-align:center;max-width:${c.label_width - 2}mm;overflow:hidden">${(kind === 'matelas' ? 'Matelas' : 'Coussin')}${it.type_name ? ' — ' + it.type_name.replace(/</g, '&lt;') : ''}</div>` : '';
+        const serial = c.show_serial ? `<div style="font-size:${c.font_size}pt;font-family:Arial;font-weight:700;line-height:1.05;color:#0f172a;text-align:center;margin-top:0.3mm">${it.serial_number.replace(/</g, '&lt;')}</div>` : '';
+        cells.push(`<div style="position:absolute;left:${x}mm;top:${y}mm;width:${c.label_width}mm;height:${c.label_height}mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.4mm;overflow:hidden">
+          <img src="${qr}" alt="${it.serial_number}" style="width:${c.qr_size}mm;height:${c.qr_size}mm"/>
+          ${tmpl}
+          ${serial}
+        </div>`);
+      }
+      pages.push(`<div class="page">${cells.join('')}</div>`);
+    }
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Autorisez les popups'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Planche autocollants QR</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif}@page{size:A4 portrait;margin:0}.page{position:relative;width:210mm;height:297mm;page-break-after:always}.page:last-child{page-break-after:auto}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+</head><body>${pages.join('')}</body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  };
+
+  const generate = async () => {
+    if (items.length === 0) { toast.info('Aucun élément à imprimer'); return; }
+    setGenerating(true);
+    try {
+      if (mode === 'simple') await generateSimple();
+      else await generateAutocollants();
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -929,18 +1001,53 @@ body{margin:0;padding:8mm;font-family:Arial,sans-serif}
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold text-slate-900">Imprimer tous les QR</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-sm text-slate-600">
-            Génère une planche A4 portrait avec un QR par {kind} (3 colonnes).
-          </p>
-          <p className="text-xs text-slate-500">
-            <span className="font-semibold">{items.length}</span> {kind}{items.length > 1 ? 's' : ''} à imprimer.
-          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setMode('autocollants')}
+              className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                mode === 'autocollants' ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}>
+              Planche d&apos;autocollants
+            </button>
+            <button onClick={() => setMode('simple')}
+              className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                mode === 'simple' ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}>
+              Planche A4 simple
+            </button>
+          </div>
+
+          {mode === 'autocollants' ? (
+            <div className="space-y-2 text-sm text-slate-600">
+              <p>
+                Utilise tes étiquettes A4 calibrées : <b>{calibration.columns} × {calibration.rows} = {labelsPerPage} étiquettes/page</b>.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Démarrer à la position</label>
+                <input type="number" min={1} max={labelsPerPage} value={startIndex}
+                  onChange={e => setStartIndex(Math.max(1, Math.min(labelsPerPage, parseInt(e.target.value) || 1)))}
+                  className="w-24 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-teal-400" />
+                <span className="text-xs text-slate-500 ml-2">(utile pour une planche déjà entamée)</span>
+              </div>
+              <p className="text-xs text-slate-500">
+                <b>{items.length}</b> QR à imprimer · {Math.ceil((items.length + (startIndex - 1)) / labelsPerPage)} page{Math.ceil((items.length + (startIndex - 1)) / labelsPerPage) > 1 ? 's' : ''}
+              </p>
+              <Link href="/calibration-etiquettes-qr"
+                className="flex items-center gap-1.5 text-xs text-teal-700 hover:underline">
+                <Sliders className="h-3 w-3" /> Régler la calibration des étiquettes
+              </Link>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">
+              Génère une planche A4 portrait avec un QR par {kind} (3 colonnes, étiquettes décoratives).
+              <br /><span className="text-xs text-slate-500">{items.length} {kind}{items.length > 1 ? 's' : ''} à imprimer.</span>
+            </p>
+          )}
         </div>
         <div className="flex gap-2 justify-end p-4 border-t">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
