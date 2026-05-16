@@ -769,17 +769,13 @@ ${chartSvgHtml ? `<div class="section">
 
 </body></html>`;
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;';
-    document.body.appendChild(iframe);
-    iframe.onload = () => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 2000);
-    };
-    iframe.src = url;
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
   };
 
   return (
@@ -1600,13 +1596,13 @@ function AnnuelleView({ residents, allMesures }: {
 ${legend}
 <table><thead><tr>${yHtml}</tr><tr>${mHtml}</tr></thead><tbody>${rows}</tbody></table>
 </body></html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;border:none;opacity:0;';
-    document.body.appendChild(iframe);
-    iframe.onload = () => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 2000); };
-    iframe.src = url;
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
   };
 
   const legend = [
