@@ -407,6 +407,7 @@ export default function PrisesEnChargePage() {
   const [seeding, setSeeding] = useState(false);
   const seedingStarted = useRef(false);
   const syncedFloors = useRef<Set<string>>(new Set());
+  const [printWithPhoto, setPrintWithPhoto] = useState(true);
 
   const { data: rows = [], isLoading: loadingRows } = useQuery({
     queryKey: ['prise_en_charge', activeFloor],
@@ -544,42 +545,80 @@ export default function PrisesEnChargePage() {
       table_color === 'bleu' ? 'BLEU' :
       table_color === 'rose-triangle' ? 'ROSE (triangle)' : 'ROSE';
 
-    const trRows = tableRows.map(row => `
-      <tr>
-        <td>${row.chambre || '—'}</td>
-        <td>${row.nom || '—'}</td>
-        <td>${(row.matin || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
-        <td>${(row.apres_midi || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
-        <td>${(row.protection || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</td>
-      </tr>
-    `).join('');
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+
+    const trRows = tableRows.map(row => {
+      const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+      const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
+      const first = matched?.first_name || '';
+      const age = ageFromBirth(matched?.date_naissance);
+      const photo = matched?.photo_url || '';
+      const photoCell = printWithPhoto
+        ? `<td class="ph">${photo ? `<img src="${esc(photo)}" alt=""/>` : ''}</td>`
+        : '';
+      const nomCell = `<td class="nom">
+        <div class="last">${esc(last) || '—'}${age !== null ? ` <span class="age">(${age} ans)</span>` : ''}</div>
+        ${first ? `<div class="first">${esc(first)}</div>` : ''}
+      </td>`;
+      return `<tr>
+        <td class="ch">${esc(row.chambre || '—')}</td>
+        ${photoCell}
+        ${nomCell}
+        <td>${esc(row.matin || '')}</td>
+        <td>${esc(row.apres_midi || '')}</td>
+        <td class="prot">${esc(row.protection || '')}</td>
+      </tr>`;
+    }).join('');
+
+    const photoColWidth = printWithPhoto ? '<col style="width:24mm"/>' : '';
+    const photoHeader = printWithPhoto ? '<th style="width:24mm">Photo</th>' : '';
 
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8"/>
+  <title>Prises en Charge — ${esc(colorLabel)}</title>
   <style>
-    body { margin: 0; padding: 8mm; font-family: Arial, sans-serif; font-size: 10px; }
-    h1 { font-size: 13px; margin: 0 0 2px; color: #1e293b; }
+    *{box-sizing:border-box}
+    body { margin: 0; padding: 8mm; font-family: Arial, sans-serif; font-size: 10px; color:#1e293b; }
+    h1 { font-size: 13px; margin: 0 0 2px; }
     .sub { margin: 0 0 8px; color: #64748b; font-size: 10px; }
     table { width: 100%; border-collapse: collapse; }
     th { background: #f1f5f9; padding: 5px 7px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid #cbd5e1; color: #475569; }
     td { padding: 4px 7px; border: 1px solid #e2e8f0; vertical-align: top; font-size: 10px; line-height: 1.45; }
     tr:nth-child(even) td { background: #f8fafc; }
+    td.ch { font-weight: 700; text-align: center; width: 16mm; }
+    td.ph { width: 24mm; padding: 2px; text-align: center; vertical-align: middle; }
+    td.ph img { width: 22mm; height: 22mm; object-fit: cover; border-radius: 2mm; border: 0.3mm solid #cbd5e1; }
+    td.nom { width: 36mm; }
+    td.nom .last { font-weight: 700; }
+    td.nom .age { font-weight: 400; color: #64748b; font-size: 9px; }
+    td.nom .first { color: #475569; font-size: 9.5px; margin-top: 0.5mm; }
+    td.prot { width: 32mm; }
     @page { size: A4 landscape; margin: 8mm; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
 <body>
   <h1>Prises en Charge — ${activeFloor} — Tableau ${colorLabel}</h1>
   <p class="sub">Résidence La Fourrier — ${tableRows.length} résident${tableRows.length > 1 ? 's' : ''}</p>
   <table>
+    <colgroup>
+      <col style="width:16mm"/>
+      ${photoColWidth}
+      <col style="width:36mm"/>
+      <col/>
+      <col/>
+      <col style="width:32mm"/>
+    </colgroup>
     <thead>
       <tr>
-        <th style="width:55px">Chambre</th>
-        <th style="width:110px">Nom</th>
+        <th>Chambre</th>
+        ${photoHeader}
+        <th>Nom</th>
         <th>Matin</th>
         <th>Après-midi / Soir</th>
-        <th style="width:130px">Protection</th>
+        <th>Protection</th>
       </tr>
     </thead>
     <tbody>${trRows}</tbody>
@@ -587,15 +626,13 @@ export default function PrisesEnChargePage() {
 </body>
 </html>`;
 
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument!;
-    doc.open(); doc.write(html); doc.close();
-    setTimeout(() => {
-      iframe.contentWindow?.print();
-      setTimeout(() => document.body.removeChild(iframe), 1000);
-    }, 300);
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Autorisez les popups pour imprimer'); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 500);
   };
 
   // ── Rendu ─────────────────────────────────────────────────────────────────
@@ -706,6 +743,12 @@ export default function PrisesEnChargePage() {
               </div>
 
               {/* Imprimer */}
+              <label className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-xs cursor-pointer hover:bg-white/20 transition-colors">
+                <input type="checkbox" checked={printWithPhoto}
+                  onChange={e => setPrintWithPhoto(e.target.checked)}
+                  className="accent-white w-3.5 h-3.5" />
+                Avec photo
+              </label>
               <button
                 onClick={handlePrint}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 border border-white/30 text-white text-sm font-medium transition-colors"
