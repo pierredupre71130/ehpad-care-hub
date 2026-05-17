@@ -20,6 +20,7 @@ import {
   BedDouble,
   Smile,
   PillBottle,
+  ChefHat,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -85,6 +86,19 @@ export const MODULES: ModuleConfig[] = [
     cardTo: '#1a6530',
     colorClass: 'border-amber-100 hover:border-amber-300 hover:bg-amber-50/60',
     iconBg: 'bg-amber-100 text-amber-600',
+    visibleRoles: null,
+    categoryId: 'quotidien',
+  },
+  {
+    id: 'fichesMenu',
+    label: 'Fiches Menu',
+    description: 'Menus midi et soir par résident, par étage',
+    href: '/fiches-menu',
+    icon: ChefHat,
+    cardFrom: '#f97316',
+    cardTo: '#c2410c',
+    colorClass: 'border-orange-100 hover:border-orange-300 hover:bg-orange-50/60',
+    iconBg: 'bg-orange-100 text-orange-600',
     visibleRoles: null,
     categoryId: 'quotidien',
   },
