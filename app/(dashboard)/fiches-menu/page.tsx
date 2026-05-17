@@ -59,18 +59,46 @@ function compareRooms(a: string | null, b: string | null): number {
   return (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' });
 }
 
-// L'observation peut contenir un marqueur [POISSON] pour la case allergie.
-function parseObservation(raw: string): { poisson: boolean; text: string } {
-  if (!raw) return { poisson: false, text: '' };
-  const poisson = /\[POISSON\]/i.test(raw);
-  const text = raw.replace(/\[POISSON\]\s*/gi, '').trim();
-  return { poisson, text };
+// L'observation contient des marqueurs entre crochets pour les cases à cocher
+// (ex. [POISSON] [SANS_POISSON] [SANS_PORC] [SANS_ALCOOL] [SANS_VIANDE] [SANS_SALADE])
+// suivis d'éventuel texte libre.
+type ObsFlag = 'poisson' | 'sans_poisson' | 'sans_porc' | 'sans_alcool' | 'sans_viande' | 'sans_salade';
+const OBS_FLAGS: { key: ObsFlag; marker: string; label: string; cls: string }[] = [
+  { key: 'poisson',      marker: 'POISSON',       label: '⚠ Allergie poisson', cls: 'bg-red-100 text-red-800 border-red-300' },
+  { key: 'sans_poisson', marker: 'SANS_POISSON',  label: 'Sans poisson',       cls: 'bg-orange-100 text-orange-800 border-orange-300' },
+  { key: 'sans_porc',    marker: 'SANS_PORC',     label: 'Sans porc',          cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { key: 'sans_alcool',  marker: 'SANS_ALCOOL',   label: 'Sans alcool',        cls: 'bg-purple-100 text-purple-800 border-purple-300' },
+  { key: 'sans_viande',  marker: 'SANS_VIANDE',   label: 'Sans viande',        cls: 'bg-rose-100 text-rose-800 border-rose-300' },
+  { key: 'sans_salade',  marker: 'SANS_SALADE',   label: 'Sans salade',        cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+];
+
+type ObsState = Record<ObsFlag, boolean> & { text: string };
+
+function emptyObs(): ObsState {
+  const o = { text: '' } as ObsState;
+  for (const f of OBS_FLAGS) o[f.key] = false;
+  return o;
 }
 
-function writeObservation({ poisson, text }: { poisson: boolean; text: string }): string {
+function parseObservation(raw: string): ObsState {
+  const o = emptyObs();
+  if (!raw) return o;
+  let text = raw;
+  for (const f of OBS_FLAGS) {
+    const re = new RegExp(`\\[${f.marker}\\]`, 'gi');
+    if (re.test(text)) {
+      o[f.key] = true;
+      text = text.replace(re, '');
+    }
+  }
+  o.text = text.replace(/\s{2,}/g, ' ').trim();
+  return o;
+}
+
+function writeObservation(o: ObsState): string {
   const parts: string[] = [];
-  if (poisson) parts.push('[POISSON]');
-  if (text.trim()) parts.push(text.trim());
+  for (const f of OBS_FLAGS) if (o[f.key]) parts.push(`[${f.marker}]`);
+  if (o.text.trim()) parts.push(o.text.trim());
   return parts.join(' ');
 }
 
@@ -167,8 +195,12 @@ export default function FichesMenuPage() {
       const regimeBadges: string[] = [];
       if (r.regime_diabetique) regimeBadges.push('<span class="badge DIAB">DIAB</span>');
       if (r.epargne_intestinale) regimeBadges.push('<span class="badge EPARGNE">EPARGNE</span>');
+      const obsBadges = OBS_FLAGS
+        .filter(f => obs[f.key])
+        .map(f => `<span class="badge OBS_${f.marker}">${esc(f.label)}</span>`)
+        .join(' ');
       const obsCellParts: string[] = [];
-      if (obs.poisson) obsCellParts.push('<span class="badge POISSON">⚠ Allergie poisson</span>');
+      if (obsBadges) obsCellParts.push(obsBadges);
       if (obs.text) obsCellParts.push(`<div>${esc(obs.text)}</div>`);
       return `<tr>
         <td class="room">${esc(r.room || '')}</td>
@@ -209,7 +241,12 @@ export default function FichesMenuPage() {
   .badge.AUTRE{background:#fef3c7;color:#92400e;border-color:#fcd34d}
   .badge.DIAB{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd;font-size:8pt;margin-right:1mm}
   .badge.EPARGNE{background:#dcfce7;color:#166534;border-color:#86efac;font-size:8pt;margin-right:1mm}
-  .badge.POISSON{background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:8pt}
+  .badge.OBS_POISSON,.badge.POISSON{background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_SANS_POISSON{background:#fed7aa;color:#9a3412;border-color:#fdba74;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_SANS_PORC{background:#fef3c7;color:#92400e;border-color:#fcd34d;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_SANS_ALCOOL{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_SANS_VIANDE{background:#ffe4e6;color:#9f1239;border-color:#fda4af;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_SANS_SALADE{background:#d1fae5;color:#065f46;border-color:#6ee7b7;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .legend{margin-top:5mm;border:1px solid #cbd5e1;border-radius:3px;padding:3mm 5mm;background:#f8fafc;display:flex;gap:8mm;font-size:8.5pt;color:#475569;flex-wrap:wrap}
   .legend b{color:#0f172a;margin-right:2mm}
   @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -238,7 +275,8 @@ export default function FichesMenuPage() {
   <span><b>AUTRE</b> à substituer</span>
   <span><b>DIAB</b> Régime diabétique</span>
   <span><b>EPARGNE</b> Épargne intestinale</span>
-  <span><b>⚠ Allergie poisson</b></span>
+  <span><b>⚠</b> Allergie poisson</span>
+  <span>· Sans poisson / porc / alcool / viande / salade : régimes d'éviction</span>
 </div>
 </body></html>`;
     w.document.open();
@@ -382,25 +420,27 @@ export default function FichesMenuPage() {
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="space-y-1">
-                        <label className={cn(
-                          'inline-flex items-center gap-1.5 text-[11px] font-semibold px-1.5 py-0.5 rounded border cursor-pointer transition-colors',
-                          obsParsed.poisson
-                            ? 'bg-red-100 text-red-800 border-red-300'
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50',
-                          readOnly && 'cursor-not-allowed opacity-60',
-                        )}>
-                          <input
-                            type="checkbox"
-                            checked={obsParsed.poisson}
-                            disabled={readOnly}
-                            onChange={e => saveMutation.mutate({
-                              residentId: r.id,
-                              patch: { observation: writeObservation({ ...obsParsed, poisson: e.target.checked }) },
-                            })}
-                            className="w-3 h-3 accent-red-600"
-                          />
-                          ⚠ Allergie poisson
-                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          {OBS_FLAGS.map(f => (
+                            <label key={f.key} className={cn(
+                              'inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border cursor-pointer transition-colors',
+                              obsParsed[f.key] ? f.cls : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50',
+                              readOnly && 'cursor-not-allowed opacity-60',
+                            )}>
+                              <input
+                                type="checkbox"
+                                checked={obsParsed[f.key]}
+                                disabled={readOnly}
+                                onChange={e => saveMutation.mutate({
+                                  residentId: r.id,
+                                  patch: { observation: writeObservation({ ...obsParsed, [f.key]: e.target.checked }) },
+                                })}
+                                className="w-3 h-3"
+                              />
+                              {f.label}
+                            </label>
+                          ))}
+                        </div>
                         <ObsInput
                           value={obsParsed.text}
                           onSave={v => saveMutation.mutate({
