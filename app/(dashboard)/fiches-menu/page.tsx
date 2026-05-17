@@ -62,14 +62,15 @@ function compareRooms(a: string | null, b: string | null): number {
 // L'observation contient des marqueurs entre crochets pour les cases à cocher
 // (ex. [POISSON] [SANS_POISSON] [SANS_PORC] [SANS_ALCOOL] [SANS_VIANDE] [SANS_SALADE])
 // suivis d'éventuel texte libre.
-type ObsFlag = 'poisson' | 'sans_poisson' | 'sans_porc' | 'sans_alcool' | 'sans_viande' | 'sans_salade';
+type ObsFlag = 'poisson' | 'sans_poisson' | 'sans_porc' | 'vin_sans_alcool' | 'pas_alcool' | 'sans_viande' | 'sans_salade';
 const OBS_FLAGS: { key: ObsFlag; marker: string; label: string; cls: string }[] = [
-  { key: 'poisson',      marker: 'POISSON',       label: '⚠ Allergie poisson', cls: 'bg-red-100 text-red-800 border-red-300' },
-  { key: 'sans_poisson', marker: 'SANS_POISSON',  label: 'Sans poisson',       cls: 'bg-orange-100 text-orange-800 border-orange-300' },
-  { key: 'sans_porc',    marker: 'SANS_PORC',     label: 'Sans porc',          cls: 'bg-amber-100 text-amber-800 border-amber-300' },
-  { key: 'sans_alcool',  marker: 'SANS_ALCOOL',   label: 'Sans alcool',        cls: 'bg-purple-100 text-purple-800 border-purple-300' },
-  { key: 'sans_viande',  marker: 'SANS_VIANDE',   label: 'Sans viande',        cls: 'bg-rose-100 text-rose-800 border-rose-300' },
-  { key: 'sans_salade',  marker: 'SANS_SALADE',   label: 'Sans salade',        cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  { key: 'poisson',         marker: 'POISSON',         label: '⚠ Allergie poisson', cls: 'bg-red-100 text-red-800 border-red-300' },
+  { key: 'sans_poisson',    marker: 'SANS_POISSON',    label: 'Sans poisson',       cls: 'bg-orange-100 text-orange-800 border-orange-300' },
+  { key: 'sans_porc',       marker: 'SANS_PORC',       label: 'Sans porc',          cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { key: 'vin_sans_alcool', marker: 'VIN_SANS_ALCOOL', label: 'Vin sans alcool',    cls: 'bg-purple-100 text-purple-800 border-purple-300' },
+  { key: 'pas_alcool',      marker: 'PAS_ALCOOL',      label: 'Pas d\'alcool',      cls: 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300' },
+  { key: 'sans_viande',     marker: 'SANS_VIANDE',     label: 'Sans viande',        cls: 'bg-rose-100 text-rose-800 border-rose-300' },
+  { key: 'sans_salade',     marker: 'SANS_SALADE',     label: 'Sans salade',        cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
 ];
 
 type ObsState = Record<ObsFlag, boolean> & { text: string };
@@ -84,6 +85,11 @@ function parseObservation(raw: string): ObsState {
   const o = emptyObs();
   if (!raw) return o;
   let text = raw;
+  // Compat ancien marqueur [SANS_ALCOOL] → bascule sur 'pas_alcool'
+  if (/\[SANS_ALCOOL\]/i.test(text)) {
+    o.pas_alcool = true;
+    text = text.replace(/\[SANS_ALCOOL\]/gi, '');
+  }
   for (const f of OBS_FLAGS) {
     const re = new RegExp(`\\[${f.marker}\\]`, 'gi');
     if (re.test(text)) {
@@ -244,7 +250,8 @@ export default function FichesMenuPage() {
   .badge.OBS_POISSON,.badge.POISSON{background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_POISSON{background:#fed7aa;color:#9a3412;border-color:#fdba74;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_PORC{background:#fef3c7;color:#92400e;border-color:#fcd34d;font-size:7.5pt;margin:0.3mm;display:inline-block}
-  .badge.OBS_SANS_ALCOOL{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_VIN_SANS_ALCOOL{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe;font-size:7.5pt;margin:0.3mm;display:inline-block}
+  .badge.OBS_PAS_ALCOOL{background:#fae8ff;color:#86198f;border-color:#f0abfc;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_VIANDE{background:#ffe4e6;color:#9f1239;border-color:#fda4af;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_SALADE{background:#d1fae5;color:#065f46;border-color:#6ee7b7;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .legend{margin-top:5mm;border:1px solid #cbd5e1;border-radius:3px;padding:3mm 5mm;background:#f8fafc;display:flex;gap:8mm;font-size:8.5pt;color:#475569;flex-wrap:wrap}
@@ -276,7 +283,7 @@ export default function FichesMenuPage() {
   <span><b>DIAB</b> Régime diabétique</span>
   <span><b>EPARGNE</b> Épargne intestinale</span>
   <span><b>⚠</b> Allergie poisson</span>
-  <span>· Sans poisson / porc / alcool / viande / salade : régimes d'éviction</span>
+  <span>· Sans poisson / porc / viande / salade · Vin sans alcool · Pas d'alcool : régimes d'éviction</span>
 </div>
 </body></html>`;
     w.document.open();
