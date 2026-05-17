@@ -321,14 +321,17 @@ export default function PrisesEnChargePage() {
   const [activeFloor, setActiveFloor] = useState<Floor>('RDC');
   const [activeColor, setActiveColor] = useState<TableColor>('jaune');
 
-  // ── Verrouillage modifications par mot de passe (mapad2022)
-  // - État volontairement non persisté : perdu si on quitte la page.
-  // - Expire après 30 minutes.
-  const UNLOCK_PASSWORD = 'mapad2022';
+  // ── Verrouillage modifications par mot de passe
+  // Deux niveaux indépendants, chacun déverrouillé 30 min :
+  // - SOIN (mapadsoin) : édition Matin / Après-midi-Soir / Protection
+  // - ADMIN (mapad2022) : changement de Chambre + ajout d'une ligne (résident)
+  const ADMIN_PASSWORD = 'mapad2022';
+  const SOIN_PASSWORD = 'mapadsoin';
   const UNLOCK_DURATION_MS = 30 * 60 * 1000;
-  const [unlockedAt, setUnlockedAt] = useState<number | null>(null);
+  const [unlockedAdminAt, setUnlockedAdminAt] = useState<number | null>(null);
+  const [unlockedSoinAt, setUnlockedSoinAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [showUnlock, setShowUnlock] = useState(false);
+  const [showUnlock, setShowUnlock] = useState<null | 'admin' | 'soin'>(null);
   const [pwInput, setPwInput] = useState('');
 
   // Refresh "now" toutes les 30s pour re-verrouiller automatiquement
@@ -336,26 +339,32 @@ export default function PrisesEnChargePage() {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
-  const isUnlocked = unlockedAt !== null && (now - unlockedAt < UNLOCK_DURATION_MS);
-  const remainingMin = isUnlocked ? Math.max(0, Math.ceil((UNLOCK_DURATION_MS - (now - unlockedAt!)) / 60_000)) : 0;
-  const readOnly = baseReadOnly || !isUnlocked;
+  const adminUnlocked = unlockedAdminAt !== null && (now - unlockedAdminAt < UNLOCK_DURATION_MS);
+  const soinUnlocked = unlockedSoinAt !== null && (now - unlockedSoinAt < UNLOCK_DURATION_MS);
+  const adminRemaining = adminUnlocked ? Math.max(0, Math.ceil((UNLOCK_DURATION_MS - (now - unlockedAdminAt!)) / 60_000)) : 0;
+  const soinRemaining = soinUnlocked ? Math.max(0, Math.ceil((UNLOCK_DURATION_MS - (now - unlockedSoinAt!)) / 60_000)) : 0;
+  // Verrous combinés selon usage
+  const canEditAdminCols = !baseReadOnly && adminUnlocked;   // chambre + nouvelle ligne
+  const canEditSoinCols = !baseReadOnly && soinUnlocked;     // matin / après-midi / protection
 
   const tryUnlock = () => {
-    if (pwInput === UNLOCK_PASSWORD) {
-      setUnlockedAt(Date.now());
-      setShowUnlock(false);
-      setPwInput('');
-      toast.success('Modifications déverrouillées pour 30 minutes');
-    } else {
-      toast.error('Mot de passe incorrect');
-      setPwInput('');
+    if (showUnlock === 'admin') {
+      if (pwInput === ADMIN_PASSWORD) {
+        setUnlockedAdminAt(Date.now());
+        setShowUnlock(null); setPwInput('');
+        toast.success('Édition Chambre / Ajout déverrouillée (30 min)');
+      } else { toast.error('Mot de passe incorrect'); setPwInput(''); }
+    } else if (showUnlock === 'soin') {
+      if (pwInput === SOIN_PASSWORD) {
+        setUnlockedSoinAt(Date.now());
+        setShowUnlock(null); setPwInput('');
+        toast.success('Édition Matin / Après-midi / Protection déverrouillée (30 min)');
+      } else { toast.error('Mot de passe incorrect'); setPwInput(''); }
     }
   };
 
-  const lock = () => {
-    setUnlockedAt(null);
-    toast.info('Modifications verrouillées');
-  };
+  const lockAdmin = () => { setUnlockedAdminAt(null); toast.info('Chambre / Ajout reverrouillés'); };
+  const lockSoin = () => { setUnlockedSoinAt(null); toast.info('Matin / Après-midi / Protection reverrouillés'); };
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -690,66 +699,106 @@ export default function PrisesEnChargePage() {
           </div>
         )}
         {!baseReadOnly && (
-          <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-4 text-sm">
-            {isUnlocked ? (
-              <>
-                <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                  <Unlock className="h-4 w-4" />
-                  Modifications déverrouillées · expire dans {remainingMin} min
-                </div>
-                <button onClick={lock}
-                  className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                  <Lock className="h-3.5 w-3.5" /> Verrouiller maintenant
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 text-slate-600">
-                  <Lock className="h-4 w-4" />
-                  Les colonnes Chambre / Matin / Après-midi / Protection sont verrouillées.
-                </div>
-                <button onClick={() => { setShowUnlock(true); setPwInput(''); }}
-                  className="flex items-center gap-1.5 text-xs text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg font-semibold">
-                  <Unlock className="h-3.5 w-3.5" /> Déverrouiller
-                </button>
-              </>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+            {/* Verrou SOIN */}
+            <div className={`flex items-center justify-between gap-3 border rounded-xl px-3 py-2 text-sm ${
+              soinUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+            }`}>
+              {soinUnlocked ? (
+                <>
+                  <div className="flex items-center gap-2 text-emerald-700 font-medium min-w-0">
+                    <Unlock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Matin / Aprèm / Protection · {soinRemaining} min</span>
+                  </div>
+                  <button onClick={lockSoin}
+                    className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-800 hover:bg-white px-2 py-1 rounded border border-slate-200 shrink-0">
+                    <Lock className="h-3 w-3" /> Verrouiller
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Matin / Aprèm / Protection verrouillés</span>
+                  </div>
+                  <button onClick={() => { setShowUnlock('soin'); setPwInput(''); }}
+                    className="flex items-center gap-1 text-[11px] text-white bg-amber-600 hover:bg-amber-700 px-2 py-1 rounded font-semibold shrink-0">
+                    <Unlock className="h-3 w-3" /> Déverrouiller
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Verrou ADMIN */}
+            <div className={`flex items-center justify-between gap-3 border rounded-xl px-3 py-2 text-sm ${
+              adminUnlocked ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
+            }`}>
+              {adminUnlocked ? (
+                <>
+                  <div className="flex items-center gap-2 text-rose-700 font-medium min-w-0">
+                    <Unlock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Chambre / Ajout résident · {adminRemaining} min</span>
+                  </div>
+                  <button onClick={lockAdmin}
+                    className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-800 hover:bg-white px-2 py-1 rounded border border-slate-200 shrink-0">
+                    <Lock className="h-3 w-3" /> Verrouiller
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-slate-600 min-w-0">
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Chambre / Ajout (admin) verrouillés</span>
+                  </div>
+                  <button onClick={() => { setShowUnlock('admin'); setPwInput(''); }}
+                    className="flex items-center gap-1 text-[11px] text-white bg-rose-600 hover:bg-rose-700 px-2 py-1 rounded font-semibold shrink-0">
+                    <Unlock className="h-3 w-3" /> Déverrouiller
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
 
         {showUnlock && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowUnlock(false)}>
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowUnlock(null)}>
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-4 border-b">
                 <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-amber-600" />
-                  Déverrouiller les modifications
+                  <Lock className={`h-4 w-4 ${showUnlock === 'admin' ? 'text-rose-600' : 'text-amber-600'}`} />
+                  {showUnlock === 'admin' ? 'Déverrouiller Chambre / Ajout' : 'Déverrouiller Soins'}
                 </h2>
-                <button onClick={() => setShowUnlock(false)} className="text-slate-400 hover:text-slate-700">
+                <button onClick={() => setShowUnlock(null)} className="text-slate-400 hover:text-slate-700">
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <div className="p-5 space-y-3">
                 <p className="text-sm text-slate-600">
-                  Entrez le mot de passe administrateur pour modifier les colonnes Chambre, Matin, Après-midi / Soir et Protection.
+                  {showUnlock === 'admin'
+                    ? <>Entrez le <b>mot de passe administrateur</b> pour modifier la colonne Chambre et ajouter une ligne résident.</>
+                    : <>Entrez le <b>mot de passe soins</b> pour modifier les colonnes Matin, Après-midi / Soir et Protection.</>}
                 </p>
                 <input
                   type="password" autoFocus value={pwInput}
                   onChange={e => setPwInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && tryUnlock()}
                   placeholder="Mot de passe…"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400" />
+                  className={`w-full px-3 py-2 border rounded-lg text-sm outline-none ${
+                    showUnlock === 'admin' ? 'border-slate-200 focus:border-rose-400' : 'border-slate-200 focus:border-amber-400'
+                  }`} />
                 <p className="text-[11px] text-slate-500 italic">
                   Le déverrouillage dure 30 minutes ou jusqu&apos;à ce que vous quittiez la page.
                 </p>
               </div>
               <div className="flex gap-2 justify-end p-4 border-t">
-                <button onClick={() => setShowUnlock(false)}
+                <button onClick={() => setShowUnlock(null)}
                   className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
                   Annuler
                 </button>
                 <button onClick={tryUnlock} disabled={!pwInput}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50">
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 ${
+                    showUnlock === 'admin' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'
+                  }`}>
                   <Unlock className="h-4 w-4" /> Déverrouiller
                 </button>
               </div>
@@ -800,8 +849,8 @@ export default function PrisesEnChargePage() {
                           <select
                             value={row.chambre}
                             onChange={e => updateChambre(row.id, e.target.value)}
-                            disabled={readOnly}
-                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                            disabled={!canEditAdminCols}
+                            className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                           >
                             {row.chambre && !floorResidents.find(r => r.room === row.chambre) && (
                               <option value={row.chambre}>Ch. {row.chambre}</option>
@@ -827,7 +876,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.matin}
                             onSave={v => updateField(row.id, 'matin', v)}
-                            readOnly={readOnly}
+                            readOnly={!canEditSoinCols}
                           />
                         </td>
 
@@ -836,7 +885,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.apres_midi}
                             onSave={v => updateField(row.id, 'apres_midi', v)}
-                            readOnly={readOnly}
+                            readOnly={!canEditSoinCols}
                           />
                         </td>
 
@@ -845,7 +894,7 @@ export default function PrisesEnChargePage() {
                           <EditableCell
                             value={row.protection}
                             onSave={v => updateField(row.id, 'protection', v)}
-                            readOnly={readOnly}
+                            readOnly={!canEditSoinCols}
                           />
                         </td>
 
@@ -855,12 +904,12 @@ export default function PrisesEnChargePage() {
                 </table>
               </div>
 
-              {/* Ajouter une ligne */}
-              {!readOnly && (
+              {/* Ajouter une ligne (gated par déverrouillage admin) */}
+              {canEditAdminCols && (
                 <div className="px-4 py-2 border-t border-slate-100 print:hidden">
                   <button
                     onClick={() => addRow(table_index, table_color)}
-                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-rose-600 transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Ajouter un résident
