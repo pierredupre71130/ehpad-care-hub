@@ -10,6 +10,7 @@ import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
 import { AdminUnlockDialog } from '@/components/dashboard/admin-unlock-dialog';
 import { PapStatsWidget } from '@/components/dashboard/pap-stats-widget';
 import { PapUpcomingWidget } from '@/components/dashboard/pap-upcoming-widget';
+import { OccupancyWidget } from '@/components/dashboard/occupancy-widget';
 import { EntreesWidget } from '@/components/dashboard/entrees-widget';
 import { RoleSummaryPanel } from '@/components/dashboard/role-summary-panel';
 import { MessagingHeaderButton } from '@/components/dashboard/messaging-header-button';
@@ -344,6 +345,16 @@ export default function DashboardPage() {
             <div className="mt-4">
               <PapUpcomingWidget />
             </div>
+          </div>
+        )}
+
+        {/* Widget Taux d'occupation — cadre uniquement */}
+        {effectiveRole === 'cadre' && !isAdminMode && (
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+              Activité de l&apos;établissement
+            </p>
+            <OccupancyWidget />
           </div>
         )}
 
