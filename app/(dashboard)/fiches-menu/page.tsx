@@ -233,54 +233,86 @@ export default function FichesMenuPage() {
     const w = window.open('', '_blank');
     if (!w) { toast.error('Autorisez les popups pour imprimer'); return; }
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const repasLabel = repas === 'midi' ? 'MIDI' : 'SOIR';
-    const trRows = floorResidents.map(r => {
-      const isEmpty = !r.last_name?.trim();
-      if (isEmpty) {
-        return `<tr class="empty"><td class="room muted">${esc(r.room || '')}</td><td colspan="8" class="empty-row">Chambre vide</td></tr>`;
-      }
-      const f = fichesByResident.get(r.id);
-      const obs = parseObservation(f?.observation || '');
-      const cell = (v: Choix) => {
-        if (!v) return '<td class="cx"></td>';
-        const opt = CHOIX.find(o => o.value === v);
-        return `<td class="cx"><span class="badge ${v}">${opt?.label || v}</span></td>`;
-      };
-      const allHache = !!f
-        && f.entree === 'H' && f.viande === 'H' && f.legumes === 'H'
-        && f.fromage === 'H' && f.dessert === 'H';
-      const viandeHachee = f?.viande === 'H';
-      const regimeBadges: string[] = [];
-      if (r.regime_diabetique) regimeBadges.push('<span class="badge DIAB">DIAB</span>');
-      if (r.epargne_intestinale) regimeBadges.push('<span class="badge EPARGNE">EPARGNE</span>');
-      if (allHache) regimeBadges.push('<span class="badge HACHE">HACHÉ</span>');
-      else if (viandeHachee) regimeBadges.push('<span class="badge VIANDE_HACHE">VIANDE HACHÉE</span>');
-      const obsBadges = OBS_FLAGS
-        .filter(f => obs[f.key])
-        .map(f => `<span class="badge OBS_${f.marker}">${esc(f.label)}</span>`)
-        .join(' ');
-      const obsCellParts: string[] = [];
-      if (obsBadges) obsCellParts.push(obsBadges);
-      if (obs.text) obsCellParts.push(`<div>${esc(obs.text)}</div>`);
-      return `<tr>
-        <td class="room">${esc(r.room || '')}</td>
-        <td class="nom"><b>${esc(r.last_name.toUpperCase())}</b> ${esc(shortInitials(r.first_name))}</td>
-        ${cell((f?.entree || '') as Choix)}
-        ${cell((f?.viande || '') as Choix)}
-        ${cell((f?.legumes || '') as Choix)}
-        ${cell((f?.fromage || '') as Choix)}
-        ${cell((f?.dessert || '') as Choix)}
-        <td class="reg">${regimeBadges.join(' ')}</td>
-        <td class="obs">${obsCellParts.join(' ')}</td>
-      </tr>`;
-    }).join('');
+
+    const buildPage = (rp: Repas, label: string, breakAfter: boolean): string => {
+      const byRes = new Map<string, FicheMenu>();
+      fiches.filter(f => f.repas === rp).forEach(f => byRes.set(f.resident_id, f));
+      const trRows = floorResidents.map(r => {
+        const isEmpty = !r.last_name?.trim();
+        if (isEmpty) {
+          return `<tr class="empty"><td class="room muted">${esc(r.room || '')}</td><td colspan="8" class="empty-row">Chambre vide</td></tr>`;
+        }
+        const f = byRes.get(r.id);
+        const obs = parseObservation(f?.observation || '');
+        const cell = (v: Choix) => {
+          if (!v) return '<td class="cx"></td>';
+          const opt = CHOIX.find(o => o.value === v);
+          return `<td class="cx"><span class="badge ${v}">${opt?.label || v}</span></td>`;
+        };
+        const allHache = !!f
+          && f.entree === 'H' && f.viande === 'H' && f.legumes === 'H'
+          && f.fromage === 'H' && f.dessert === 'H';
+        const viandeHachee = f?.viande === 'H';
+        const regimeBadges: string[] = [];
+        if (r.regime_diabetique) regimeBadges.push('<span class="badge DIAB">DIAB</span>');
+        if (r.epargne_intestinale) regimeBadges.push('<span class="badge EPARGNE">EPARGNE</span>');
+        if (allHache) regimeBadges.push('<span class="badge HACHE">HACHÉ</span>');
+        else if (viandeHachee) regimeBadges.push('<span class="badge VIANDE_HACHE">VIANDE HACHÉE</span>');
+        const obsBadges = OBS_FLAGS
+          .filter(ff => obs[ff.key])
+          .map(ff => `<span class="badge OBS_${ff.marker}">${esc(ff.label)}</span>`)
+          .join(' ');
+        const obsCellParts: string[] = [];
+        if (obsBadges) obsCellParts.push(obsBadges);
+        if (obs.text) obsCellParts.push(`<div>${esc(obs.text)}</div>`);
+        return `<tr>
+          <td class="room">${esc(r.room || '')}</td>
+          <td class="nom"><b>${esc(r.last_name.toUpperCase())}</b> ${esc(shortInitials(r.first_name))}</td>
+          ${cell((f?.entree || '') as Choix)}
+          ${cell((f?.viande || '') as Choix)}
+          ${cell((f?.legumes || '') as Choix)}
+          ${cell((f?.fromage || '') as Choix)}
+          ${cell((f?.dessert || '') as Choix)}
+          <td class="reg">${regimeBadges.join(' ')}</td>
+          <td class="obs">${obsCellParts.join(' ')}</td>
+        </tr>`;
+      }).join('');
+      return `<section class="page${breakAfter ? ' page-break' : ''}">
+        <h1>Fiche Menu — ${label} — ${floor}</h1>
+        <div class="sub">${floorResidents.length} résident${floorResidents.length > 1 ? 's' : ''} · imprimée le ${new Date().toLocaleDateString('fr-FR')}</div>
+        <table>
+          <thead><tr>
+            <th>Chambre</th>
+            <th>Nom</th>
+            <th>Entrée</th>
+            <th>Viande</th>
+            <th>Légumes</th>
+            <th>Fromage</th>
+            <th>Dessert</th>
+            <th>Régime</th>
+            <th>Observation</th>
+          </tr></thead>
+          <tbody>${trRows}</tbody>
+        </table>
+        <div class="legend">
+          <span><b>N</b> Normal</span>
+          <span><b>H</b> Haché</span>
+          <span><b>⊘</b> Sans</span>
+          <span><b>AUTRE</b> à substituer</span>
+          <span><b>DIAB</b> Régime diabétique</span>
+          <span><b>EPARGNE</b> Épargne intestinale</span>
+        </div>
+      </section>`;
+    };
 
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-<title>Fiche Menu — ${repasLabel} — ${floor}</title>
+<title>Fiche Menu — MIDI / SOIR — ${floor}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,sans-serif;color:#0f172a;padding:8mm;font-size:10pt}
   @page{size:A4 landscape;margin:8mm}
+  section.page{page-break-inside:auto}
+  section.page-break{page-break-after:always;break-after:page}
   h1{font-size:14pt;margin-bottom:2mm}
   .sub{color:#64748b;font-size:9pt;margin-bottom:5mm}
   table{width:100%;border-collapse:collapse}
@@ -315,30 +347,8 @@ export default function FichesMenuPage() {
   @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head><body>
-<h1>Fiche Menu — ${repasLabel} — ${floor}</h1>
-<div class="sub">${floorResidents.length} résident${floorResidents.length > 1 ? 's' : ''} · imprimée le ${new Date().toLocaleDateString('fr-FR')}</div>
-<table>
-  <thead><tr>
-    <th>Chambre</th>
-    <th>Nom</th>
-    <th>Entrée</th>
-    <th>Viande</th>
-    <th>Légumes</th>
-    <th>Fromage</th>
-    <th>Dessert</th>
-    <th>Régime</th>
-    <th>Observation</th>
-  </tr></thead>
-  <tbody>${trRows}</tbody>
-</table>
-<div class="legend">
-  <span><b>N</b> Normal</span>
-  <span><b>H</b> Haché</span>
-  <span><b>⊘</b> Sans</span>
-  <span><b>AUTRE</b> à substituer</span>
-  <span><b>DIAB</b> Régime diabétique</span>
-  <span><b>EPARGNE</b> Épargne intestinale</span>
-</div>
+${buildPage('midi', 'MIDI', true)}
+${buildPage('soir', 'SOIR', false)}
 </body></html>`;
     w.document.open();
     w.document.write(html);
@@ -373,8 +383,9 @@ export default function FichesMenuPage() {
               <p className="text-white/70 text-sm">Menus midi et soir par résident, par étage</p>
             </div>
             <button onClick={handlePrint}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white text-orange-700 text-sm font-semibold hover:bg-orange-50 transition-colors">
-              <Printer className="h-4 w-4" /> Imprimer ({repas === 'midi' ? 'Midi' : 'Soir'} · {floor})
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white text-orange-700 text-sm font-semibold hover:bg-orange-50 transition-colors"
+              title="Recto = Midi, Verso = Soir (impression recto-verso)">
+              <Printer className="h-4 w-4" /> Imprimer MIDI / SOIR ({floor})
             </button>
           </div>
         </div>
