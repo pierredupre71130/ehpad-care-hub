@@ -41,30 +41,41 @@ export function OccupancyWidget() {
   }, []);
   const isoToday = today.toISOString().slice(0, 10);
 
+  // Date de début par défaut :
+  // - 2026 : 1er mai (mise en service du module, pas de données antérieures)
+  // - 2027+ : 1er janvier
+  const defaultStart = useMemo(() => {
+    const y = today.getFullYear();
+    return y === 2026 ? '2026-05-01' : `${y}-01-01`;
+  }, [today]);
+
   // ── Settings (date de début uniquement ; total chambres dérivé des résidents)
-  const { data: startDate = isoToday } = useQuery({
-    queryKey: ['settings', SETTING_START],
+  const { data: startDate = defaultStart } = useQuery({
+    queryKey: ['settings', SETTING_START, defaultStart],
     queryFn: async () => {
       const { data } = await supabase.from('settings').select('value').eq('key', SETTING_START).maybeSingle();
       const v = data?.value;
-      return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : isoToday;
+      const saved = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+      // Si la valeur sauvegardée est d'une année antérieure à l'année courante,
+      // on passe au 1er janvier de l'année courante (réinitialisation auto).
+      if (saved) {
+        const savedYear = parseInt(saved.slice(0, 4));
+        if (savedYear < today.getFullYear()) {
+          const newStart = `${today.getFullYear()}-01-01`;
+          await supabase.from('settings').upsert({
+            key: SETTING_START, value: newStart, updated_at: new Date().toISOString(),
+          }, { onConflict: 'key' });
+          return newStart;
+        }
+        return saved;
+      }
+      // Aucune valeur : on insère la valeur par défaut
+      await supabase.from('settings').upsert({
+        key: SETTING_START, value: defaultStart, updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+      return defaultStart;
     },
     staleTime: 60_000,
-  });
-
-  // Auto-create the start date setting on first view (so the value sticks)
-  useQuery({
-    queryKey: ['settings-init', SETTING_START],
-    queryFn: async () => {
-      const { data } = await supabase.from('settings').select('value').eq('key', SETTING_START).maybeSingle();
-      if (!data) {
-        await supabase.from('settings').upsert({
-          key: SETTING_START, value: isoToday, updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
-      }
-      return true;
-    },
-    staleTime: Infinity,
   });
 
   // ── Résidents (tous, y compris archivés, pour le calcul historique)
@@ -179,6 +190,11 @@ export function OccupancyWidget() {
               <p className="text-xs text-slate-500">
                 Année {new Date(startDate + 'T12:00:00').getFullYear()} · depuis le {fmtFR(startDate)}
               </p>
+              {startDate === '2026-05-01' && (
+                <p className="text-[10px] text-amber-700 mt-0.5 italic">
+                  Pas d&apos;informations antérieures pour cette année (module mis en service en mai 2026).
+                </p>
+              )}
             </div>
           </div>
           <button onClick={() => setSettingsOpen(true)}
