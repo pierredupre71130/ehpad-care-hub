@@ -46,7 +46,7 @@ interface FicheMenu {
 const CHOIX: { value: Choix; label: string; cls: string }[] = [
   { value: 'N',     label: 'N',     cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
   { value: 'H',     label: 'H',     cls: 'bg-blue-100 text-blue-800 border-blue-300' },
-  { value: 'SS',    label: 'SS',    cls: 'bg-rose-100 text-rose-800 border-rose-300' },
+  { value: 'SS',    label: '⊘',     cls: 'bg-rose-100 text-rose-800 border-rose-300' },
   { value: 'AUTRE', label: 'AUTRE', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
 ];
 
@@ -326,7 +326,7 @@ export default function FichesMenuPage() {
 <div class="legend">
   <span><b>N</b> Normal</span>
   <span><b>H</b> Haché</span>
-  <span><b>SS</b> Sans</span>
+  <span><b>⊘</b> Sans</span>
   <span><b>AUTRE</b> à substituer</span>
   <span><b>DIAB</b> Régime diabétique</span>
   <span><b>EPARGNE</b> Épargne intestinale</span>
