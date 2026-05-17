@@ -230,21 +230,25 @@ async function syncAppelNuit(residentId: string, value: boolean | null) {
 // ─────────────────────────────────────────────────────────────
 
 function ToggleGroup({
-  options, value, onChange, colorFn, readOnly,
+  options, value, onChange, colorFn, readOnly, disabledOptions,
 }: {
   options: string[];
   value: string | undefined | null;
   onChange: (v: string | null) => void;
   colorFn: (v: string) => string;
   readOnly?: boolean;
+  disabledOptions?: Set<string>;
 }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {options.map(opt => (
+      {options.map(opt => {
+        const optDisabled = readOnly || disabledOptions?.has(opt) || false;
+        return (
         <button
           key={opt}
-          onClick={() => !readOnly && onChange(value === opt ? null : opt)}
-          disabled={readOnly}
+          onClick={() => !optDisabled && onChange(value === opt ? null : opt)}
+          disabled={optDisabled}
+          title={opt === 'N/A' && disabledOptions?.has(opt) ? 'Réservé aux résidents de moins de 60 ans' : undefined}
           className={cn(
             'px-2 py-0.5 rounded text-xs font-bold border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
             value === opt
@@ -256,7 +260,8 @@ function ToggleGroup({
             ? <span title="Moins de 60 ans — GIR non applicable">⊘ <span className="font-normal">(&lt;60 ans)</span></span>
             : opt}
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -838,7 +843,7 @@ export default function GIRNiveauSoinPage() {
                 {r.title} {r.last_name} {r.first_name ?? ''}{' '}
                 <span className="text-xs text-slate-400">Ch.{r.room}</span>
               </span>
-              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={!canEdit('gir') || isUnder60(r)} />
+              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={!canEdit('gir') || isUnder60(r)} disabledOptions={!isUnder60(r) ? new Set(['N/A']) : undefined} />
             </div>
           ))}
         </SummaryModal>
@@ -991,6 +996,7 @@ export default function GIRNiveauSoinPage() {
                       onChange={v => updateField(r, 'gir', v)}
                       colorFn={girColor}
                       readOnly={!canEdit('gir') || isUnder60(r)}
+                      disabledOptions={!isUnder60(r) ? new Set(['N/A']) : undefined}
                     />
                   </td>
 
