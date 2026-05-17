@@ -1524,13 +1524,15 @@ export default function ResidentsPage() {
                         Libérer ch. {r.room}
                       </button>
                     )}
-                    <button
-                      onClick={() => openDeleteArchived(r.id, `${r.title ?? ''} ${r.last_name?.toUpperCase() ?? ''} ${r.first_name ?? ''}`.trim())}
-                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                      title="Supprimer définitivement"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => openDeleteArchived(r.id, `${r.title ?? ''} ${r.last_name?.toUpperCase() ?? ''} ${r.first_name ?? ''}`.trim())}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                        title="Supprimer définitivement"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
