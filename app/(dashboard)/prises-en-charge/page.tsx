@@ -38,6 +38,7 @@ interface Resident {
   archived?: boolean;
   photo_url?: string;   // chemin storage ou URL signée
   photo_path?: string;  // chemin brut (avant signature)
+  date_naissance?: string | null;
 }
 
 // ── Données initiales (issues des photos) ────────────────────────────────────
@@ -303,11 +304,22 @@ async function fetchRows(floor: Floor): Promise<PecRow[]> {
   return (data ?? []) as PecRow[];
 }
 
+function ageFromBirth(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const d = new Date(iso + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('residents')
-    .select('id,title,first_name,last_name,room,floor,archived,photo_url')
+    .select('id,title,first_name,last_name,room,floor,archived,photo_url,date_naissance')
     .order('room');
   if (error) throw new Error(error.message);
   const residents = (data ?? []) as Resident[];
@@ -896,10 +908,14 @@ export default function PrisesEnChargePage() {
                               const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
                               const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
                               const first = matched?.first_name || '';
+                              const age = ageFromBirth(matched?.date_naissance);
                               if (!last && !first) return <span className="text-slate-300 italic text-xs">—</span>;
                               return (
                                 <div className="flex flex-col leading-tight min-w-0">
-                                  <span className="text-xs font-semibold text-slate-800 truncate">{last}</span>
+                                  <span className="text-xs font-semibold text-slate-800 truncate">
+                                    {last}
+                                    {age !== null && <span className="text-[10px] font-normal text-slate-500 ml-1">({age} ans)</span>}
+                                  </span>
                                   {first && <span className="text-[11px] text-slate-500 truncate">{first}</span>}
                                 </div>
                               );
