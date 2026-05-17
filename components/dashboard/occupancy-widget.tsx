@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import {
-  BedDouble, Settings, X, Save, Loader2, TrendingUp,
+  BedDouble, Settings, X, Save, Loader2, TrendingUp, Maximize2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 
 const SETTING_START = 'occupancy_start_date';
 
@@ -32,7 +33,9 @@ function daysBetween(start: Date, end: Date): number {
 export function OccupancyWidget() {
   const supabase = createClient();
   const qc = useQueryClient();
+  const isAdmin = useEffectiveRole() === 'admin';
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -179,7 +182,10 @@ export function OccupancyWidget() {
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all relative group"
+        onClick={() => setDetailsOpen(true)}
+        role="button"
+        title="Voir le détail">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -197,11 +203,18 @@ export function OccupancyWidget() {
               )}
             </div>
           </div>
-          <button onClick={() => setSettingsOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
-            title="Réglages">
-            <Settings className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg text-slate-400">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </span>
+            {isAdmin && (
+              <button onClick={e => { e.stopPropagation(); setSettingsOpen(true); }}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+                title="Réglages (admin)">
+                <Settings className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {totalRooms === 0 ? (
@@ -258,6 +271,18 @@ export function OccupancyWidget() {
           onSave={(start) => saveSettings.mutate({ start })}
         />
       )}
+
+      {detailsOpen && (
+        <DetailsModal
+          startDate={startDate}
+          today={today}
+          totalRooms={totalRooms}
+          residents={residents}
+          rate={stats.rate}
+          monthly={stats.monthly}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -311,6 +336,187 @@ function SettingsModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Modal détails (clic sur le widget) ───────────────────────────────────────
+
+function DetailsModal({
+  startDate, today, totalRooms, residents, rate, monthly, onClose,
+}: {
+  startDate: string;
+  today: Date;
+  totalRooms: number;
+  residents: ResidentRow[];
+  rate: number;
+  monthly: { label: string; rate: number }[];
+  onClose: () => void;
+}) {
+  const start = toDate(startDate) || today;
+  const fmt = (iso: string | null | undefined) => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR') : '—';
+
+  // Période visible
+  const periodDays = daysBetween(start, today);
+
+  // Entrées et sorties sur la période
+  const namedResidents = residents.filter(r => r.last_name?.trim());
+  const entries = namedResidents
+    .filter(r => r.date_entree && toDate(r.date_entree)!.getTime() >= start.getTime() && toDate(r.date_entree)!.getTime() <= today.getTime())
+    .sort((a, b) => (b.date_entree || '').localeCompare(a.date_entree || ''));
+  const exits = namedResidents
+    .filter(r => r.date_sortie && toDate(r.date_sortie)!.getTime() >= start.getTime() && toDate(r.date_sortie)!.getTime() <= today.getTime())
+    .sort((a, b) => (b.date_sortie || '').localeCompare(a.date_sortie || ''));
+
+  // Durée moyenne de séjour des sortis dans la période
+  const avgStayDays = (() => {
+    if (exits.length === 0) return null;
+    const total = exits.reduce((sum, r) => {
+      const e = toDate(r.date_entree) || start;
+      const s = toDate(r.date_sortie)!;
+      return sum + Math.max(0, Math.floor((s.getTime() - e.getTime()) / 86400000));
+    }, 0);
+    return Math.round(total / exits.length);
+  })();
+
+  // Chambres actuellement occupées vs vides
+  const currentlyOccupied = namedResidents.filter(r => !r.archived).length;
+  const currentlyEmpty = totalRooms - currentlyOccupied;
+
+  const ratePct = Math.round(rate * 10) / 10;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b">
+          <div>
+            <h2 className="font-semibold text-slate-900">Détail du taux d&apos;occupation</h2>
+            <p className="text-xs text-slate-500">
+              Année {start.getFullYear()} · {fmt(startDate)} → {today.toLocaleDateString('fr-FR')} ({periodDays} jours)
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-5">
+          {/* Résumé chiffré */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Taux moyen" value={`${ratePct}%`} accent="blue" />
+            <Stat label="Chambres" value={`${currentlyOccupied}/${totalRooms}`} sub={`${currentlyEmpty} vide${currentlyEmpty > 1 ? 's' : ''}`} accent="slate" />
+            <Stat label="Entrées (période)" value={`${entries.length}`} accent="emerald" />
+            <Stat label="Sorties (période)" value={`${exits.length}`} accent="amber" />
+          </div>
+
+          {avgStayDays !== null && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+              Durée moyenne de séjour (parmi les sortis sur la période) : <b>{avgStayDays} jours</b>
+              {avgStayDays > 365 ? ` (~${(avgStayDays / 365).toFixed(1)} ans)` : ''}
+            </div>
+          )}
+
+          {/* Tableau mensuel */}
+          {monthly.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Évolution mensuelle</h3>
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="text-left px-3 py-2">Mois</th>
+                      <th className="text-right px-3 py-2">Taux</th>
+                      <th className="px-3 py-2">Visualisation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthly.map((m, i) => {
+                      const pct = Math.round(m.rate * 10) / 10;
+                      const color = pct >= 95 ? '#16a34a' : pct >= 85 ? '#0284c7' : pct >= 70 ? '#d97706' : '#dc2626';
+                      return (
+                        <tr key={i} className="border-t border-slate-100">
+                          <td className="px-3 py-2 font-medium text-slate-700">{m.label}</td>
+                          <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color }}>{pct}%</td>
+                          <td className="px-3 py-2">
+                            <div className="w-full bg-slate-100 rounded-full h-2">
+                              <div className="h-2 rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: color }} />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Entrées récentes */}
+          {entries.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2">Entrées sur la période ({entries.length})</h3>
+              <div className="border border-emerald-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {entries.map(r => (
+                      <tr key={r.id} className="border-t border-emerald-100 first:border-t-0">
+                        <td className="px-3 py-1.5 text-slate-700">
+                          {(r.last_name || '').toUpperCase()} · Ch. {r.room || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-xs text-slate-500">{fmt(r.date_entree)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Sorties récentes */}
+          {exits.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Sorties sur la période ({exits.length})</h3>
+              <div className="border border-amber-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {exits.map(r => (
+                      <tr key={r.id} className="border-t border-amber-100 first:border-t-0">
+                        <td className="px-3 py-1.5 text-slate-700">
+                          {(r.last_name || '').toUpperCase()} · Ch. {r.room || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-xs text-slate-500">{fmt(r.date_sortie)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end p-4 border-t">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: 'blue' | 'slate' | 'emerald' | 'amber' }) {
+  const colors: Record<string, string> = {
+    blue: 'bg-blue-50 border-blue-200 text-blue-800',
+    slate: 'bg-slate-50 border-slate-200 text-slate-800',
+    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+    amber: 'bg-amber-50 border-amber-200 text-amber-800',
+  };
+  return (
+    <div className={`border rounded-lg px-3 py-2 ${colors[accent]}`}>
+      <div className="text-2xl font-bold leading-none">{value}</div>
+      <div className="text-[11px] font-medium mt-1 opacity-80">{label}</div>
+      {sub && <div className="text-[10px] opacity-60 mt-0.5">{sub}</div>}
     </div>
   );
 }
