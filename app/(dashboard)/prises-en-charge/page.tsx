@@ -892,9 +892,18 @@ export default function PrisesEnChargePage() {
                                   className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" />
                               ) : null;
                             })()}
-                            <span className="text-xs font-medium text-slate-700">
-                              {row.nom || <span className="text-slate-300 italic">—</span>}
-                            </span>
+                            {(() => {
+                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
+                              const first = matched?.first_name || '';
+                              if (!last && !first) return <span className="text-slate-300 italic text-xs">—</span>;
+                              return (
+                                <div className="flex flex-col leading-tight min-w-0">
+                                  <span className="text-xs font-semibold text-slate-800 truncate">{last}</span>
+                                  {first && <span className="text-[11px] text-slate-500 truncate">{first}</span>}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </td>
 
