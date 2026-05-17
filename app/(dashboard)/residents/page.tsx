@@ -92,6 +92,7 @@ interface Resident {
   title: string;
   first_name: string;
   last_name: string;
+  maiden_name?: string;
   date_naissance: string | null;
   date_entree: string | null;
   floor: 'RDC' | '1ER';
@@ -185,7 +186,7 @@ const TRAITEMENT_BADGES = [
 ];
 
 const EMPTY_FORM: Omit<Resident, 'id'> = {
-  room: '', title: 'Mme', first_name: '', last_name: '',
+  room: '', title: 'Mme', first_name: '', last_name: '', maiden_name: '',
   date_naissance: '', date_entree: '',
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
   annotations: '', medecin: '', referent: '', antecedents: '',
@@ -626,6 +627,17 @@ function EditForm({
                 value={form.last_name ?? ''}
                 onChange={e => patch({ last_name: e.target.value })}
                 placeholder="NOM DE FAMILLE"
+                className="h-9 text-sm uppercase"
+              />
+            </div>
+
+            {/* Nom de jeune fille */}
+            <div className="space-y-1 col-span-2 sm:col-span-2">
+              <Label className="text-xs font-semibold text-slate-600">Nom de jeune fille</Label>
+              <Input
+                value={form.maiden_name ?? ''}
+                onChange={e => patch({ maiden_name: e.target.value })}
+                placeholder="NOM DE JEUNE FILLE"
                 className="h-9 text-sm uppercase"
               />
             </div>
