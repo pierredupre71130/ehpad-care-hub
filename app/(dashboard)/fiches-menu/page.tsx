@@ -28,7 +28,6 @@ interface Resident {
   archived: boolean | null;
   regime_diabetique?: boolean | null;
   epargne_intestinale?: boolean | null;
-  regime_hache?: boolean | null;
   allergie_poisson?: boolean | null;
 }
 
@@ -130,7 +129,7 @@ export default function FichesMenuPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('residents')
-        .select('id, title, first_name, last_name, room, floor, archived, regime_diabetique, epargne_intestinale, regime_hache, allergie_poisson')
+        .select('id, title, first_name, last_name, room, floor, archived, regime_diabetique, epargne_intestinale, allergie_poisson')
         .eq('archived', false);
       if (error) throw error;
       return (data ?? []) as Resident[];
@@ -147,15 +146,6 @@ export default function FichesMenuPage() {
   });
 
   // ── Mutations ──────────────────────────────────────────────
-  const toggleHache = useMutation({
-    mutationFn: async ({ residentId, value }: { residentId: string; value: boolean }) => {
-      const { error } = await supabase.from('residents').update({ regime_hache: value }).eq('id', residentId);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['residents'] }),
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const saveMutation = useMutation({
     mutationFn: async ({ residentId, patch }: { residentId: string; patch: Partial<FicheMenu> }) => {
       const existing = fiches.find(f => f.resident_id === residentId && f.repas === repas);
@@ -256,10 +246,15 @@ export default function FichesMenuPage() {
         const opt = CHOIX.find(o => o.value === v);
         return `<td class="cx"><span class="badge ${v}">${opt?.label || v}</span></td>`;
       };
+      const allHache = !!f
+        && f.entree === 'H' && f.viande === 'H' && f.legumes === 'H'
+        && f.fromage === 'H' && f.dessert === 'H';
+      const viandeHachee = f?.viande === 'H';
       const regimeBadges: string[] = [];
       if (r.regime_diabetique) regimeBadges.push('<span class="badge DIAB">DIAB</span>');
       if (r.epargne_intestinale) regimeBadges.push('<span class="badge EPARGNE">EPARGNE</span>');
-      if (r.regime_hache) regimeBadges.push('<span class="badge HACHE">HACHÉ</span>');
+      if (allHache) regimeBadges.push('<span class="badge HACHE">HACHÉ</span>');
+      else if (viandeHachee) regimeBadges.push('<span class="badge VIANDE_HACHE">VIANDE HACHÉE</span>');
       const obsBadges = OBS_FLAGS
         .filter(f => obs[f.key])
         .map(f => `<span class="badge OBS_${f.marker}">${esc(f.label)}</span>`)
@@ -307,6 +302,7 @@ export default function FichesMenuPage() {
   .badge.DIAB{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd;font-size:8pt;margin-right:1mm}
   .badge.EPARGNE{background:#dcfce7;color:#166534;border-color:#86efac;font-size:8pt;margin-right:1mm}
   .badge.HACHE{background:#fef3c7;color:#92400e;border-color:#fcd34d;font-size:8pt;margin-right:1mm}
+  .badge.VIANDE_HACHE{background:#fed7aa;color:#9a3412;border-color:#fdba74;font-size:8pt;margin-right:1mm}
   .badge.OBS_POISSON,.badge.POISSON{background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_POISSON{background:#fed7aa;color:#9a3412;border-color:#fdba74;font-size:7.5pt;margin:0.3mm;display:inline-block}
   .badge.OBS_SANS_PORC{background:#fef3c7;color:#92400e;border-color:#fcd34d;font-size:7.5pt;margin:0.3mm;display:inline-block}
@@ -342,7 +338,8 @@ export default function FichesMenuPage() {
   <span><b>AUTRE</b> à substituer</span>
   <span><b>DIAB</b> Régime diabétique</span>
   <span><b>EPARGNE</b> Épargne intestinale</span>
-  <span><b>HACHÉ</b> Régime haché</span>
+  <span><b>HACHÉ</b> Régime haché (auto si tout est H)</span>
+  <span><b>VIANDE HACHÉE</b> auto si Viande = H</span>
   <span><b>⚠</b> Allergie poisson</span>
   <span>· Sans poisson / porc / viande / salade · Vin sans alcool · Pas d'alcool : régimes d'éviction</span>
 </div>
@@ -478,34 +475,41 @@ export default function FichesMenuPage() {
                       </td>
                     ))}
                     <td className="px-2 py-1.5">
-                      <div className="flex flex-wrap gap-1 items-center">
-                        {r.regime_diabetique && (
-                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-blue-100 text-blue-800 border-blue-300">
-                            DIAB
-                          </span>
-                        )}
-                        {r.epargne_intestinale && (
-                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-green-100 text-green-800 border-green-300">
-                            EPARGNE
-                          </span>
-                        )}
-                        <label className={cn(
-                          'inline-flex items-center gap-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border cursor-pointer transition-colors',
-                          r.regime_hache
-                            ? 'bg-amber-100 text-amber-800 border-amber-300'
-                            : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50',
-                          readOnly && 'cursor-not-allowed opacity-60',
-                        )}>
-                          <input
-                            type="checkbox"
-                            checked={!!r.regime_hache}
-                            disabled={readOnly}
-                            onChange={e => toggleHache.mutate({ residentId: r.id, value: e.target.checked })}
-                            className="w-3 h-3"
-                          />
-                          HACHÉ
-                        </label>
-                      </div>
+                      {(() => {
+                        const allHache = !!f
+                          && f.entree === 'H' && f.viande === 'H' && f.legumes === 'H'
+                          && f.fromage === 'H' && f.dessert === 'H';
+                        const viandeHachee = f?.viande === 'H';
+                        return (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {r.regime_diabetique && (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-blue-100 text-blue-800 border-blue-300">
+                                DIAB
+                              </span>
+                            )}
+                            {r.epargne_intestinale && (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-green-100 text-green-800 border-green-300">
+                                EPARGNE
+                              </span>
+                            )}
+                            {allHache && (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-amber-100 text-amber-800 border-amber-300"
+                                title="Auto : Entrée, Viande, Légumes, Fromage et Dessert tous en H">
+                                HACHÉ
+                              </span>
+                            )}
+                            {!allHache && viandeHachee && (
+                              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-orange-100 text-orange-800 border-orange-300"
+                                title="Auto : Viande = H">
+                                VIANDE HACHÉE
+                              </span>
+                            )}
+                            {!r.regime_diabetique && !r.epargne_intestinale && !allHache && !viandeHachee && (
+                              <span className="text-[10px] text-slate-300 italic">—</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="space-y-1">
