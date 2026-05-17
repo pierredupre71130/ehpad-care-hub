@@ -219,7 +219,7 @@ export default function MutationPage() {
     kineDetail: '',
     motif: '',
     isolement: false,
-    aideAlim: 'autonome' as 'autonome' | 'aide',
+    aideAlim: '' as '' | 'autonome' | 'aide',
     hydratation: '' as '' | 'petillante' | 'gelifiee',
     eliminationUrinaire: '' as '' | 'continent' | 'incontinent',
     eliminationFecale: '' as '' | 'continent' | 'incontinent',
@@ -570,8 +570,8 @@ export default function MutationPage() {
               <div className="space-y-1.5">
                 <FieldRow label="Niveau de soins :">
                   {ctx?.niveau?.niveau_soin
-                    ? `${ctx.niveau.niveau_soin}${ctx.niveau.updated_at ? ` (évalué par Médecin Co le ${formatDate(ctx.niveau.updated_at)})` : ''}`
-                    : 'non évalué par Médecin Co'}
+                    ? `${ctx.niveau.niveau_soin} (décidé par Médecin Co. avec Personne référente / résident)`
+                    : 'non évalué par Médecin Co.'}
                 </FieldRow>
                 <FieldRow label="GIR :">{ctx?.niveau?.gir || '—'}</FieldRow>
                 <FieldRow label="Vaccins :">{vaccinsText || '—'}</FieldRow>
@@ -610,8 +610,8 @@ export default function MutationPage() {
                 <FieldRow label="Régime :">{regimeText || <span className="text-slate-400">—</span>}</FieldRow>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="font-semibold">Aide alimentation :</span>
-                  <CheckOption label="Autonome" checked={form.aideAlim === 'autonome'} onChange={() => patch('aideAlim', 'autonome')} />
-                  <CheckOption label="Aide" checked={form.aideAlim === 'aide'} onChange={() => patch('aideAlim', 'aide')} />
+                  <CheckOption label="Autonome" checked={form.aideAlim === 'autonome'} onChange={v => patch('aideAlim', v ? 'autonome' : '')} />
+                  <CheckOption label="Aide" checked={form.aideAlim === 'aide'} onChange={v => patch('aideAlim', v ? 'aide' : '')} />
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="font-semibold">Hydratation :</span>
