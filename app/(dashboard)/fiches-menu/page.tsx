@@ -25,6 +25,9 @@ interface Resident {
   room: string | null;
   floor: string | null;
   archived: boolean | null;
+  regime_diabetique?: boolean | null;
+  epargne_intestinale?: boolean | null;
+  allergie_poisson?: boolean | null;
 }
 
 interface FicheMenu {
@@ -56,6 +59,21 @@ function compareRooms(a: string | null, b: string | null): number {
   return (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' });
 }
 
+// L'observation peut contenir un marqueur [POISSON] pour la case allergie.
+function parseObservation(raw: string): { poisson: boolean; text: string } {
+  if (!raw) return { poisson: false, text: '' };
+  const poisson = /\[POISSON\]/i.test(raw);
+  const text = raw.replace(/\[POISSON\]\s*/gi, '').trim();
+  return { poisson, text };
+}
+
+function writeObservation({ poisson, text }: { poisson: boolean; text: string }): string {
+  const parts: string[] = [];
+  if (poisson) parts.push('[POISSON]');
+  if (text.trim()) parts.push(text.trim());
+  return parts.join(' ');
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FichesMenuPage() {
@@ -74,7 +92,7 @@ export default function FichesMenuPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('residents')
-        .select('id, title, first_name, last_name, room, floor, archived')
+        .select('id, title, first_name, last_name, room, floor, archived, regime_diabetique, epargne_intestinale, allergie_poisson')
         .eq('archived', false);
       if (error) throw error;
       return (data ?? []) as Resident[];
@@ -118,8 +136,7 @@ export default function FichesMenuPage() {
     const q = search.toLowerCase().trim();
     return residents
       .filter(r => (r.floor || '').toUpperCase() === floor)
-      .filter(r => r.last_name?.trim())
-      .filter(r => !q || `${r.last_name} ${r.first_name || ''} ${r.room || ''}`.toLowerCase().includes(q))
+      .filter(r => !q || `${r.last_name || ''} ${r.first_name || ''} ${r.room || ''}`.toLowerCase().includes(q))
       .sort((a, b) => compareRooms(a.room, b.room));
   }, [residents, floor, search]);
 
@@ -136,12 +153,23 @@ export default function FichesMenuPage() {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const repasLabel = repas === 'midi' ? 'MIDI' : 'SOIR';
     const trRows = floorResidents.map(r => {
+      const isEmpty = !r.last_name?.trim();
+      if (isEmpty) {
+        return `<tr class="empty"><td class="room muted">${esc(r.room || '')}</td><td colspan="8" class="empty-row">Chambre vide</td></tr>`;
+      }
       const f = fichesByResident.get(r.id);
+      const obs = parseObservation(f?.observation || '');
       const cell = (v: Choix) => {
         if (!v) return '<td class="cx"></td>';
         const opt = CHOIX.find(o => o.value === v);
         return `<td class="cx"><span class="badge ${v}">${opt?.label || v}</span></td>`;
       };
+      const regimeBadges: string[] = [];
+      if (r.regime_diabetique) regimeBadges.push('<span class="badge DIAB">DIAB</span>');
+      if (r.epargne_intestinale) regimeBadges.push('<span class="badge EPARGNE">EPARGNE</span>');
+      const obsCellParts: string[] = [];
+      if (obs.poisson) obsCellParts.push('<span class="badge POISSON">⚠ Allergie poisson</span>');
+      if (obs.text) obsCellParts.push(`<div>${esc(obs.text)}</div>`);
       return `<tr>
         <td class="room">${esc(r.room || '')}</td>
         <td class="nom"><b>${esc(r.last_name.toUpperCase())}</b> ${esc(shortInitials(r.first_name))}</td>
@@ -150,7 +178,8 @@ export default function FichesMenuPage() {
         ${cell((f?.legumes || '') as Choix)}
         ${cell((f?.fromage || '') as Choix)}
         ${cell((f?.dessert || '') as Choix)}
-        <td class="obs">${esc(f?.observation || '')}</td>
+        <td class="reg">${regimeBadges.join(' ')}</td>
+        <td class="obs">${obsCellParts.join(' ')}</td>
       </tr>`;
     }).join('');
 
@@ -169,12 +198,18 @@ export default function FichesMenuPage() {
   td.room{text-align:center;font-weight:700;width:14mm}
   td.nom{width:38mm}
   td.cx{text-align:center;width:18mm;height:9mm}
-  td.obs{font-size:8.5pt;color:#475569}
+  td.reg{width:22mm;font-size:8.5pt}
+  td.obs{font-size:8.5pt;color:#475569;min-width:34mm}
+  td.muted{color:#94a3b8}
+  td.empty-row{color:#94a3b8;font-style:italic;text-align:center;background:#f8fafc}
   .badge{display:inline-block;padding:1.5px 6px;border-radius:9999px;font-weight:700;font-size:9pt;border:1px solid}
   .badge.N{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
   .badge.H{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd}
   .badge.SS{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
   .badge.AUTRE{background:#fef3c7;color:#92400e;border-color:#fcd34d}
+  .badge.DIAB{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd;font-size:8pt;margin-right:1mm}
+  .badge.EPARGNE{background:#dcfce7;color:#166534;border-color:#86efac;font-size:8pt;margin-right:1mm}
+  .badge.POISSON{background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:8pt}
   .legend{margin-top:5mm;border:1px solid #cbd5e1;border-radius:3px;padding:3mm 5mm;background:#f8fafc;display:flex;gap:8mm;font-size:8.5pt;color:#475569;flex-wrap:wrap}
   .legend b{color:#0f172a;margin-right:2mm}
   @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -191,6 +226,7 @@ export default function FichesMenuPage() {
     <th>Légumes</th>
     <th>Fromage</th>
     <th>Dessert</th>
+    <th>Régime</th>
     <th>Observation</th>
   </tr></thead>
   <tbody>${trRows}</tbody>
@@ -200,6 +236,9 @@ export default function FichesMenuPage() {
   <span><b>H</b> Haché</span>
   <span><b>SS</b> Sans</span>
   <span><b>AUTRE</b> à substituer</span>
+  <span><b>DIAB</b> Régime diabétique</span>
+  <span><b>EPARGNE</b> Épargne intestinale</span>
+  <span><b>⚠ Allergie poisson</b></span>
 </div>
 </body></html>`;
     w.document.open();
@@ -289,14 +328,25 @@ export default function FichesMenuPage() {
                 <th className="text-center px-2 py-2" style={{ minWidth: 150 }}>Légumes</th>
                 <th className="text-center px-2 py-2" style={{ minWidth: 150 }}>Fromage</th>
                 <th className="text-center px-2 py-2" style={{ minWidth: 150 }}>Dessert</th>
-                <th className="text-left px-2 py-2" style={{ minWidth: 180 }}>Observation</th>
+                <th className="text-left px-2 py-2 w-28">Régime</th>
+                <th className="text-left px-2 py-2" style={{ minWidth: 200 }}>Observation</th>
               </tr>
             </thead>
             <tbody>
               {floorResidents.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-12 text-slate-400">Aucun résident pour cet étage</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-slate-400">Aucune chambre pour cet étage</td></tr>
               ) : floorResidents.map(r => {
+                const isEmpty = !r.last_name?.trim();
+                if (isEmpty) {
+                  return (
+                    <tr key={r.id} className="border-b last:border-0 bg-slate-50/40">
+                      <td className="px-2 py-1.5 text-center font-semibold text-slate-400">{r.room}</td>
+                      <td colSpan={8} className="px-2 py-1.5 text-xs text-slate-400 italic">Chambre vide</td>
+                    </tr>
+                  );
+                }
                 const f = fichesByResident.get(r.id);
+                const obsParsed = parseObservation(f?.observation || '');
                 return (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50/50">
                     <td className="px-2 py-1.5 text-center font-semibold text-slate-700">{r.room}</td>
@@ -314,11 +364,52 @@ export default function FichesMenuPage() {
                       </td>
                     ))}
                     <td className="px-2 py-1.5">
-                      <ObsInput
-                        value={f?.observation || ''}
-                        onSave={v => saveMutation.mutate({ residentId: r.id, patch: { observation: v } })}
-                        readOnly={readOnly}
-                      />
+                      <div className="flex flex-wrap gap-1">
+                        {r.regime_diabetique && (
+                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-blue-100 text-blue-800 border-blue-300">
+                            DIAB
+                          </span>
+                        )}
+                        {r.epargne_intestinale && (
+                          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-green-100 text-green-800 border-green-300">
+                            EPARGNE
+                          </span>
+                        )}
+                        {!r.regime_diabetique && !r.epargne_intestinale && (
+                          <span className="text-[10px] text-slate-300 italic">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="space-y-1">
+                        <label className={cn(
+                          'inline-flex items-center gap-1.5 text-[11px] font-semibold px-1.5 py-0.5 rounded border cursor-pointer transition-colors',
+                          obsParsed.poisson
+                            ? 'bg-red-100 text-red-800 border-red-300'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50',
+                          readOnly && 'cursor-not-allowed opacity-60',
+                        )}>
+                          <input
+                            type="checkbox"
+                            checked={obsParsed.poisson}
+                            disabled={readOnly}
+                            onChange={e => saveMutation.mutate({
+                              residentId: r.id,
+                              patch: { observation: writeObservation({ ...obsParsed, poisson: e.target.checked }) },
+                            })}
+                            className="w-3 h-3 accent-red-600"
+                          />
+                          ⚠ Allergie poisson
+                        </label>
+                        <ObsInput
+                          value={obsParsed.text}
+                          onSave={v => saveMutation.mutate({
+                            residentId: r.id,
+                            patch: { observation: writeObservation({ ...obsParsed, text: v }) },
+                          })}
+                          readOnly={readOnly}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );
