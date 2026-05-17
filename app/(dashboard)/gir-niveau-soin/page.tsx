@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X, Printer, Eye, History, RotateCcw } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -97,6 +97,17 @@ interface PendingChange {
 
 const GIR_OPTIONS = ['1', '2', '3', '4', 'N/A'];
 const NIVEAU_OPTIONS = ['A', 'B', 'C', 'D', 'En cours'];
+
+function ageFromBirth(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const d = new Date(iso + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
 
 // ─────────────────────────────────────────────────────────────
 // COULEURS
@@ -572,6 +583,26 @@ export default function GIRNiveauSoinPage() {
     [residents]
   );
 
+  // Auto-applique GIR = N/A pour les résidents de moins de 60 ans dont le GIR
+  // n'est pas encore renseigné (ou contient une valeur 1-4 incompatible).
+  const autoAppliedUnder60 = useMemo(() => new Set<string>(), []);
+  useEffect(() => {
+    for (const r of residents) {
+      const age = ageFromBirth(r.date_naissance);
+      if (age === null || age >= 60) continue;
+      const rec = getRec(r.id);
+      if (rec.gir !== 'N/A' && !autoAppliedUnder60.has(r.id)) {
+        autoAppliedUnder60.add(r.id);
+        doUpdate(r, 'gir', 'N/A');
+      }
+    }
+  }, [residents, getRec, doUpdate, autoAppliedUnder60]);
+
+  const isUnder60 = useCallback((r: Resident) => {
+    const age = ageFromBirth(r.date_naissance);
+    return age !== null && age < 60;
+  }, []);
+
   const sansGir    = useMemo(() => sorted.filter(r => { const g = getRec(r.id).gir; return !g || g === ''; }), [sorted, getRec]);
   const sansNiveau = useMemo(() => sorted.filter(r => !getRec(r.id).niveau_soin), [sorted, getRec]);
   const sansAppel  = useMemo(() => sorted.filter(r => {
@@ -807,7 +838,7 @@ export default function GIRNiveauSoinPage() {
                 {r.title} {r.last_name} {r.first_name ?? ''}{' '}
                 <span className="text-xs text-slate-400">Ch.{r.room}</span>
               </span>
-              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={!canEdit('gir')} />
+              <ToggleGroup options={GIR_OPTIONS} value={getRec(r.id).gir} onChange={v => { updateField(r, 'gir', v); }} colorFn={girColor} readOnly={!canEdit('gir') || isUnder60(r)} />
             </div>
           ))}
         </SummaryModal>
@@ -959,7 +990,7 @@ export default function GIRNiveauSoinPage() {
                       value={rec.gir}
                       onChange={v => updateField(r, 'gir', v)}
                       colorFn={girColor}
-                      readOnly={!canEdit('gir')}
+                      readOnly={!canEdit('gir') || isUnder60(r)}
                     />
                   </td>
 
