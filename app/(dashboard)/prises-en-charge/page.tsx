@@ -36,6 +36,8 @@ interface Resident {
   room?: string;
   floor?: string;
   archived?: boolean;
+  photo_url?: string;   // chemin storage ou URL signée
+  photo_path?: string;  // chemin brut (avant signature)
 }
 
 // ── Données initiales (issues des photos) ────────────────────────────────────
@@ -305,10 +307,26 @@ async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('residents')
-    .select('id,title,first_name,last_name,room,floor,archived')
+    .select('id,title,first_name,last_name,room,floor,archived,photo_url')
     .order('room');
   if (error) throw new Error(error.message);
-  return (data ?? []) as Resident[];
+  const residents = (data ?? []) as Resident[];
+
+  // Convertit les chemins en URLs signées (1h) — même mécanisme que la page étiquettes-repas
+  const withPhotos = residents.filter(r => r.photo_url && !r.photo_url.startsWith('http'));
+  if (withPhotos.length > 0) {
+    const { data: signed } = await sb.storage
+      .from('resident-photos')
+      .createSignedUrls(withPhotos.map(r => r.photo_url!), 3600);
+    const urlMap: Record<string, string> = {};
+    (signed ?? []).forEach(s => { if (s.path && s.signedUrl) urlMap[s.path] = s.signedUrl; });
+    return residents.map(r =>
+      r.photo_url && urlMap[r.photo_url]
+        ? { ...r, photo_path: r.photo_url, photo_url: urlMap[r.photo_url] }
+        : r,
+    );
+  }
+  return residents;
 }
 
 // ── Page principale ────────────────────────────────────────────────────────────
@@ -834,7 +852,7 @@ export default function PrisesEnChargePage() {
                   <thead>
                     <tr className="bg-slate-100 text-slate-600 text-xs font-semibold uppercase tracking-wide">
                       <th className="border border-slate-200 px-3 py-2 text-left w-24">Chambre</th>
-                      <th className="border border-slate-200 px-3 py-2 text-left w-32">Nom</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left w-48">Nom</th>
                       <th className="border border-slate-200 px-3 py-2 text-left">Matin</th>
                       <th className="border border-slate-200 px-3 py-2 text-left">Après-midi / Soir</th>
                       <th className="border border-slate-200 px-3 py-2 text-left w-36">Protection</th>
@@ -863,11 +881,21 @@ export default function PrisesEnChargePage() {
                           </select>
                         </td>
 
-                        {/* Nom — auto-rempli */}
+                        {/* Nom + photo */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
-                          <span className="text-xs font-medium text-slate-700">
-                            {row.nom || <span className="text-slate-300 italic">—</span>}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              return matched?.photo_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={matched.photo_url} alt={row.nom || ''}
+                                  className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0" />
+                              ) : null;
+                            })()}
+                            <span className="text-xs font-medium text-slate-700">
+                              {row.nom || <span className="text-slate-300 italic">—</span>}
+                            </span>
+                          </div>
                         </td>
 
                         {/* Matin */}
