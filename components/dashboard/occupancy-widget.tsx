@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const SETTING_ROOMS = 'occupancy_total_rooms';
 const SETTING_START = 'occupancy_start_date';
 
 interface ResidentRow {
@@ -16,6 +15,8 @@ interface ResidentRow {
   archived: boolean | null;
   date_entree: string | null;
   date_sortie: string | null;
+  room: string | null;
+  last_name: string | null;
 }
 
 function toDate(s: string | null): Date | null {
@@ -40,18 +41,7 @@ export function OccupancyWidget() {
   }, []);
   const isoToday = today.toISOString().slice(0, 10);
 
-  // ── Settings
-  const { data: totalRooms = 0 } = useQuery({
-    queryKey: ['settings', SETTING_ROOMS],
-    queryFn: async () => {
-      const { data } = await supabase.from('settings').select('value').eq('key', SETTING_ROOMS).maybeSingle();
-      const v = data?.value;
-      if (typeof v === 'number') return v;
-      if (typeof v === 'string') return parseInt(v) || 0;
-      return 0;
-    },
-    staleTime: 60_000,
-  });
+  // ── Settings (date de début uniquement ; total chambres dérivé des résidents)
   const { data: startDate = isoToday } = useQuery({
     queryKey: ['settings', SETTING_START],
     queryFn: async () => {
@@ -83,12 +73,19 @@ export function OccupancyWidget() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('residents')
-        .select('id, archived, date_entree, date_sortie');
+        .select('id, archived, date_entree, date_sortie, room, last_name');
       if (error) throw error;
       return (data ?? []) as ResidentRow[];
     },
     staleTime: 30_000,
   });
+
+  // Nombre total de chambres = nombre de lignes résidents actifs (occupées + placeholders vides)
+  // Méthode identique à la page PAP (resident row = 1 chambre).
+  const totalRooms = useMemo(
+    () => residents.filter(r => !r.archived).length,
+    [residents],
+  );
 
   // ── Computation
   const stats = useMemo(() => {
@@ -102,6 +99,8 @@ export function OccupancyWidget() {
     // Person-days
     let occupiedDays = 0;
     for (const r of residents) {
+      // Ignore les chambres placeholder vides (résident sans nom)
+      if (!r.last_name?.trim()) continue;
       const entree = toDate(r.date_entree) || start;
       const sortie = r.date_sortie ? toDate(r.date_sortie) : (r.archived ? null : today);
       // Si pas de sortie et archivé sans date → on ignore (donnée incomplète)
@@ -128,6 +127,7 @@ export function OccupancyWidget() {
       const mPossible = totalRooms * mDays;
       let mOccupied = 0;
       for (const r of residents) {
+        if (!r.last_name?.trim()) continue;
         if (r.archived && !r.date_sortie) continue;
         const entree = toDate(r.date_entree) || monthStart;
         const sortie = r.date_sortie ? toDate(r.date_sortie) : (r.archived ? null : today);
@@ -148,16 +148,12 @@ export function OccupancyWidget() {
 
   // ── Save settings mutation
   const saveSettings = useMutation({
-    mutationFn: async ({ rooms, start }: { rooms: number; start: string }) => {
-      await supabase.from('settings').upsert({
-        key: SETTING_ROOMS, value: rooms, updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
+    mutationFn: async ({ start }: { start: string }) => {
       await supabase.from('settings').upsert({
         key: SETTING_START, value: start, updated_at: new Date().toISOString(),
       }, { onConflict: 'key' });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings', SETTING_ROOMS] });
       qc.invalidateQueries({ queryKey: ['settings', SETTING_START] });
       setSettingsOpen(false);
       toast.success('Réglages enregistrés');
@@ -194,7 +190,7 @@ export function OccupancyWidget() {
 
         {totalRooms === 0 ? (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            Configure d&apos;abord le nombre total de chambres via l&apos;icône ⚙ pour calculer le taux.
+            Aucune chambre détectée. Ajoute d&apos;abord les résidents dans « Gestion des résidents ».
           </div>
         ) : (
           <>
@@ -243,7 +239,7 @@ export function OccupancyWidget() {
           startDate={startDate}
           saving={saveSettings.isPending}
           onClose={() => setSettingsOpen(false)}
-          onSave={(rooms, start) => saveSettings.mutate({ rooms, start })}
+          onSave={(start) => saveSettings.mutate({ start })}
         />
       )}
     </>
@@ -257,9 +253,8 @@ function SettingsModal({
   startDate: string;
   saving: boolean;
   onClose: () => void;
-  onSave: (rooms: number, start: string) => void;
+  onSave: (start: string) => void;
 }) {
-  const [rooms, setRooms] = useState(totalRooms);
   const [start, setStart] = useState(startDate);
 
   return (
@@ -272,11 +267,11 @@ function SettingsModal({
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Nombre total de chambres</label>
-            <input type="number" min={0} value={rooms}
-              onChange={e => setRooms(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:border-blue-400" />
+          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+            <b>{totalRooms}</b> chambres détectées dans « Gestion des résidents ».
+            <p className="text-[11px] text-slate-500 mt-0.5 italic">
+              Le total est mis à jour automatiquement quand une chambre est ajoutée ou retirée.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase">Date de début de comptage</label>
@@ -284,7 +279,7 @@ function SettingsModal({
               onChange={e => setStart(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400" />
             <p className="text-[11px] text-slate-500 mt-1">
-              Le taux d&apos;occupation sera calculé entre cette date et aujourd&apos;hui. Pour les années suivantes, il sera réinitialisé au 1er janvier.
+              Le taux d&apos;occupation sera calculé entre cette date et aujourd&apos;hui.
             </p>
           </div>
         </div>
@@ -293,7 +288,7 @@ function SettingsModal({
             className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
             Annuler
           </button>
-          <button onClick={() => onSave(rooms, start)} disabled={saving}
+          <button onClick={() => onSave(start)} disabled={saving}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Enregistrer
