@@ -56,6 +56,7 @@ interface NiveauSoin {
 }
 interface Vaccination {
   resident_id?: string;
+  resident_name?: string;
   year: number;
   covid_inj1?: string | null;
   covid_inj2?: string | null;
@@ -65,6 +66,7 @@ interface Vaccination {
 }
 interface VaccinationLT {
   resident_id?: string;
+  resident_name?: string;
   tetanos_date?: string | null;
   pneumovax_date?: string | null;
   notes?: string | null;
@@ -104,6 +106,33 @@ function todayFR(): string {
   return new Date().toLocaleDateString('fr-FR');
 }
 
+// Parse "covid:Refus famille C|grippe:Accepte G|..." → { covid, grippe }
+function parseVaccInfos(infos: string | null | undefined): { covid: string; grippe: string } {
+  if (!infos) return { covid: '', grippe: '' };
+  const map: Record<string, string> = {};
+  infos.split('|').forEach(p => {
+    const idx = p.indexOf(':');
+    if (idx > 0) {
+      const k = p.slice(0, idx).trim();
+      const v = p.slice(idx + 1).trim();
+      if (k) map[k] = v;
+    }
+  });
+  return { covid: map.covid || '', grippe: map.grippe || '' };
+}
+
+// Mirror of the matching logic from vaccination/page.tsx: id, then full name,
+// then last-name fallback. Vaccination rows often miss resident_id.
+function matchesResident(row: { resident_id?: string; resident_name?: string }, resident: Resident): boolean {
+  if (row.resident_id === resident.id) return true;
+  const vName = (row.resident_name || '').toLowerCase().trim();
+  if (!vName) return false;
+  const full = `${resident.last_name} ${resident.first_name || ''}`.toLowerCase().trim();
+  if (vName === full) return true;
+  const last = (resident.last_name || '').toLowerCase().trim();
+  return vName === last || vName.startsWith(last + ' ') || vName.startsWith(last + '.');
+}
+
 // ─────────────────────────────────────────────────────────────
 // SUPABASE FETCHERS
 // ─────────────────────────────────────────────────────────────
@@ -141,8 +170,8 @@ async function fetchMutationContext(resident: Resident) {
   const [
     { data: lastWeight },
     { data: niveau },
-    { data: vaccinations },
-    { data: vaccinationLT },
+    { data: allVacc },
+    { data: allVaccLT },
     { data: fichesMenu },
     { data: pec },
     { data: contentions },
@@ -150,19 +179,25 @@ async function fetchMutationContext(resident: Resident) {
   ] = await Promise.all([
     sb.from('poids_mesure').select('*').eq('resident_id', resident.id).order('date', { ascending: false }).limit(1).maybeSingle(),
     sb.from('niveau_soin').select('*').eq('resident_id', resident.id).maybeSingle(),
-    sb.from('vaccination').select('*').eq('resident_id', resident.id).order('year', { ascending: false }).limit(1).maybeSingle(),
-    sb.from('vaccination_long_terme').select('*').eq('resident_id', resident.id).maybeSingle(),
+    sb.from('vaccination').select('*'),
+    sb.from('vaccination_long_terme').select('*'),
     sb.from('fiches_menu').select('*').eq('resident_id', resident.id),
     sb.from('prise_en_charge').select('*').eq('chambre', resident.room).maybeSingle(),
     sb.from('contentions').select('*').eq('type_suivi', 'contention').eq('chambre', resident.room),
     sb.from('mat_couss_items').select('*').eq('resident_id', resident.id).eq('status', 'attribue'),
   ]);
 
+  const matchingVacc = ((allVacc ?? []) as Vaccination[]).filter(v => matchesResident(v, resident));
+  const vaccination = matchingVacc.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0] ?? null;
+
+  const matchingVaccLT = ((allVaccLT ?? []) as VaccinationLT[]).filter(v => matchesResident(v, resident));
+  const vaccinationLT = matchingVaccLT[0] ?? null;
+
   return {
     lastWeight: lastWeight as PoidsMesure | null,
     niveau: niveau as NiveauSoin | null,
-    vaccination: vaccinations as Vaccination | null,
-    vaccinationLT: vaccinationLT as VaccinationLT | null,
+    vaccination,
+    vaccinationLT,
     fichesMenu: (fichesMenu ?? []) as FicheMenu[],
     pec: pec as PecRow | null,
     contentions: (contentions ?? []) as Contention[],
@@ -312,38 +347,48 @@ export default function MutationPage() {
 
   const vaccinsText = useMemo(() => {
     if (!ctx) return '';
-    const v: string[] = [];
+    const lines: string[] = [];
     const refus: string[] = [];
+
     if (ctx.vaccination) {
       const annee = ctx.vaccination.year;
-      const covidValues = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3].filter(Boolean) as string[];
-      const grippe = ctx.vaccination.grippe_inj1;
+      const { covid: covidChoice, grippe: grippeChoice } = parseVaccInfos(ctx.vaccination.infos);
+      const isDate = (s: string | null | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-      const covidRefus = covidValues.find(x => /refus/i.test(x));
-      const covidAcceptes = covidValues.filter(x => !/refus/i.test(x));
-      if (covidAcceptes.length) v.push(`COVID ${annee} : ${covidAcceptes.join(', ')}`);
-      if (covidRefus) {
-        const famille = /famille/i.test(covidRefus);
-        refus.push(`COVID (${famille ? 'refus famille' : 'refus patient'})`);
-      }
-
-      if (grippe) {
-        if (/refus/i.test(grippe)) {
-          const famille = /famille/i.test(grippe);
-          refus.push(`Grippe (${famille ? 'refus famille' : 'refus patient'})`);
-        } else {
-          v.push(`Grippe ${annee} : ${grippe}`);
+      // ── COVID ──
+      if (covidChoice && /refus/i.test(covidChoice)) {
+        const famille = /famille/i.test(covidChoice);
+        refus.push(`COVID (${famille ? 'refus famille' : 'refus résident'})`);
+      } else {
+        const covidDates = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3]
+          .filter(isDate)
+          .sort()
+          .reverse();
+        if (covidDates.length) {
+          lines.push(`COVID ${annee} : dernière injection le ${formatDate(covidDates[0])}`);
+        } else if (covidChoice) {
+          lines.push(`COVID ${annee} : ${covidChoice}`);
         }
       }
 
-      if (ctx.vaccination.infos) v.push(ctx.vaccination.infos);
+      // ── GRIPPE ──
+      if (grippeChoice && /refus/i.test(grippeChoice)) {
+        const famille = /famille/i.test(grippeChoice);
+        refus.push(`Grippe (${famille ? 'refus famille' : 'refus résident'})`);
+      } else if (isDate(ctx.vaccination.grippe_inj1)) {
+        lines.push(`Grippe ${annee} : ${formatDate(ctx.vaccination.grippe_inj1)}`);
+      } else if (grippeChoice) {
+        lines.push(`Grippe ${annee} : ${grippeChoice}`);
+      }
     }
+
     if (ctx.vaccinationLT) {
-      if (ctx.vaccinationLT.tetanos_date) v.push(`Tétanos : ${formatDate(ctx.vaccinationLT.tetanos_date)}`);
-      if (ctx.vaccinationLT.pneumovax_date) v.push(`Pneumovax : ${formatDate(ctx.vaccinationLT.pneumovax_date)}`);
+      if (ctx.vaccinationLT.tetanos_date) lines.push(`Tétanos : ${formatDate(ctx.vaccinationLT.tetanos_date)}`);
+      if (ctx.vaccinationLT.pneumovax_date) lines.push(`Pneumovax : ${formatDate(ctx.vaccinationLT.pneumovax_date)}`);
     }
-    if (refus.length) v.push(`Refus : ${refus.join(', ')}`);
-    return v.join(' · ');
+
+    if (refus.length) lines.push(`Refus : ${refus.join(', ')}`);
+    return lines.join(' · ');
   }, [ctx]);
 
   const matelasText = useMemo(() => {
