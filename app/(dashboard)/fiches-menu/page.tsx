@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ChefHat, Printer, Loader2, Search, ChevronRight, Eye,
+  ChefHat, Printer, Loader2, Search, ChevronRight, Eye, Lock, Unlock, X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -115,8 +115,32 @@ export default function FichesMenuPage() {
   const supabase = createClient();
   const qc = useQueryClient();
   const access = useModuleAccess('fichesMenu');
-  const readOnly = access === 'read';
+  const baseReadOnly = access === 'read';
   const isAdmin = useEffectiveRole() === 'admin';
+
+  // Verrouillage par mot de passe (mapadsoin) — perdu si on quitte la page,
+  // expire après 30 min.
+  const UNLOCK_PASSWORD = 'mapadsoin';
+  const UNLOCK_DURATION_MS = 30 * 60 * 1000;
+  const [unlockedAt, setUnlockedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [pwInput, setPwInput] = useState('');
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const isUnlocked = unlockedAt !== null && (now - unlockedAt < UNLOCK_DURATION_MS);
+  const remainingMin = isUnlocked ? Math.max(0, Math.ceil((UNLOCK_DURATION_MS - (now - unlockedAt!)) / 60_000)) : 0;
+  const readOnly = baseReadOnly || !isUnlocked;
+  const tryUnlock = () => {
+    if (pwInput === UNLOCK_PASSWORD) {
+      setUnlockedAt(Date.now());
+      setShowUnlock(false); setPwInput('');
+      toast.success('Édition déverrouillée (30 min)');
+    } else { toast.error('Mot de passe incorrect'); setPwInput(''); }
+  };
+  const lock = () => { setUnlockedAt(null); toast.info('Édition verrouillée'); };
 
   const [floor, setFloor] = useState<Floor>('RDC');
   const [repas, setRepas] = useState<Repas>('midi');
@@ -392,9 +416,77 @@ ${buildPage('soir', 'SOIR', false)}
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
-        {readOnly && (
+        {baseReadOnly && (
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4" /> Lecture seule
+          </div>
+        )}
+        {!baseReadOnly && (
+          <div className={`flex items-center justify-between gap-3 border rounded-xl px-3 py-2 text-sm ${
+            isUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+          }`}>
+            {isUnlocked ? (
+              <>
+                <div className="flex items-center gap-2 text-emerald-700 font-medium">
+                  <Unlock className="h-4 w-4" />
+                  Édition déverrouillée · expire dans {remainingMin} min
+                </div>
+                <button onClick={lock}
+                  className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                  <Lock className="h-3.5 w-3.5" /> Verrouiller
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Lock className="h-4 w-4" />
+                  Édition verrouillée — cliquez pour déverrouiller (mot de passe soins)
+                </div>
+                <button onClick={() => { setShowUnlock(true); setPwInput(''); }}
+                  className="flex items-center gap-1.5 text-xs text-white bg-orange-600 hover:bg-orange-700 px-3 py-1.5 rounded-lg font-semibold">
+                  <Unlock className="h-3.5 w-3.5" /> Déverrouiller
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {showUnlock && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowUnlock(false)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b">
+                <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-orange-600" />
+                  Déverrouiller l&apos;édition
+                </h2>
+                <button onClick={() => setShowUnlock(false)} className="text-slate-400 hover:text-slate-700">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-3">
+                <p className="text-sm text-slate-600">
+                  Entrez le <b>mot de passe soins</b> pour modifier les fiches menu.
+                </p>
+                <input type="password" autoFocus value={pwInput}
+                  onChange={e => setPwInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+                  placeholder="Mot de passe…"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-orange-400" />
+                <p className="text-[11px] text-slate-500 italic">
+                  Le déverrouillage dure 30 minutes ou jusqu&apos;à ce que vous quittiez la page.
+                </p>
+              </div>
+              <div className="flex gap-2 justify-end p-4 border-t">
+                <button onClick={() => setShowUnlock(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+                  Annuler
+                </button>
+                <button onClick={tryUnlock} disabled={!pwInput}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 disabled:opacity-50">
+                  <Unlock className="h-4 w-4" /> Déverrouiller
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
