@@ -419,6 +419,7 @@ function PAPPageInner() {
   const readOnly = access === 'read';
   const effectiveRole = useEffectiveRole();
   const canEditRestricted = effectiveRole === 'admin' || effectiveRole === 'psychologue';
+  const isAdmin = effectiveRole === 'admin';
 
   // Module color system
   const { data: colorOverrides = {} } = useQuery<ColorOverrides>({
@@ -1048,7 +1049,7 @@ ${sec('Objectifs et signature',
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${hasPap ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                         {hasPap ? 'Modifier' : 'Créer'}
                       </button>
-                      {hasPap && (
+                      {hasPap && isAdmin && (
                         <button
                           onClick={() => setDeleteTarget({ papId: pap!.id, residentName: `${resident.last_name} ${resident.first_name}` })}
                           disabled={readOnly}
