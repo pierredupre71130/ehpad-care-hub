@@ -6,10 +6,144 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
   ShieldCheck, Home, Download, UserX, Loader2,
-  AlertTriangle, Check, ChevronDown, Search,
+  AlertTriangle, Check, ChevronDown, Search, FileText,
 } from 'lucide-react';
 import { AdminPasswordGate } from '@/components/ui/admin-password-gate';
 import { toast } from 'sonner';
+
+// ── Génération HTML lisible pour l'export PDF ────────────────────────────────
+
+const SECTION_LABELS: Record<string, string> = {
+  consignes_nuit: 'Consignes de nuit',
+  pap: "PAP (Projet d'Accompagnement Personnalisé)",
+  pap_versions: 'PAP — versions archivées',
+  poids: 'Mesures de poids',
+  vaccination: 'Vaccinations',
+  contentions: 'Contentions',
+  niveau_soin: 'GIR / Niveau de soin',
+  prises_en_charge: 'Prises en charge',
+  bilans: 'Bilans spéciaux',
+  planning_bilans: 'Planning bilans sanguins',
+  dossier_nutritionnel: 'Dossier nutritionnel',
+  complement_alimentaire: 'Compléments alimentaires',
+  suivi_clinique_nutritionnel: 'Suivi clinique nutritionnel',
+  suivi_antalgique: 'Suivi antalgique / morphiniques',
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  // Champs résident
+  first_name: 'Prénom', last_name: 'Nom', date_naissance: 'Date de naissance',
+  date_entree: "Date d'entrée", date_sortie: 'Date de sortie',
+  room: 'Chambre', section: 'Section', floor: 'Étage', title: 'Civilité',
+  referent: 'Référent', medecin: 'Médecin', sexe: 'Sexe',
+  // Champs génériques
+  created_at: 'Créé le', updated_at: 'Modifié le', id: 'ID interne',
+  resident_id: 'ID résident', resident_name: 'Nom résident', archived: 'Archivé',
+};
+
+function fmtKey(k: string): string {
+  return FIELD_LABELS[k] || k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function fmtVal(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '<span style="color:#cbd5e1">—</span>';
+  if (typeof v === 'boolean') return v ? '<b style="color:#16a34a">Oui</b>' : '<span style="color:#94a3b8">Non</span>';
+  if (typeof v === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(v)) {
+      try {
+        const d = new Date(v);
+        if (!Number.isNaN(d.getTime())) {
+          return v.length > 10
+            ? d.toLocaleString('fr-FR')
+            : d.toLocaleDateString('fr-FR');
+        }
+      } catch { /* ignore */ }
+    }
+    return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+  }
+  if (Array.isArray(v)) {
+    if (v.length === 0) return '<span style="color:#cbd5e1">—</span>';
+    return v.map(x => typeof x === 'object' ? `<pre style="margin:0;font-size:9px">${JSON.stringify(x, null, 2)}</pre>` : String(x)).join(', ');
+  }
+  if (typeof v === 'object') {
+    return `<pre style="margin:0;font-size:9px;white-space:pre-wrap">${JSON.stringify(v, null, 2)}</pre>`;
+  }
+  return String(v);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderRecord(rec: Record<string, any>): string {
+  const fields = Object.entries(rec).filter(([k]) => !['id', 'resident_id', 'resident_name'].includes(k));
+  return `<table class="record-table">${fields.map(([k, v]) =>
+    `<tr><td class="k">${fmtKey(k)}</td><td class="v">${fmtVal(v)}</td></tr>`).join('')}</table>`;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderSection(key: string, records: any[]): string {
+  const label = SECTION_LABELS[key] || key;
+  if (!records || records.length === 0) {
+    return `<section class="empty"><h2>${label}</h2><p class="muted">Aucune donnée</p></section>`;
+  }
+  return `<section><h2>${label} <span class="count">(${records.length})</span></h2>${records.map((r, i) =>
+    `<div class="record"><div class="record-h">Entrée ${i + 1}</div>${renderRecord(r)}</div>`,
+  ).join('')}</section>`;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildRgpdHtml(data: any): string {
+  const r = data.resident || {};
+  const nom = `${(r.last_name || '').toUpperCase()} ${r.first_name || ''}`.trim() || 'Résident';
+  const dateExp = data.export_date ? new Date(data.export_date).toLocaleString('fr-FR') : new Date().toLocaleString('fr-FR');
+  const med = data.donnees_medicales || {};
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>Export RGPD — ${nom}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#0f172a;padding:10mm;background:#fff}
+  @page{size:A4 portrait;margin:10mm}
+  .header{border:2px solid #1e40af;border-radius:5px;padding:8px 12px;margin-bottom:10px;background:#eff6ff}
+  .header h1{font-size:18px;color:#1e40af;margin-bottom:2px}
+  .header .sub{font-size:10px;color:#475569;margin-bottom:4px}
+  .header .meta{display:flex;flex-wrap:wrap;gap:14px;font-size:10px;color:#475569;margin-top:4px}
+  .header .meta b{color:#0f172a}
+  section{margin-bottom:8px;page-break-inside:avoid}
+  section.empty{opacity:0.6}
+  h2{font-size:12px;color:white;background:#334155;padding:4px 8px;border-radius:3px;margin-bottom:4px;letter-spacing:0.04em;text-transform:uppercase}
+  h2 .count{font-weight:400;opacity:0.7;text-transform:none;letter-spacing:0;margin-left:6px}
+  .muted{color:#94a3b8;font-style:italic;font-size:10px;padding:3px 8px}
+  .record{border:1px solid #e2e8f0;border-radius:3px;margin-bottom:4px;page-break-inside:avoid}
+  .record-h{background:#f1f5f9;color:#475569;font-size:9px;font-weight:700;padding:2px 6px;border-bottom:1px solid #e2e8f0;text-transform:uppercase;letter-spacing:0.03em}
+  table.record-table{width:100%;border-collapse:collapse}
+  table.record-table td{padding:2px 6px;font-size:10px;vertical-align:top;border-bottom:1px solid #f1f5f9}
+  table.record-table td.k{font-weight:600;color:#475569;width:34%;background:#fafafa}
+  table.record-table td.v{color:#0f172a}
+  table.record-table tr:last-child td{border-bottom:none}
+  pre{font-family:Consolas,monospace;background:#fff}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head><body>
+
+<div class="header">
+  <h1>Export RGPD — ${nom}</h1>
+  <div class="sub">${data.export_type || "Droit d'accès (Article 15 RGPD)"} · ${data.etablissement || ''}</div>
+  <div class="meta">
+    <span><b>Chambre :</b> ${fmtVal(r.room)}</span>
+    <span><b>Date naissance :</b> ${fmtVal(r.date_naissance)}</span>
+    <span><b>Date d'entrée :</b> ${fmtVal(r.date_entree)}</span>
+    <span><b>Médecin :</b> ${fmtVal(r.medecin)}</span>
+    <span><b>Date export :</b> ${dateExp}</span>
+  </div>
+</div>
+
+<section>
+  <h2>Fiche résident</h2>
+  <div class="record"><div class="record-h">Données administratives</div>${renderRecord(r)}</div>
+</section>
+
+${Object.keys(SECTION_LABELS).map(key => renderSection(key, med[key] || [])).join('')}
+
+</body></html>`;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,6 +237,33 @@ function RGPDContent() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Export téléchargé');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!selectedId) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/admin/rgpd/export?residentId=${selectedId}`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? 'Erreur export');
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await res.json() as any;
+      const html = buildRgpdHtml(data);
+      const w = window.open('', '_blank');
+      if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 500);
+      toast.success('Aperçu PDF ouvert');
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -229,16 +390,29 @@ function RGPDContent() {
                 </div>
               </div>
               <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                Télécharge l&apos;intégralité des données de <strong>{selected.last_name} {selected.first_name ?? ''}</strong> au format JSON.
+                Télécharge l&apos;intégralité des données de <strong>{selected.last_name} {selected.first_name ?? ''}</strong>.
               </p>
-              <button
-                onClick={handleExport}
-                disabled={isExporting}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors"
-              >
-                {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {isExporting ? 'Export en cours...' : 'Télécharger le fichier'}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleExportPDF}
+                  disabled={isExporting}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors"
+                >
+                  {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  {isExporting ? 'Export en cours...' : 'Exporter en PDF (lisible)'}
+                </button>
+                <button
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded-xl px-4 py-2 text-xs font-semibold transition-colors border border-slate-200"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Télécharger le JSON brut
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 italic mt-3">
+                Astuce : dans la boîte d&apos;impression, choisis « Enregistrer en PDF » comme destination pour obtenir un fichier PDF.
+              </p>
             </div>
 
             {/* Anonymisation */}
