@@ -246,6 +246,11 @@ function RGPDContent() {
 
   const handleExportPDF = async () => {
     if (!selectedId) return;
+    // Ouvrir la fenêtre IMMÉDIATEMENT (sinon le navigateur bloque le popup
+    // car il ne le voit plus comme déclenché par un clic utilisateur après le await).
+    const w = window.open('', '_blank');
+    if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Export RGPD…</title></head><body style="font-family:Arial,sans-serif;padding:40px;text-align:center;color:#475569"><p>Préparation de l&apos;export en cours…</p></body></html>`);
     setIsExporting(true);
     try {
       const res = await fetch(`/api/admin/rgpd/export?residentId=${selectedId}`);
@@ -256,8 +261,6 @@ function RGPDContent() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = await res.json() as any;
       const html = buildRgpdHtml(data);
-      const w = window.open('', '_blank');
-      if (!w) { toast.error('Veuillez autoriser les popups pour imprimer'); return; }
       w.document.open();
       w.document.write(html);
       w.document.close();
@@ -265,6 +268,7 @@ function RGPDContent() {
       setTimeout(() => w.print(), 500);
       toast.success('Aperçu PDF ouvert');
     } catch (e) {
+      w.close();
       toast.error((e as Error).message);
     } finally {
       setIsExporting(false);
