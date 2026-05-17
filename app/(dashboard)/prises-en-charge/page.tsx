@@ -9,7 +9,6 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fetchColorOverrides, darkenHex, type ColorOverrides } from '@/lib/module-colors';
 import { MODULES } from '@/components/dashboard/module-config';
-import { toast } from 'sonner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
