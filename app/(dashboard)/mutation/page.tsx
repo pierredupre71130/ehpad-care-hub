@@ -51,6 +51,7 @@ interface NiveauSoin {
   niveau_soin: string;
   appel_nuit_info: string;
   tutelle: string;
+  updated_at?: string;
 }
 interface Vaccination {
   resident_id?: string;
@@ -209,11 +210,12 @@ export default function MutationPage() {
   // Editable free-text fields (state local — pour impression)
   const [form, setForm] = useState({
     tel: '',
+    personneAPrevenirManuel: '',
     personnePrevenue: false,
     tutellePrevenue: false,
     situationFamiliale: '',
     suiviSocial: '',
-    kineActif: false,
+    kineActif: null as boolean | null,
     kineDetail: '',
     motif: '',
     isolement: false,
@@ -313,18 +315,36 @@ export default function MutationPage() {
   const vaccinsText = useMemo(() => {
     if (!ctx) return '';
     const v: string[] = [];
+    const refus: string[] = [];
     if (ctx.vaccination) {
       const annee = ctx.vaccination.year;
-      const covid = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3].filter(Boolean).join(', ');
+      const covidValues = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3].filter(Boolean) as string[];
       const grippe = ctx.vaccination.grippe_inj1;
-      if (covid) v.push(`COVID ${annee} : ${covid}`);
-      if (grippe) v.push(`Grippe ${annee} : ${grippe}`);
+
+      const covidRefus = covidValues.find(x => /refus/i.test(x));
+      const covidAcceptes = covidValues.filter(x => !/refus/i.test(x));
+      if (covidAcceptes.length) v.push(`COVID ${annee} : ${covidAcceptes.join(', ')}`);
+      if (covidRefus) {
+        const famille = /famille/i.test(covidRefus);
+        refus.push(`COVID (${famille ? 'refus famille' : 'refus patient'})`);
+      }
+
+      if (grippe) {
+        if (/refus/i.test(grippe)) {
+          const famille = /famille/i.test(grippe);
+          refus.push(`Grippe (${famille ? 'refus famille' : 'refus patient'})`);
+        } else {
+          v.push(`Grippe ${annee} : ${grippe}`);
+        }
+      }
+
       if (ctx.vaccination.infos) v.push(ctx.vaccination.infos);
     }
     if (ctx.vaccinationLT) {
       if (ctx.vaccinationLT.tetanos_date) v.push(`Tétanos : ${formatDate(ctx.vaccinationLT.tetanos_date)}`);
       if (ctx.vaccinationLT.pneumovax_date) v.push(`Pneumovax : ${formatDate(ctx.vaccinationLT.pneumovax_date)}`);
     }
+    if (refus.length) v.push(`Refus : ${refus.join(', ')}`);
     return v.join(' · ');
   }, [ctx]);
 
@@ -475,7 +495,18 @@ export default function MutationPage() {
               </div>
 
               <div className="mt-3 space-y-1.5">
-                <FieldRow label="Personne à prévenir :">{personnePrevenir || <span className="text-slate-400">—</span>}</FieldRow>
+                {personnePrevenir ? (
+                  <FieldRow label="Personne à prévenir :">{personnePrevenir}</FieldRow>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm font-semibold whitespace-nowrap">Personne à prévenir :</Label>
+                    <Input
+                      value={form.personneAPrevenirManuel}
+                      onChange={e => patch('personneAPrevenirManuel', e.target.value)}
+                      className="h-7 flex-1 print:border-0 print:border-b print:rounded-none print:px-0"
+                    />
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
                   <Label className="text-sm font-semibold">Tél :</Label>
                   <Input
@@ -523,12 +554,12 @@ export default function MutationPage() {
                 <FieldRow label="Médecin traitant :">{selected.medecin || '—'}</FieldRow>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="font-semibold">Kiné :</span>
-                  <CheckOption label="Oui" checked={form.kineActif} onChange={v => patch('kineActif', v)} />
-                  <CheckOption label="Non" checked={!form.kineActif} onChange={v => patch('kineActif', !v)} />
+                  <CheckOption label="Oui" checked={form.kineActif === true} onChange={v => patch('kineActif', v ? true : null)} />
+                  <CheckOption label="Non" checked={form.kineActif === false} onChange={v => patch('kineActif', v ? false : null)} />
                   <Input
                     value={form.kineDetail}
                     onChange={e => patch('kineDetail', e.target.value)}
-                    placeholder="Nom / coordonnées"
+                    placeholder="Type de kiné"
                     className="h-7 flex-1 print:border-0 print:border-b print:rounded-none print:px-0"
                   />
                 </div>
@@ -537,7 +568,11 @@ export default function MutationPage() {
               {/* ── VACCINATION / NIVEAU DE SOINS / GIR ── */}
               <SectionTitle>Vaccination / Niveau de soins / GIR</SectionTitle>
               <div className="space-y-1.5">
-                <FieldRow label="Niveau de soins :">{ctx?.niveau?.niveau_soin || '—'}</FieldRow>
+                <FieldRow label="Niveau de soins :">
+                  {ctx?.niveau?.niveau_soin
+                    ? `${ctx.niveau.niveau_soin}${ctx.niveau.updated_at ? ` (évalué par Médecin Co le ${formatDate(ctx.niveau.updated_at)})` : ''}`
+                    : 'non évalué par Médecin Co'}
+                </FieldRow>
                 <FieldRow label="GIR :">{ctx?.niveau?.gir || '—'}</FieldRow>
                 <FieldRow label="Vaccins :">{vaccinsText || '—'}</FieldRow>
               </div>
