@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
+import { useEffectiveRole } from '@/lib/use-effective-role';
 import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -115,10 +116,12 @@ export default function FichesMenuPage() {
   const qc = useQueryClient();
   const access = useModuleAccess('fichesMenu');
   const readOnly = access === 'read';
+  const isAdmin = useEffectiveRole() === 'admin';
 
   const [floor, setFloor] = useState<Floor>('RDC');
   const [repas, setRepas] = useState<Repas>('midi');
   const [search, setSearch] = useState('');
+  const [copying, setCopying] = useState(false);
 
   // ── Queries ────────────────────────────────────────────────
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
@@ -179,6 +182,51 @@ export default function FichesMenuPage() {
     fiches.filter(f => f.repas === repas).forEach(f => map.set(f.resident_id, f));
     return map;
   }, [fiches, repas]);
+
+  // ── Copier les cases du midi vers le soir (admin uniquement) ─────────────
+  const copyMidiToSoir = async () => {
+    if (!isAdmin || repas !== 'soir') return;
+    const concerned = floorResidents.filter(r => r.last_name?.trim());
+    const midiByRes = new Map<string, FicheMenu>();
+    fiches.filter(f => f.repas === 'midi').forEach(f => midiByRes.set(f.resident_id, f));
+    const targets = concerned.filter(r => midiByRes.has(r.id));
+    if (targets.length === 0) {
+      toast.info('Aucune fiche midi à reprendre sur cet étage');
+      return;
+    }
+    if (!confirm(`Reprendre les cases du Menu MIDI sur le Menu SOIR pour ${targets.length} résident${targets.length > 1 ? 's' : ''} (${floor}) ?`)) return;
+    setCopying(true);
+    try {
+      for (const r of targets) {
+        const midi = midiByRes.get(r.id)!;
+        const soirExisting = fiches.find(f => f.resident_id === r.id && f.repas === 'soir');
+        const payload = {
+          resident_id: r.id,
+          repas: 'soir' as Repas,
+          entree: midi.entree,
+          viande: midi.viande,
+          legumes: midi.legumes,
+          fromage: midi.fromage,
+          dessert: midi.dessert,
+          observation: midi.observation,
+          updated_at: new Date().toISOString(),
+        };
+        if (soirExisting) {
+          const { error } = await supabase.from('fiches_menu').update(payload).eq('id', soirExisting.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('fiches_menu').insert(payload);
+          if (error) throw error;
+        }
+      }
+      qc.invalidateQueries({ queryKey: ['fiches_menu'] });
+      toast.success(`${targets.length} fiche${targets.length > 1 ? 's' : ''} soir mise${targets.length > 1 ? 's' : ''} à jour`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setCopying(false);
+    }
+  };
 
   // ── Print ─────────────────────────────────────────────────
   const handlePrint = () => {
@@ -359,6 +407,14 @@ export default function FichesMenuPage() {
               placeholder="Rechercher (nom, chambre)…"
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-orange-400" />
           </div>
+          {isAdmin && repas === 'soir' && !readOnly && (
+            <button onClick={copyMidiToSoir} disabled={copying}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
+              title="Reprend les cases cochées sur le Menu MIDI pour tous les résidents de cet étage">
+              {copying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChefHat className="h-4 w-4" />}
+              Reprendre les cases du Midi
+            </button>
+          )}
         </div>
 
         {/* Table */}
