@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -157,16 +157,76 @@ async function fetchSelections(): Promise<Record<string, string[]>> {
   return map;
 }
 
+// ── Source régimes : fiches_menu (par repas) + flags résident DIAB/EPARGNE ──
+
+type Choix = '' | 'N' | 'H' | 'SS' | 'AUTRE';
+
+interface FicheMenu {
+  id: string;
+  resident_id: string;
+  repas: 'midi' | 'soir';
+  entree: Choix;
+  viande: Choix;
+  legumes: Choix;
+  fromage: Choix;
+  dessert: Choix;
+  observation: string;
+}
+
+const OBS_FLAGS: { marker: string; label: string; color: string }[] = [
+  { marker: 'POISSON',         label: '⚠ Allergie poisson', color: '#dc2626' },
+  { marker: 'SANS_POISSON',    label: 'Sans poisson',       color: '#c2410c' },
+  { marker: 'SANS_PORC',       label: 'Sans porc',          color: '#b45309' },
+  { marker: 'VIN_SANS_ALCOOL', label: 'Vin sans alcool',    color: '#7e22ce' },
+  { marker: 'PAS_ALCOOL',      label: 'Pas d\'alcool',      color: '#a21caf' },
+  { marker: 'SANS_VIANDE',     label: 'Sans viande',        color: '#be123c' },
+  { marker: 'SANS_SALADE',     label: 'Sans salade',        color: '#15803d' },
+  { marker: 'SANS_ALCOOL',     label: 'Pas d\'alcool',      color: '#a21caf' }, // legacy
+];
+
+interface RegimeInfo {
+  hache: boolean;
+  viandeHachee: boolean;
+  diab: boolean;
+  epargne: boolean;
+  obsFlags: { label: string; color: string }[];
+}
+
+function computeRegimeInfo(resident: Resident, fiche?: FicheMenu): RegimeInfo {
+  const f = fiche;
+  const allHache = !!f
+    && f.entree === 'H' && f.viande === 'H' && f.legumes === 'H'
+    && f.fromage === 'H' && f.dessert === 'H';
+  const viandeHachee = f?.viande === 'H' && !allHache;
+  const obsFlags: { label: string; color: string }[] = [];
+  const obs = f?.observation || '';
+  const seen = new Set<string>();
+  for (const ff of OBS_FLAGS) {
+    const re = new RegExp(`\\[${ff.marker}\\]`, 'i');
+    if (re.test(obs) && !seen.has(ff.label)) {
+      seen.add(ff.label);
+      obsFlags.push({ label: ff.label, color: ff.color });
+    }
+  }
+  return {
+    hache: allHache,
+    viandeHachee,
+    diab: !!resident.regime_diabetique,
+    epargne: !!resident.epargne_intestinale,
+    obsFlags,
+  };
+}
+
 // ── Label component ───────────────────────────────────────────────────────────
 
-function Etiquette({ resident, withPhoto }: { resident: Resident; withPhoto: boolean }) {
+function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; withPhoto: boolean; regimeInfo: RegimeInfo }) {
   const name = [resident.title, resident.last_name?.toUpperCase()].filter(Boolean).join(' ');
   const diets: { label: string; color: string }[] = [];
-  if (resident.regime_mixe)         diets.push({ label: 'Mixé',              color: '#c2410c' });
-  if (resident.viande_mixee)        diets.push({ label: 'Viande mixée',      color: '#b45309' });
-  if (resident.regime_diabetique)   diets.push({ label: 'Diabétique',        color: '#7e22ce' });
-  if (resident.epargne_intestinale) diets.push({ label: 'Épargne intestinale', color: '#15803d' });
-  if (resident.allergie_poisson)    diets.push({ label: '⚠ Allergie poisson', color: '#dc2626' });
+  if (regimeInfo.diab)         diets.push({ label: 'Diabétique',          color: '#7e22ce' });
+  if (regimeInfo.epargne)      diets.push({ label: 'Épargne intestinale', color: '#15803d' });
+  if (regimeInfo.hache)        diets.push({ label: 'Régime haché',        color: '#b45309' });
+  else if (regimeInfo.viandeHachee) diets.push({ label: 'Viande hachée', color: '#c2410c' });
+  for (const o of regimeInfo.obsFlags) diets.push(o);
   if (resident.allergie_autre && resident.allergie_autre.trim())
     diets.push({ label: `⚠ ${resident.allergie_autre.trim()}`, color: '#dc2626' });
 
@@ -340,6 +400,20 @@ export default function EtiquettesRepasPage() {
     queryFn: fetchResidents,
   });
 
+  const { data: fichesMenu = [] } = useQuery({
+    queryKey: ['fiches_menu'],
+    queryFn: async () => {
+      const sb = createClient();
+      const { data, error } = await sb.from('fiches_menu').select('*');
+      if (error) {
+        console.warn('[etiquettes-repas] fetch fiches_menu :', error.message);
+        return [] as FicheMenu[];
+      }
+      return (data ?? []) as FicheMenu[];
+    },
+    staleTime: 30_000,
+  });
+
   const { data: allSelections = {}, isLoading: loadingSelections } = useQuery({
     queryKey: ['etiquette_selections'],
     queryFn: fetchSelections,
@@ -385,9 +459,20 @@ export default function EtiquettesRepasPage() {
     r => selected.includes(r.id) && r.last_name && r.floor === activeFloor
   );
 
-  const hasDiet = (r: Resident) =>
-    r.regime_mixe || r.viande_mixee || r.regime_diabetique || r.epargne_intestinale || r.allergie_poisson
-    || (r.allergie_autre && r.allergie_autre.trim().length > 0);
+  const fichesByResident = useMemo(() => {
+    const map = new Map<string, FicheMenu>();
+    fichesMenu.filter(f => f.repas === activeRepas).forEach(f => map.set(f.resident_id, f));
+    return map;
+  }, [fichesMenu, activeRepas]);
+
+  const regimeFor = (r: Resident) => computeRegimeInfo(r, fichesByResident.get(r.id));
+
+  const hasDiet = (r: Resident) => {
+    const info = regimeFor(r);
+    return info.diab || info.epargne || info.hache || info.viandeHachee
+      || info.obsFlags.length > 0
+      || (r.allergie_autre && r.allergie_autre.trim().length > 0);
+  };
 
   const isLoading = loadingResidents || loadingSelections;
 
@@ -721,14 +806,49 @@ export default function EtiquettesRepasPage() {
               </div>
               <div className="flex flex-col gap-2">
                 {selectedResidents.map(r => (
-                  <Etiquette key={r.id} resident={r} withPhoto={withPhoto} />
+                  <Etiquette key={r.id} resident={r} withPhoto={withPhoto} regimeInfo={regimeFor(r)} />
                 ))}
               </div>
+
+              {/* Récapitulatif */}
+              {(() => {
+                const infos = selectedResidents.map(regimeFor);
+                const nbHache = infos.filter(i => i.hache).length;
+                const nbViandeHachee = infos.filter(i => i.viandeHachee).length;
+                const nbDiab = infos.filter(i => i.diab).length;
+                const nbEpargne = infos.filter(i => i.epargne).length;
+                const nbNormal = infos.filter(i =>
+                  !i.hache && !i.viandeHachee && !i.diab && !i.epargne && i.obsFlags.length === 0,
+                ).length;
+                return (
+                  <div className="mt-4 border border-slate-300 rounded-xl p-3 bg-slate-50">
+                    <div className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
+                      Récapitulatif ({selectedResidents.length} résident{selectedResidents.length > 1 ? 's' : ''})
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                      <RecapBox label="Régime haché" value={nbHache} color="bg-amber-100 text-amber-800 border-amber-300" />
+                      <RecapBox label="Viande hachée" value={nbViandeHachee} color="bg-orange-100 text-orange-800 border-orange-300" />
+                      <RecapBox label="Diabétique" value={nbDiab} color="bg-purple-100 text-purple-800 border-purple-300" />
+                      <RecapBox label="Épargne intestinale" value={nbEpargne} color="bg-green-100 text-green-800 border-green-300" />
+                      <RecapBox label="Régime normal" value={nbNormal} color="bg-slate-100 text-slate-800 border-slate-300" />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
 
       </div>{/* fin z-index: 1 */}
+    </div>
+  );
+}
+
+function RecapBox({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className={`flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border ${color}`}>
+      <span className="text-xs font-semibold">{label}</span>
+      <span className="text-xl font-bold tabular-nums">{value}</span>
     </div>
   );
 }
