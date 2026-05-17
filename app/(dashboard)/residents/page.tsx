@@ -686,18 +686,6 @@ function EditForm({
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-y-3 gap-x-6">
             <CheckField
-              id="f_regime_mixe"
-              label="Régime mixé"
-              checked={form.regime_mixe ?? false}
-              onChange={v => patch({ regime_mixe: v })}
-            />
-            <CheckField
-              id="f_viande_mixee"
-              label="Viande mixée"
-              checked={form.viande_mixee ?? false}
-              onChange={v => patch({ viande_mixee: v })}
-            />
-            <CheckField
               id="f_regime_diabetique"
               label="Régime diabétique"
               checked={form.regime_diabetique ?? false}
@@ -708,12 +696,6 @@ function EditForm({
               label="Épargne intestinale"
               checked={form.epargne_intestinale ?? false}
               onChange={v => patch({ epargne_intestinale: v })}
-            />
-            <CheckField
-              id="f_allergie_poisson"
-              label="⚠ Allergie poisson"
-              checked={form.allergie_poisson ?? false}
-              onChange={v => patch({ allergie_poisson: v })}
             />
           </div>
           <div className="mt-3">
