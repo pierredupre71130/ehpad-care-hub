@@ -102,6 +102,7 @@ interface Resident {
   medecin: string;
   referent: string;
   antecedents: string;
+  allergie_medicamenteuse?: string;
   // Régimes alimentaires
   regime_mixe: boolean;
   viande_mixee: boolean;
@@ -189,7 +190,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   room: '', title: 'Mme', first_name: '', last_name: '', maiden_name: '',
   date_naissance: '', date_entree: '',
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
-  annotations: '', medecin: '', referent: '', antecedents: '',
+  annotations: '', medecin: '', referent: '', antecedents: '', allergie_medicamenteuse: '',
   regime_mixe: false, viande_mixee: false, regime_diabetique: false,
   epargne_intestinale: false, allergie_poisson: false, allergie_autre: '',
   traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
@@ -704,6 +705,17 @@ function EditForm({
             placeholder="Antécédents médicaux, chirurgicaux, allergies, traitements lourds…"
             className="text-sm resize-y"
           />
+          <div className="mt-3">
+            <Label className="text-xs font-semibold text-slate-700 mb-1 block">
+              Allergie médicamenteuse
+            </Label>
+            <Input
+              value={form.allergie_medicamenteuse ?? ''}
+              onChange={e => patch({ allergie_medicamenteuse: e.target.value })}
+              placeholder="Ex : pénicilline, codéine, AINS…"
+              className="text-sm"
+            />
+          </div>
         </section>
 
         {/* ══ 3. RÉGIMES ALIMENTAIRES ══════════════════════════ */}

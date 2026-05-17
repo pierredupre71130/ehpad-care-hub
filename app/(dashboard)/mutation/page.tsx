@@ -34,6 +34,7 @@ interface Resident {
   date_naissance: string | null;
   medecin: string;
   antecedents: string;
+  allergie_medicamenteuse?: string;
   allergie_poisson?: boolean;
   allergie_autre?: string;
   regime_mixe?: boolean;
@@ -306,10 +307,7 @@ export default function MutationPage() {
 
   const allergiesText = useMemo(() => {
     if (!selected) return '';
-    const a: string[] = [];
-    if (selected.allergie_poisson) a.push('Poisson');
-    if (selected.allergie_autre) a.push(selected.allergie_autre);
-    return a.join(', ');
+    return selected.allergie_medicamenteuse?.trim() ?? '';
   }, [selected]);
 
   const vaccinsText = useMemo(() => {
