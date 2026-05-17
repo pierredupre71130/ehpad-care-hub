@@ -177,7 +177,7 @@ const OBS_FLAGS: { marker: string; label: string; color: string }[] = [
   { marker: 'POISSON',         label: '⚠ Allergie poisson', color: '#dc2626' },
   { marker: 'SANS_POISSON',    label: 'Sans poisson',       color: '#c2410c' },
   { marker: 'SANS_PORC',       label: 'Sans porc',          color: '#b45309' },
-  { marker: 'VIN_SANS_ALCOOL', label: 'Vin sans alcool',    color: '#7e22ce' },
+  { marker: 'VIN_SANS_ALCOOL', label: 'Vin sans OH',        color: '#7e22ce' },
   { marker: 'PAS_ALCOOL',      label: 'Pas d\'alcool',      color: '#a21caf' },
   { marker: 'SANS_VIANDE',     label: 'Sans viande',        color: '#be123c' },
   { marker: 'SANS_SALADE',     label: 'Sans salade',        color: '#15803d' },
@@ -222,7 +222,10 @@ function computeRegimeInfo(resident: Resident, fiche?: FicheMenu): RegimeInfo {
 function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; withPhoto: boolean; regimeInfo: RegimeInfo }) {
   const name = [resident.title, resident.last_name?.toUpperCase()].filter(Boolean).join(' ');
   const diets: { label: string; color: string }[] = [];
-  if (regimeInfo.diab)         diets.push({ label: 'Diabétique',          color: '#7e22ce' });
+  if (regimeInfo.diab) {
+    diets.push({ label: 'Diabétique',     color: '#7e22ce' });
+    diets.push({ label: 'Ajout féculent', color: '#9333ea' });
+  }
   if (regimeInfo.epargne)      diets.push({ label: 'Épargne intestinale', color: '#15803d' });
   if (regimeInfo.hache)        diets.push({ label: 'Régime haché',        color: '#b45309' });
   else if (regimeInfo.viandeHachee) diets.push({ label: 'Viande hachée', color: '#c2410c' });
