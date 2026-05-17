@@ -100,6 +100,7 @@ interface Resident {
   annotations: string;
   medecin: string;
   referent: string;
+  antecedents: string;
   // Régimes alimentaires
   regime_mixe: boolean;
   viande_mixee: boolean;
@@ -187,7 +188,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   room: '', title: 'Mme', first_name: '', last_name: '',
   date_naissance: '', date_entree: '',
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
-  annotations: '', medecin: '', referent: '',
+  annotations: '', medecin: '', referent: '', antecedents: '',
   regime_mixe: false, viande_mixee: false, regime_diabetique: false,
   epargne_intestinale: false, allergie_poisson: false, allergie_autre: '',
   traitement_ecrase: false, insuline_matin: false, insuline_soir: false,
@@ -677,6 +678,20 @@ function EditForm({
               </Select>
             </div>
           </div>
+        </section>
+
+        {/* ══ 2bis. ANTÉCÉDENTS ══════════════════════════════════ */}
+        <section>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+            Antécédents
+          </h3>
+          <Textarea
+            value={form.antecedents ?? ''}
+            onChange={e => patch({ antecedents: e.target.value })}
+            rows={4}
+            placeholder="Antécédents médicaux, chirurgicaux, allergies, traitements lourds…"
+            className="text-sm resize-y"
+          />
         </section>
 
         {/* ══ 3. RÉGIMES ALIMENTAIRES ══════════════════════════ */}
