@@ -338,10 +338,6 @@ export default function FichesMenuPage() {
   <span><b>AUTRE</b> à substituer</span>
   <span><b>DIAB</b> Régime diabétique</span>
   <span><b>EPARGNE</b> Épargne intestinale</span>
-  <span><b>HACHÉ</b> Régime haché (auto si tout est H)</span>
-  <span><b>VIANDE HACHÉE</b> auto si Viande = H</span>
-  <span><b>⚠</b> Allergie poisson</span>
-  <span>· Sans poisson / porc / viande / salade · Vin sans alcool · Pas d'alcool : régimes d'éviction</span>
 </div>
 </body></html>`;
     w.document.open();
