@@ -323,7 +323,7 @@ export default function MutationPage() {
     pansements: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
     mycosePresent: '' as '' | 'oui' | 'non',
     mycoses: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    perfusion: false,
+    perfusion: '' as '' | 'oui' | 'non',
     perfusionDetail: '',
     perfusionKtDate: '',
     dernierBilanSanguin: '',
@@ -1140,10 +1140,10 @@ export default function MutationPage() {
               <div className="space-y-2">
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Perfusion :</span>
-                  <CheckOption label="Oui" checked={form.perfusion} onChange={v => patch('perfusion', v)} />
-                  <CheckOption label="Non" checked={!form.perfusion} onChange={v => patch('perfusion', !v)} />
+                  <CheckOption label="Oui" checked={form.perfusion === 'oui'} onChange={v => patch('perfusion', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.perfusion === 'non'} onChange={v => patch('perfusion', v ? 'non' : '')} />
                 </div>
-                {form.perfusion && (
+                {form.perfusion === 'oui' && (
                   <div className="space-y-2 pl-4 border-l-2 border-slate-200">
                     <div>
                       <Label className="text-sm font-semibold">Détail perfusion :</Label>
