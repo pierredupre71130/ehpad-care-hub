@@ -456,6 +456,11 @@ function buildAutoApresMidi(details: PecDetails | null | undefined, resident?: R
     if (hab.includes('totale')) parts.push('Aide au déshabillage');
     else if (hab.includes('partielle')) parts.push('Peut nécessiter aide au déshabillage');
   }
+  const dent = asArr(details?.dentier);
+  if (dent.includes('haut') && dent.includes('bas')) parts.push('Enlever dentiers haut et bas');
+  else if (dent.includes('haut')) parts.push('Enlever dentier haut');
+  else if (dent.includes('bas')) parts.push('Enlever dentier bas');
+  if (asArr(details?.appareilAuditif).includes('oui')) parts.push('Enlever appareils auditifs');
   if (resident?.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
   if (resident?.bas_de_contention) parts.push('Enlever bas de contention');
   if (resident?.bande_de_contention) parts.push('Enlever bandes de contention');
