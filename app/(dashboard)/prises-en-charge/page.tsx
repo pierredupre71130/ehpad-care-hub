@@ -446,12 +446,12 @@ function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resid
   return parts.join(' - ');
 }
 
-function buildAutoApresMidi(resident?: Resident | null): string {
-  if (!resident) return '';
+function buildAutoApresMidi(details: PecDetails | null | undefined, resident?: Resident | null): string {
   const parts: string[] = [];
-  if (resident.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
-  if (resident.bas_de_contention) parts.push('Enlever bas de contention');
-  if (resident.bande_de_contention) parts.push('Enlever bandes de contention');
+  if (asArr(details?.habillage).includes('totale')) parts.push('Aide au déshabillage');
+  if (resident?.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
+  if (resident?.bas_de_contention) parts.push('Enlever bas de contention');
+  if (resident?.bande_de_contention) parts.push('Enlever bandes de contention');
   return parts.join(' - ');
 }
 
@@ -747,7 +747,7 @@ export default function PrisesEnChargePage() {
         ${photoCell}
         ${nomCell}
         <td>${esc((() => { const a = buildAutoMatin(row.details, matched); const m = row.matin || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
-        <td>${esc((() => { const a = buildAutoApresMidi(matched); const m = row.apres_midi || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
+        <td>${esc((() => { const a = buildAutoApresMidi(row.details, matched); const m = row.apres_midi || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
         <td class="prot">${esc(protText)}</td>
       </tr>`;
     }).join('');
@@ -1297,7 +1297,7 @@ export default function PrisesEnChargePage() {
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
                             const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
-                            const auto = buildAutoApresMidi(matched);
+                            const auto = buildAutoApresMidi(row.details, matched);
                             return (
                               <div className="space-y-1">
                                 {auto && (
