@@ -288,8 +288,8 @@ export default function MutationPage() {
   const [form, setForm] = useState({
     tel: '',
     personneAPrevenirManuel: '',
-    personnePrevenue: false,
-    tutellePrevenue: false,
+    personnePrevenue: '' as '' | 'oui' | 'non',
+    tutellePrevenue: '' as '' | 'oui' | 'non',
     suiviSocial: '',
     situationFamiliale: '' as '' | 'marie' | 'celibataire' | 'divorce' | 'veuf',
     kineActif: null as boolean | null,
@@ -304,7 +304,7 @@ export default function MutationPage() {
     eliminationUrinaire: '' as '' | 'continent' | 'incontinent',
     eliminationFecale: '' as '' | 'continent' | 'incontinent',
     materielUrinaire: [] as string[],
-    sadOui: false,
+    sadOui: '' as '' | 'oui' | 'non',
     sadDate: '',
     derniereSelle: '',
     appareilAuditif: '' as '' | 'oui' | 'non' | 'non-apportes',
@@ -317,11 +317,11 @@ export default function MutationPage() {
     capacite: '' as '' | 'adaptees' | 'demence' | 'mutique',
     locomotion: '' as '' | 'autonome' | 'partielle' | 'totale',
     materielLoco: [] as string[],
-    escarrePresent: false,
+    escarrePresent: '' as '' | 'oui' | 'non',
     escarres: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    pansementPresent: false,
+    pansementPresent: '' as '' | 'oui' | 'non',
     pansements: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    mycosePresent: false,
+    mycosePresent: '' as '' | 'oui' | 'non',
     mycoses: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
     perfusion: false,
     perfusionDetail: '',
@@ -696,13 +696,13 @@ export default function MutationPage() {
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm pt-1">
                   <span className="font-semibold">Personne prévenue :</span>
-                  <CheckOption label="Oui" checked={form.personnePrevenue} onChange={v => patch('personnePrevenue', v)} />
-                  <CheckOption label="Non" checked={!form.personnePrevenue} onChange={v => patch('personnePrevenue', !v)} />
+                  <CheckOption label="Oui" checked={form.personnePrevenue === 'oui'} onChange={v => patch('personnePrevenue', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.personnePrevenue === 'non'} onChange={v => patch('personnePrevenue', v ? 'non' : '')} />
                   {ctx?.niveau?.tutelle && (
                     <>
                       <span className="font-semibold ml-4">Tutelle prévenue :</span>
-                      <CheckOption label="Oui" checked={form.tutellePrevenue} onChange={v => patch('tutellePrevenue', v)} />
-                      <CheckOption label="Non" checked={!form.tutellePrevenue} onChange={v => patch('tutellePrevenue', !v)} />
+                      <CheckOption label="Oui" checked={form.tutellePrevenue === 'oui'} onChange={v => patch('tutellePrevenue', v ? 'oui' : '')} />
+                      <CheckOption label="Non" checked={form.tutellePrevenue === 'non'} onChange={v => patch('tutellePrevenue', v ? 'non' : '')} />
                     </>
                   )}
                 </div>
@@ -835,8 +835,8 @@ export default function MutationPage() {
                 </div>
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">SAD :</span>
-                  <CheckOption label="Oui" checked={form.sadOui} onChange={v => patch('sadOui', v)} />
-                  <CheckOption label="Non" checked={!form.sadOui} onChange={v => patch('sadOui', !v)} />
+                  <CheckOption label="Oui" checked={form.sadOui === 'oui'} onChange={v => patch('sadOui', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.sadOui === 'non'} onChange={v => patch('sadOui', v ? 'non' : '')} />
                   <span>Date de pose :</span>
                   <Input
                     value={form.sadDate}
@@ -954,10 +954,10 @@ export default function MutationPage() {
                 {/* Escarres */}
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Escarre :</span>
-                  <CheckOption label="Oui" checked={form.escarrePresent} onChange={v => patch('escarrePresent', v)} />
-                  <CheckOption label="Non" checked={!form.escarrePresent} onChange={v => patch('escarrePresent', !v)} />
+                  <CheckOption label="Oui" checked={form.escarrePresent === 'oui'} onChange={v => patch('escarrePresent', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.escarrePresent === 'non'} onChange={v => patch('escarrePresent', v ? 'non' : '')} />
                 </div>
-                {form.escarrePresent && (
+                {form.escarrePresent === 'oui' && (
                   <div className="space-y-2 pl-4 border-l-2 border-slate-200">
                     {form.escarres.map((e, i) => (
                       <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
@@ -1015,10 +1015,10 @@ export default function MutationPage() {
                 {/* Pansements */}
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Pansement :</span>
-                  <CheckOption label="Oui" checked={form.pansementPresent} onChange={v => patch('pansementPresent', v)} />
-                  <CheckOption label="Non" checked={!form.pansementPresent} onChange={v => patch('pansementPresent', !v)} />
+                  <CheckOption label="Oui" checked={form.pansementPresent === 'oui'} onChange={v => patch('pansementPresent', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.pansementPresent === 'non'} onChange={v => patch('pansementPresent', v ? 'non' : '')} />
                 </div>
-                {form.pansementPresent && (
+                {form.pansementPresent === 'oui' && (
                   <div className="space-y-2 pl-4 border-l-2 border-slate-200">
                     {form.pansements.map((p, i) => (
                       <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
@@ -1076,10 +1076,10 @@ export default function MutationPage() {
                 {/* Mycoses */}
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Mycose cutanée :</span>
-                  <CheckOption label="Oui" checked={form.mycosePresent} onChange={v => patch('mycosePresent', v)} />
-                  <CheckOption label="Non" checked={!form.mycosePresent} onChange={v => patch('mycosePresent', !v)} />
+                  <CheckOption label="Oui" checked={form.mycosePresent === 'oui'} onChange={v => patch('mycosePresent', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.mycosePresent === 'non'} onChange={v => patch('mycosePresent', v ? 'non' : '')} />
                 </div>
-                {form.mycosePresent && (
+                {form.mycosePresent === 'oui' && (
                   <div className="space-y-2 pl-4 border-l-2 border-slate-200">
                     {form.mycoses.map((m, i) => (
                       <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
