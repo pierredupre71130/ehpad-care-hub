@@ -562,7 +562,7 @@ function DsiContactsSection({ resident }: { resident: Resident }) {
   const hasPP = !!(pp.nom || pp.prenom || pp.tel || pp.mobile || pp.adresse || pp.lien);
 
   return (
-    <SectionCard icon={<Phone className="h-4 w-4" />} title="Personne à prévenir" accent="#9c1d62" span={2}>
+    <SectionCard icon={<Phone className="h-4 w-4" />} title="Personne à prévenir" accent="#9c1d62">
       {!hasPP && autres.length === 0 ? (
         <p className="text-sm text-slate-400 italic">Aucune information renseignée.</p>
       ) : (
