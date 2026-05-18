@@ -249,7 +249,6 @@ export default function MutationPage() {
     personneAPrevenirManuel: '',
     personnePrevenue: false,
     tutellePrevenue: false,
-    situationFamiliale: '',
     suiviSocial: '',
     kineActif: null as boolean | null,
     kineDetail: '',
@@ -257,27 +256,36 @@ export default function MutationPage() {
     isolement: false,
     aideAlim: '' as '' | 'autonome' | 'aide',
     hydratation: '' as '' | 'petillante' | 'gelifiee',
+    dentierHaut: false,
+    dentierBas: false,
+    dentierNonApportes: false,
     eliminationUrinaire: '' as '' | 'continent' | 'incontinent',
     eliminationFecale: '' as '' | 'continent' | 'incontinent',
     materielUrinaire: [] as string[],
     sadOui: false,
     sadDate: '',
     derniereSelle: '',
+    appareilAuditif: '' as '' | 'oui' | 'non' | 'non-apportes',
+    lunettes: '' as '' | 'oui' | 'non' | 'non-apportees',
     hygiene: '' as '' | 'autonome' | 'partielle' | 'totale',
     habillage: '' as '' | 'autonome' | 'partielle' | 'totale',
     hygieneCommentaire: '',
-    sommeil: '',
+    sommeil: '' as '' | 'satisfaisant' | 'perturbe',
     etatGeneral: [] as string[],
     capacite: '' as '' | 'adaptees' | 'demence' | 'mutique',
     locomotion: '' as '' | 'autonome' | 'partielle' | 'totale',
     materielLoco: [] as string[],
-    etatCutane: '',
-    localisationEscarre: '',
-    localisationMycose: '',
-    localisationPansement: '',
-    ablationFils: '',
-    ablationAgraffe: '',
-    ktPoseLe: '',
+    escarrePresent: false,
+    escarres: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
+    pansementPresent: false,
+    pansements: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
+    mycosePresent: false,
+    mycoses: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
+    perfusion: false,
+    perfusionDetail: '',
+    perfusionKtDate: '',
+    dernierBilanSanguin: '',
+    soinsIdeAutre: '',
   });
 
   const patch = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -287,6 +295,30 @@ export default function MutationPage() {
     setForm(s => {
       const arr = s[key];
       return { ...s, [key]: arr.includes(value) ? arr.filter(x => x !== value) : [...arr, value] };
+    });
+  };
+
+  const updateLesion = (
+    key: 'escarres' | 'pansements' | 'mycoses',
+    index: number,
+    field: 'localisation' | 'stade' | 'protocole',
+    value: string,
+  ) => {
+    setForm(s => {
+      const arr = [...s[key]];
+      arr[index] = { ...arr[index], [field]: value };
+      return { ...s, [key]: arr };
+    });
+  };
+
+  const addLesion = (key: 'escarres' | 'pansements' | 'mycoses') => {
+    setForm(s => ({ ...s, [key]: [...s[key], { localisation: '', stade: '', protocole: '' }] }));
+  };
+
+  const removeLesion = (key: 'escarres' | 'pansements' | 'mycoses', index: number) => {
+    setForm(s => {
+      const arr = s[key].filter((_, i) => i !== index);
+      return { ...s, [key]: arr.length ? arr : [{ localisation: '', stade: '', protocole: '' }] };
     });
   };
 
@@ -314,7 +346,7 @@ export default function MutationPage() {
     enabled: !!selected,
   });
 
-  // Régime synthétique depuis les flags residents
+  // Régime synthétique depuis les flags residents — défaut "Normal" si rien
   const regimeText = useMemo(() => {
     if (!selected) return '';
     const flags: string[] = [];
@@ -322,7 +354,7 @@ export default function MutationPage() {
     if (selected.viande_mixee) flags.push('Viande mixée');
     if (selected.regime_diabetique) flags.push('Diabétique');
     if (selected.epargne_intestinale) flags.push('Épargne intestinale');
-    return flags.join(', ');
+    return flags.length ? flags.join(', ') : 'Normal';
   }, [selected]);
 
   const alimentationObs = useMemo(() => {
@@ -562,23 +594,19 @@ export default function MutationPage() {
                   <span className="font-semibold">Personne prévenue :</span>
                   <CheckOption label="Oui" checked={form.personnePrevenue} onChange={v => patch('personnePrevenue', v)} />
                   <CheckOption label="Non" checked={!form.personnePrevenue} onChange={v => patch('personnePrevenue', !v)} />
-                  <span className="font-semibold ml-4">Tutelle prévenue :</span>
-                  <CheckOption label="Oui" checked={form.tutellePrevenue} onChange={v => patch('tutellePrevenue', v)} />
-                  <CheckOption label="Non" checked={!form.tutellePrevenue} onChange={v => patch('tutellePrevenue', !v)} />
+                  {ctx?.niveau?.tutelle && (
+                    <>
+                      <span className="font-semibold ml-4">Tutelle prévenue :</span>
+                      <CheckOption label="Oui" checked={form.tutellePrevenue} onChange={v => patch('tutellePrevenue', v)} />
+                      <CheckOption label="Non" checked={!form.tutellePrevenue} onChange={v => patch('tutellePrevenue', !v)} />
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* ── ENVIRONNEMENT ── */}
               <SectionTitle>Environnement familial et social</SectionTitle>
               <div className="space-y-1.5">
-                <div>
-                  <Label className="text-sm font-semibold">Situation familiale :</Label>
-                  <Input
-                    value={form.situationFamiliale}
-                    onChange={e => patch('situationFamiliale', e.target.value)}
-                    className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
                 <FieldRow label="Environnement :">Vit en établissement EHPAD La Fourrier</FieldRow>
                 <div>
                   <Label className="text-sm font-semibold">Suivi social :</Label>
@@ -661,6 +689,12 @@ export default function MutationPage() {
                   <CheckOption label="Eau pétillante" checked={form.hydratation === 'petillante'} onChange={v => patch('hydratation', v ? 'petillante' : '')} />
                   <CheckOption label="Eau gélifiée" checked={form.hydratation === 'gelifiee'} onChange={v => patch('hydratation', v ? 'gelifiee' : '')} />
                 </div>
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Dentiers :</span>
+                  <CheckOption label="Haut" checked={form.dentierHaut} onChange={v => patch('dentierHaut', v)} />
+                  <CheckOption label="Bas" checked={form.dentierBas} onChange={v => patch('dentierBas', v)} />
+                  <CheckOption label="Non apportés" checked={form.dentierNonApportes} onChange={v => patch('dentierNonApportes', v)} />
+                </div>
               </div>
 
               {/* ── ÉLIMINATION ── */}
@@ -679,6 +713,7 @@ export default function MutationPage() {
                 <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Matériel :</span>
                   <CheckOption label="Urinal" checked={form.materielUrinaire.includes('urinal')} onChange={() => toggleList('materielUrinaire', 'urinal')} />
+                  <CheckOption label="Bassin" checked={form.materielUrinaire.includes('bassin')} onChange={() => toggleList('materielUrinaire', 'bassin')} />
                   <CheckOption label="Chaise percée" checked={form.materielUrinaire.includes('chaise-percee')} onChange={() => toggleList('materielUrinaire', 'chaise-percee')} />
                 </div>
                 <div className="flex items-center gap-3 text-sm flex-wrap">
@@ -707,6 +742,18 @@ export default function MutationPage() {
               <SectionTitle>Hygiène et confort</SectionTitle>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Appareil auditif :</span>
+                  <CheckOption label="Oui" checked={form.appareilAuditif === 'oui'} onChange={v => patch('appareilAuditif', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.appareilAuditif === 'non'} onChange={v => patch('appareilAuditif', v ? 'non' : '')} />
+                  <CheckOption label="Non apportés" checked={form.appareilAuditif === 'non-apportes'} onChange={v => patch('appareilAuditif', v ? 'non-apportes' : '')} />
+                </div>
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Lunettes :</span>
+                  <CheckOption label="Oui" checked={form.lunettes === 'oui'} onChange={v => patch('lunettes', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.lunettes === 'non'} onChange={v => patch('lunettes', v ? 'non' : '')} />
+                  <CheckOption label="Non apportées" checked={form.lunettes === 'non-apportees'} onChange={v => patch('lunettes', v ? 'non-apportees' : '')} />
+                </div>
+                <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold">Hygiène :</span>
                   <CheckOption label="Autonome" checked={form.hygiene === 'autonome'} onChange={() => patch('hygiene', 'autonome')} />
                   <CheckOption label="Aide partielle" checked={form.hygiene === 'partielle'} onChange={() => patch('hygiene', 'partielle')} />
@@ -727,14 +774,10 @@ export default function MutationPage() {
                     className="text-sm print:border print:border-slate-400"
                   />
                 </div>
-                <div>
-                  <Label className="text-sm font-semibold">Sommeil :</Label>
-                  <Textarea
-                    value={form.sommeil}
-                    onChange={e => patch('sommeil', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Sommeil :</span>
+                  <CheckOption label="Satisfaisant" checked={form.sommeil === 'satisfaisant'} onChange={v => patch('sommeil', v ? 'satisfaisant' : '')} />
+                  <CheckOption label="Perturbé" checked={form.sommeil === 'perturbe'} onChange={v => patch('sommeil', v ? 'perturbe' : '')} />
                 </div>
               </div>
 
@@ -786,65 +829,240 @@ export default function MutationPage() {
               {/* ── ETAT CUTANE ── */}
               <SectionTitle>État cutané</SectionTitle>
               <div className="space-y-2">
-                <div>
-                  <Label className="text-sm font-semibold">État cutané :</Label>
-                  <Textarea
-                    value={form.etatCutane}
-                    onChange={e => patch('etatCutane', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
+                <div className={cn('flex items-baseline gap-2 text-sm', matelasText && 'font-bold')}>
+                  <span className="font-semibold whitespace-nowrap">Matelas :</span>
+                  <span className="flex-1">{matelasText || <span className="text-slate-400 font-normal">—</span>}</span>
                 </div>
-                <FieldRow label="Matelas :">{matelasText || <span className="text-slate-400">—</span>}</FieldRow>
-                <div>
-                  <Label className="text-sm font-semibold">Localisation et stade de l&apos;escarre :</Label>
-                  <Textarea
-                    value={form.localisationEscarre}
-                    onChange={e => patch('localisationEscarre', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
+
+                {/* Escarres */}
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Escarre :</span>
+                  <CheckOption label="Oui" checked={form.escarrePresent} onChange={v => patch('escarrePresent', v)} />
+                  <CheckOption label="Non" checked={!form.escarrePresent} onChange={v => patch('escarrePresent', !v)} />
                 </div>
-                <div>
-                  <Label className="text-sm font-semibold">Localisation mycose :</Label>
-                  <Input
-                    value={form.localisationMycose}
-                    onChange={e => patch('localisationMycose', e.target.value)}
-                    className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm font-semibold">Localisation pansement :</Label>
-                  <Input
-                    value={form.localisationPansement}
-                    onChange={e => patch('localisationPansement', e.target.value)}
-                    className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-sm font-semibold">Ablation fils :</Label>
-                    <Input
-                      value={form.ablationFils}
-                      onChange={e => patch('ablationFils', e.target.value)}
-                      className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                    />
+                {form.escarrePresent && (
+                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
+                    {form.escarres.map((e, i) => (
+                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-600">Escarre #{i + 1}</span>
+                          {form.escarres.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeLesion('escarres', i)}
+                              className="text-xs text-red-600 hover:underline print:hidden"
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Localisation :</Label>
+                          <Input
+                            value={e.localisation}
+                            onChange={ev => updateLesion('escarres', i, 'localisation', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Stade :</Label>
+                          <Input
+                            value={e.stade}
+                            onChange={ev => updateLesion('escarres', i, 'stade', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Protocole :</Label>
+                          <Textarea
+                            value={e.protocole}
+                            onChange={ev => updateLesion('escarres', i, 'protocole', ev.target.value)}
+                            rows={2}
+                            className="text-sm print:border print:border-slate-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      onClick={() => addLesion('escarres')}
+                      size="sm"
+                      variant="outline"
+                      className="text-xs print:hidden"
+                    >
+                      + Ajouter une escarre
+                    </Button>
                   </div>
-                  <div>
-                    <Label className="text-sm font-semibold">Ablation agraffe :</Label>
-                    <Input
-                      value={form.ablationAgraffe}
-                      onChange={e => patch('ablationAgraffe', e.target.value)}
-                      className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                    />
-                  </div>
+                )}
+
+                {/* Pansements */}
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Pansement :</span>
+                  <CheckOption label="Oui" checked={form.pansementPresent} onChange={v => patch('pansementPresent', v)} />
+                  <CheckOption label="Non" checked={!form.pansementPresent} onChange={v => patch('pansementPresent', !v)} />
                 </div>
+                {form.pansementPresent && (
+                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
+                    {form.pansements.map((p, i) => (
+                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-600">Pansement #{i + 1}</span>
+                          {form.pansements.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeLesion('pansements', i)}
+                              className="text-xs text-red-600 hover:underline print:hidden"
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Localisation :</Label>
+                          <Input
+                            value={p.localisation}
+                            onChange={ev => updateLesion('pansements', i, 'localisation', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Stade :</Label>
+                          <Input
+                            value={p.stade}
+                            onChange={ev => updateLesion('pansements', i, 'stade', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Protocole :</Label>
+                          <Textarea
+                            value={p.protocole}
+                            onChange={ev => updateLesion('pansements', i, 'protocole', ev.target.value)}
+                            rows={2}
+                            className="text-sm print:border print:border-slate-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      onClick={() => addLesion('pansements')}
+                      size="sm"
+                      variant="outline"
+                      className="text-xs print:hidden"
+                    >
+                      + Ajouter un pansement
+                    </Button>
+                  </div>
+                )}
+
+                {/* Mycoses */}
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Mycose cutanée :</span>
+                  <CheckOption label="Oui" checked={form.mycosePresent} onChange={v => patch('mycosePresent', v)} />
+                  <CheckOption label="Non" checked={!form.mycosePresent} onChange={v => patch('mycosePresent', !v)} />
+                </div>
+                {form.mycosePresent && (
+                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
+                    {form.mycoses.map((m, i) => (
+                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-600">Mycose #{i + 1}</span>
+                          {form.mycoses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeLesion('mycoses', i)}
+                              className="text-xs text-red-600 hover:underline print:hidden"
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Localisation :</Label>
+                          <Input
+                            value={m.localisation}
+                            onChange={ev => updateLesion('mycoses', i, 'localisation', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Stade :</Label>
+                          <Input
+                            value={m.stade}
+                            onChange={ev => updateLesion('mycoses', i, 'stade', ev.target.value)}
+                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold">Protocole :</Label>
+                          <Textarea
+                            value={m.protocole}
+                            onChange={ev => updateLesion('mycoses', i, 'protocole', ev.target.value)}
+                            rows={2}
+                            className="text-sm print:border print:border-slate-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      onClick={() => addLesion('mycoses')}
+                      size="sm"
+                      variant="outline"
+                      className="text-xs print:hidden"
+                    >
+                      + Ajouter une mycose
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── SOINS IDE DIVERS ── */}
+              <SectionTitle>Soins IDE divers</SectionTitle>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-semibold">Perfusion :</span>
+                  <CheckOption label="Oui" checked={form.perfusion} onChange={v => patch('perfusion', v)} />
+                  <CheckOption label="Non" checked={!form.perfusion} onChange={v => patch('perfusion', !v)} />
+                </div>
+                {form.perfusion && (
+                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
+                    <div>
+                      <Label className="text-sm font-semibold">Détail perfusion :</Label>
+                      <Textarea
+                        value={form.perfusionDetail}
+                        onChange={e => patch('perfusionDetail', e.target.value)}
+                        rows={2}
+                        className="text-sm print:border print:border-slate-400"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-semibold">Date KT posé :</Label>
+                      <Input
+                        value={form.perfusionKtDate}
+                        onChange={e => patch('perfusionKtDate', e.target.value)}
+                        className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
+                      />
+                    </div>
+                  </div>
+                )}
                 <div>
-                  <Label className="text-sm font-semibold">KT posé le :</Label>
+                  <Label className="text-sm font-semibold">Dernier bilan sanguin :</Label>
                   <Input
-                    value={form.ktPoseLe}
-                    onChange={e => patch('ktPoseLe', e.target.value)}
+                    value={form.dernierBilanSanguin}
+                    onChange={e => patch('dernierBilanSanguin', e.target.value)}
+                    placeholder="Date si connue"
                     className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold">Autre :</Label>
+                  <Textarea
+                    value={form.soinsIdeAutre}
+                    onChange={e => patch('soinsIdeAutre', e.target.value)}
+                    rows={2}
+                    className="text-sm print:border print:border-slate-400"
                   />
                 </div>
               </div>
