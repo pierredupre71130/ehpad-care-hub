@@ -29,6 +29,7 @@ interface PecDetails {
   habillage?: string[];
   locomotion?: string[];
   locoMateriel?: string[];
+  _autoMatin?: string;
 }
 
 interface PecRow {
@@ -369,6 +370,30 @@ function ageFromBirth(iso: string | null | undefined): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
+// ── Préfixe « matin » auto-généré à partir des cases cochées ────────────────────
+
+function asArr(v: unknown): string[] {
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v === 'string' && v) return [v];
+  return [];
+}
+
+function buildAutoMatin(details: PecDetails | null | undefined): string {
+  if (!details) return '';
+  const parts: string[] = [];
+  if (asArr(details.locomotion).includes('alitement')) parts.push('Alitement');
+  const hyg = asArr(details.hygiene);
+  if (hyg.includes('totale')) {
+    const tlt = asArr(details.toilette);
+    if (tlt.includes('lit')) parts.push('Toilette complète au lit');
+    else if (tlt.includes('sdb')) parts.push('Toilette complète SDB');
+    else parts.push('Toilette complète');
+  } else if (hyg.includes('partielle')) {
+    parts.push('Aide à la toilette');
+  }
+  return parts.join(' - ');
+}
+
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
@@ -556,22 +581,50 @@ export default function PrisesEnChargePage() {
   };
 
   // Patch partiel de la colonne details (JSONB)
+  // Met aussi à jour la colonne matin avec un préfixe auto-généré
+  // (Alitement / Toilette complète / Aide à la toilette) selon les cases cochées.
   const updateDetails = async (id: string, patch: Partial<PecDetails>) => {
-    const current = rows.find(r => r.id === id)?.details ?? {};
-    const next: PecDetails = { ...current, ...patch };
+    const row = rows.find(r => r.id === id);
+    const current = row?.details ?? {};
+    const merged: PecDetails = { ...current, ...patch };
+
+    // Recalcule le préfixe auto
+    const oldAuto = current._autoMatin ?? '';
+    const newAuto = buildAutoMatin(merged);
+    merged._autoMatin = newAuto;
+
     // Nettoyer les valeurs vides / arrays vides
-    (Object.keys(next) as (keyof PecDetails)[]).forEach(k => {
-      const v = next[k] as unknown;
+    (Object.keys(merged) as (keyof PecDetails)[]).forEach(k => {
+      const v = merged[k] as unknown;
       if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
-        delete next[k];
+        delete merged[k];
       }
     });
+
+    // Reconstruit la colonne matin : retire l'ancien préfixe auto et préfixe le nouveau
+    let newMatin = row?.matin ?? '';
+    if (oldAuto && newMatin.startsWith(oldAuto)) {
+      newMatin = newMatin.slice(oldAuto.length).replace(/^\s*-\s*/, '').replace(/^\s+/, '');
+    }
+    if (newAuto) {
+      newMatin = newMatin ? `${newAuto} - ${newMatin}` : newAuto;
+    }
+    const matinChanged = newMatin !== (row?.matin ?? '');
+
     const sb = createClient();
-    // RPC pour contourner le cache schéma PostgREST sur la colonne details
-    const { error } = await sb.rpc('update_pec_details', { p_id: id, p_details: next });
+    const { error } = await sb.rpc('update_pec_details', { p_id: id, p_details: merged });
     if (error) { toast.error(error.message); return; }
+
+    if (matinChanged) {
+      const { error: e2 } = await sb
+        .from('prise_en_charge')
+        .update({ matin: newMatin, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (e2) { toast.error(e2.message); return; }
+    }
+
     qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) =>
-      prev.map(r => r.id === id ? { ...r, details: next } : r)
+      prev.map(r => r.id === id ? { ...r, details: merged, matin: newMatin } : r)
     );
   };
 
