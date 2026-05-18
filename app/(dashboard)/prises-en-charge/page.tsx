@@ -26,7 +26,7 @@ interface PecDetails {
   lunettes?: 'oui' | 'non';
   hygiene?: 'autonome' | 'partielle' | 'totale';
   habillage?: 'autonome' | 'partielle' | 'totale';
-  locomotion?: 'autonome' | 'partielle' | 'totale';
+  locomotion?: 'autonome' | 'partielle' | 'totale' | 'alitement';
   locoMateriel?: string[];
 }
 
@@ -1160,6 +1160,7 @@ export default function PrisesEnChargePage() {
                                   <MiniCheck label="Autonome" checked={d.locomotion === 'autonome'} onChange={() => setDetailValue(row.id, 'locomotion', 'autonome')} disabled={ro} />
                                   <MiniCheck label="Aide part." checked={d.locomotion === 'partielle'} onChange={() => setDetailValue(row.id, 'locomotion', 'partielle')} disabled={ro} />
                                   <MiniCheck label="Aide tot." checked={d.locomotion === 'totale'} onChange={() => setDetailValue(row.id, 'locomotion', 'totale')} disabled={ro} />
+                                  <MiniCheck label="Alitement" checked={d.locomotion === 'alitement'} onChange={() => setDetailValue(row.id, 'locomotion', 'alitement')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Matériel">
                                   <MiniCheck label="Canne" checked={(d.locoMateriel ?? []).includes('canne')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'canne')} disabled={ro} />
