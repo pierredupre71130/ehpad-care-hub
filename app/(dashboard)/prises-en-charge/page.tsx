@@ -448,7 +448,12 @@ function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resid
 
 function buildAutoApresMidi(details: PecDetails | null | undefined, resident?: Resident | null): string {
   const parts: string[] = [];
-  if (asArr(details?.habillage).includes('totale')) parts.push('Aide au déshabillage');
+  const isAlite = asArr(details?.locomotion).includes('alitement');
+  if (!isAlite) {
+    const hab = asArr(details?.habillage);
+    if (hab.includes('totale')) parts.push('Aide au déshabillage');
+    else if (hab.includes('partielle')) parts.push('Peut nécessiter aide au déshabillage');
+  }
   if (resident?.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
   if (resident?.bas_de_contention) parts.push('Enlever bas de contention');
   if (resident?.bande_de_contention) parts.push('Enlever bandes de contention');
