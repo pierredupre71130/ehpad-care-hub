@@ -411,6 +411,10 @@ function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resid
   if (hab.includes('autonome')) parts.push(isFemale ? "S'habille seule" : "S'habille seul");
   else if (hab.includes('partielle')) parts.push("Aide à l'habillage");
   else if (hab.includes('totale')) parts.push("Aide totale à l'habillage");
+  const elim = asArr(details.elimMateriel);
+  if (elim.includes('urinal')) parts.push('Urinal au besoin');
+  if (elim.includes('bassin')) parts.push('Bassin au besoin');
+  if (elim.includes('chaise-percee')) parts.push('Chaise percée au besoin');
   const mat = asArr(details.locoMateriel);
   if (mat.includes('verticalisateur')) parts.push('Mobilisation pour soins au verticalisateur');
   if (mat.includes('leve-malade')) parts.push('Mobilisation pour soins au lève-malade');
