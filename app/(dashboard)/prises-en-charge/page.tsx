@@ -406,6 +406,8 @@ function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resid
     if (tlt.includes('lit')) parts.push('Aide à la toilette au lit');
     else if (tlt.includes('sdb')) parts.push('Aide à la toilette SDB');
     else parts.push('Aide à la toilette');
+  } else if (hyg.includes('autonome')) {
+    parts.push(isFemale ? 'Effectue sa toilette seule' : 'Effectue sa toilette seul');
   }
   const hab = asArr(details.habillage);
   if (hab.includes('autonome')) parts.push(isFemale ? "S'habille seule" : "S'habille seul");
