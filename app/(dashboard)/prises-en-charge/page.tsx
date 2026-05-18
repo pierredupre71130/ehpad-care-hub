@@ -387,13 +387,15 @@ function buildAutoMatin(details: PecDetails | null | undefined): string {
   const parts: string[] = [];
   if (asArr(details.locomotion).includes('alitement')) parts.push('Alitement');
   const hyg = asArr(details.hygiene);
+  const tlt = asArr(details.toilette);
   if (hyg.includes('totale')) {
-    const tlt = asArr(details.toilette);
     if (tlt.includes('lit')) parts.push('Toilette complète au lit');
     else if (tlt.includes('sdb')) parts.push('Toilette complète SDB');
     else parts.push('Toilette complète');
   } else if (hyg.includes('partielle')) {
-    parts.push('Aide à la toilette');
+    if (tlt.includes('lit')) parts.push('Aide à la toilette au lit');
+    else if (tlt.includes('sdb')) parts.push('Aide à la toilette SDB');
+    else parts.push('Aide à la toilette');
   }
   return parts.join(' - ');
 }
