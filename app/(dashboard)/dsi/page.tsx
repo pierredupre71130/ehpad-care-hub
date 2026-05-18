@@ -611,7 +611,7 @@ function DsiContactsSection({ resident }: { resident: Resident }) {
 function MotifSection({ resident }: { resident: Resident }) {
   const motif = resident.dsi?.motif_entree ?? '';
   return (
-    <SectionCard icon={<CalendarDays className="h-4 w-4" />} title="Motif d'entrée" accent="#0e6e80">
+    <SectionCard icon={<CalendarDays className="h-4 w-4" />} title="Motif d'entrée" accent="#0e6e80" span={2}>
       <div className="space-y-2">
         <Field label="Date" value={formatDate(resident.date_entree)} />
         {motif ? (
