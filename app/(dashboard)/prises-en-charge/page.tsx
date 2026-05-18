@@ -407,6 +407,16 @@ function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false
   if (hab.includes('autonome')) parts.push(isFemale ? "S'habille seule" : "S'habille seul");
   else if (hab.includes('partielle')) parts.push("Aide à l'habillage");
   else if (hab.includes('totale')) parts.push("Aide totale à l'habillage");
+  const mat = asArr(details.locoMateriel);
+  if (mat.includes('verticalisateur')) parts.push('Mobilisation pour soins au verticalisateur');
+  if (mat.includes('leve-malade')) parts.push('Mobilisation pour soins au lève-malade');
+  if (mat.includes('canne')) parts.push('Se déplace avec canne');
+  if (mat.includes('deambulateur')) parts.push('Se déplace en déambulateur');
+  if (mat.includes('fauteuil-roulant')) parts.push('Se déplace en fauteuil roulant');
+  const loco = asArr(details.locomotion);
+  if (loco.includes('autonome')) parts.push('sans aide');
+  else if (loco.includes('partielle')) parts.push('peut nécessiter aide');
+  else if (loco.includes('totale')) parts.push(isFemale ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
   return parts.join(' - ');
 }
 
