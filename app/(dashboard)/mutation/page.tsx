@@ -7,7 +7,7 @@
  * Les zones libres restent éditables. Bouton « Imprimer » pour export papier.
  */
 
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { ArrowLeft, Printer, Search } from 'lucide-react';
@@ -76,7 +76,24 @@ interface FicheMenu {
   repas: string;
   observation: string;
 }
-interface PecRow { chambre: string; protection: string; }
+interface PecDetails {
+  aideAlim?: string[];
+  hydratation?: string[];
+  dentier?: string[];
+  urinaire?: string[];
+  fecale?: string[];
+  elimMateriel?: string[];
+  appareilAuditif?: string[];
+  lunettes?: string[];
+  toilette?: string[];
+  hygiene?: string[];
+  habillage?: string[];
+  locomotion?: string[];
+  locoMateriel?: string[];
+  protectionJour?: string;
+  protectionNuit?: string;
+}
+interface PecRow { chambre: string; protection: string; details?: PecDetails | null; }
 interface Contention { chambre: string; traitement: string; date_debut: string; date_fin: string; pas_de_fin: boolean; }
 interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; }
 
@@ -105,6 +122,20 @@ function formatDate(iso: string | null | undefined): string {
 function todayFR(): string {
   return new Date().toLocaleDateString('fr-FR');
 }
+
+function asArr(v: unknown): string[] {
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v === 'string' && v) return [v];
+  return [];
+}
+
+const LOCO_MATERIEL_MAP: Record<string, string> = {
+  'canne': 'Canne',
+  'deambulateur': 'Déambulateur',
+  'fauteuil-roulant': 'Fauteuil roulant',
+  'verticalisateur': 'Verticalisateur',
+  'leve-malade': 'Lève-malade',
+};
 
 function isFemaleTitle(title?: string): boolean {
   if (!title) return false;
@@ -179,7 +210,7 @@ async function fetchMutationContext(resident: Resident) {
     { data: allVacc },
     { data: allVaccLT },
     { data: fichesMenu },
-    { data: pec },
+    { data: pecRows },
     { data: contentions },
     { data: matCouss },
   ] = await Promise.all([
@@ -188,10 +219,14 @@ async function fetchMutationContext(resident: Resident) {
     sb.from('vaccination').select('*'),
     sb.from('vaccination_long_terme').select('*'),
     sb.from('fiches_menu').select('*').eq('resident_id', resident.id),
-    sb.from('prise_en_charge').select('*').eq('chambre', resident.room).maybeSingle(),
+    // RPC pour récupérer la colonne JSONB details (contourne le cache schéma PostgREST)
+    sb.rpc('get_pec_rows', { p_floor: resident.floor }),
     sb.from('contentions').select('*').eq('type_suivi', 'contention').eq('chambre', resident.room),
     sb.from('mat_couss_items').select('*').eq('resident_id', resident.id).eq('status', 'attribue'),
   ]);
+
+  const pecArr = Array.isArray(pecRows) ? pecRows : (pecRows ? [pecRows] : []);
+  const pec = (pecArr as PecRow[]).find(r => r.chambre === resident.room) ?? null;
 
   const matchingVacc = ((allVacc ?? []) as Vaccination[]).filter(v => matchesResident(v, resident));
   const vaccination = matchingVacc.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0] ?? null;
@@ -447,6 +482,48 @@ export default function MutationPage() {
       })
       .join(' · ');
   }, [ctx]);
+
+  // Auto-remplit les champs du formulaire depuis Prises en Charge (JSONB details)
+  useEffect(() => {
+    const d = ctx?.pec?.details;
+    if (!d) return;
+    const aideA = asArr(d.aideAlim);
+    const hyd = asArr(d.hydratation);
+    const dent = asArr(d.dentier);
+    const uri = asArr(d.urinaire);
+    const fec = asArr(d.fecale);
+    const aud = asArr(d.appareilAuditif);
+    const lun = asArr(d.lunettes);
+    const hyg = asArr(d.hygiene);
+    const hab = asArr(d.habillage);
+    const loc = asArr(d.locomotion);
+    setForm(s => ({
+      ...s,
+      aideAlim: aideA.includes('autonome') ? 'autonome' : aideA.includes('aide') ? 'aide' : '',
+      hydratation: hyd.includes('petillante') ? 'petillante' : hyd.includes('gelifiee') ? 'gelifiee' : '',
+      dentierHaut: dent.includes('haut'),
+      dentierBas: dent.includes('bas'),
+      eliminationUrinaire: uri.includes('continent') ? 'continent' : uri.includes('incontinent') ? 'incontinent' : '',
+      eliminationFecale: fec.includes('continent') ? 'continent' : fec.includes('incontinent') ? 'incontinent' : '',
+      materielUrinaire: asArr(d.elimMateriel),
+      appareilAuditif: aud.includes('oui') ? 'oui' : aud.includes('non') ? 'non' : '',
+      lunettes: lun.includes('oui') ? 'oui' : lun.includes('non') ? 'non' : '',
+      hygiene: hyg.includes('autonome') ? 'autonome' : hyg.includes('partielle') ? 'partielle' : hyg.includes('totale') ? 'totale' : '',
+      habillage: hab.includes('autonome') ? 'autonome' : hab.includes('partielle') ? 'partielle' : hab.includes('totale') ? 'totale' : '',
+      locomotion: loc.includes('autonome') ? 'autonome' : loc.includes('partielle') ? 'partielle' : loc.includes('totale') ? 'totale' : '',
+      materielLoco: asArr(d.locoMateriel).map(v => LOCO_MATERIEL_MAP[v]).filter(Boolean),
+    }));
+  }, [ctx?.pec]);
+
+  const protectionText = useMemo(() => {
+    const d = ctx?.pec?.details;
+    const j = d?.protectionJour ?? '';
+    const n = d?.protectionNuit ?? '';
+    if (j && n) return `J : ${j} · N : ${n}`;
+    if (j) return `J : ${j}`;
+    if (n) return `N : ${n}`;
+    return ctx?.pec?.protection || '';
+  }, [ctx?.pec]);
 
   return (
     <div className="min-h-screen bg-slate-50 print:bg-white">
@@ -755,7 +832,7 @@ export default function MutationPage() {
                     className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
                   />
                 </div>
-                <FieldRow label="Protection :">{ctx?.pec?.protection || <span className="text-slate-400">—</span>}</FieldRow>
+                <FieldRow label="Protection :">{protectionText || <span className="text-slate-400">—</span>}</FieldRow>
               </div>
 
               {/* ── HYGIENE ── */}
