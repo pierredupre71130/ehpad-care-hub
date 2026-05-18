@@ -16,18 +16,18 @@ type TableColor = 'jaune' | 'vert' | 'vert-cercle' | 'bleu' | 'rose' | 'rose-tri
 type Floor = 'RDC' | '1ER';
 
 interface PecDetails {
-  aideAlim?: 'autonome' | 'aide';
-  hydratation?: 'autonome' | 'aide' | 'petillante' | 'gelifiee';
+  aideAlim?: string[];
+  hydratation?: string[];
   dentier?: string[];
-  urinaire?: 'continent' | 'incontinent';
-  fecale?: 'continent' | 'incontinent';
+  urinaire?: string[];
+  fecale?: string[];
   elimMateriel?: string[];
-  appareilAuditif?: 'oui' | 'non';
-  lunettes?: 'oui' | 'non';
-  toilette?: 'lit' | 'sdb' | 'douche-impossible';
-  hygiene?: 'autonome' | 'partielle' | 'totale';
-  habillage?: 'autonome' | 'partielle' | 'totale';
-  locomotion?: 'autonome' | 'partielle' | 'totale' | 'alitement';
+  appareilAuditif?: string[];
+  lunettes?: string[];
+  toilette?: string[];
+  hygiene?: string[];
+  habillage?: string[];
+  locomotion?: string[];
   locoMateriel?: string[];
 }
 
@@ -577,23 +577,13 @@ export default function PrisesEnChargePage() {
 
   const toggleDetailItem = (
     id: string,
-    key: 'dentier' | 'elimMateriel' | 'locoMateriel',
+    key: keyof PecDetails,
     value: string,
   ) => {
     const current = rows.find(r => r.id === id)?.details ?? {};
     const arr = (current[key] as string[] | undefined) ?? [];
     const nextArr = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
     updateDetails(id, { [key]: nextArr });
-  };
-
-  const setDetailValue = <K extends keyof PecDetails>(
-    id: string,
-    key: K,
-    value: PecDetails[K] | undefined,
-  ) => {
-    const current = rows.find(r => r.id === id)?.details ?? {};
-    const same = current[key] === value;
-    updateDetails(id, { [key]: same ? undefined : value } as Partial<PecDetails>);
   };
 
   // Quand on change la chambre → auto-fill nom
@@ -1070,21 +1060,23 @@ export default function PrisesEnChargePage() {
                           {(() => {
                             const d = row.details ?? {};
                             const ro = !canEditSoinCols;
+                            const chk = (key: keyof PecDetails, val: string) => (d[key] as string[] ?? []).includes(val);
+                            const tog = (key: keyof PecDetails, val: string) => toggleDetailItem(row.id, key, val);
                             return (
                               <div className="space-y-1.5">
                                 <DetailGroup title="Aide alim.">
-                                  <MiniCheck label="Autonome" checked={d.aideAlim === 'autonome'} onChange={() => setDetailValue(row.id, 'aideAlim', 'autonome')} disabled={ro} />
-                                  <MiniCheck label="Aide" checked={d.aideAlim === 'aide'} onChange={() => setDetailValue(row.id, 'aideAlim', 'aide')} disabled={ro} />
+                                  <MiniCheck label="Autonome" checked={chk('aideAlim', 'autonome')} onChange={() => tog('aideAlim', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide" checked={chk('aideAlim', 'aide')} onChange={() => tog('aideAlim', 'aide')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Hydratation">
-                                  <MiniCheck label="Autonome" checked={d.hydratation === 'autonome'} onChange={() => setDetailValue(row.id, 'hydratation', 'autonome')} disabled={ro} />
-                                  <MiniCheck label="Aide" checked={d.hydratation === 'aide'} onChange={() => setDetailValue(row.id, 'hydratation', 'aide')} disabled={ro} />
-                                  <MiniCheck label="Pétillante" checked={d.hydratation === 'petillante'} onChange={() => setDetailValue(row.id, 'hydratation', 'petillante')} disabled={ro} />
-                                  <MiniCheck label="Gélifiée" checked={d.hydratation === 'gelifiee'} onChange={() => setDetailValue(row.id, 'hydratation', 'gelifiee')} disabled={ro} />
+                                  <MiniCheck label="Autonome" checked={chk('hydratation', 'autonome')} onChange={() => tog('hydratation', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide" checked={chk('hydratation', 'aide')} onChange={() => tog('hydratation', 'aide')} disabled={ro} />
+                                  <MiniCheck label="Pétillante" checked={chk('hydratation', 'petillante')} onChange={() => tog('hydratation', 'petillante')} disabled={ro} />
+                                  <MiniCheck label="Gélifiée" checked={chk('hydratation', 'gelifiee')} onChange={() => tog('hydratation', 'gelifiee')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Dentier">
-                                  <MiniCheck label="Haut" checked={(d.dentier ?? []).includes('haut')} onChange={() => toggleDetailItem(row.id, 'dentier', 'haut')} disabled={ro} />
-                                  <MiniCheck label="Bas" checked={(d.dentier ?? []).includes('bas')} onChange={() => toggleDetailItem(row.id, 'dentier', 'bas')} disabled={ro} />
+                                  <MiniCheck label="Haut" checked={chk('dentier', 'haut')} onChange={() => tog('dentier', 'haut')} disabled={ro} />
+                                  <MiniCheck label="Bas" checked={chk('dentier', 'bas')} onChange={() => tog('dentier', 'bas')} disabled={ro} />
                                 </DetailGroup>
                               </div>
                             );
@@ -1096,20 +1088,22 @@ export default function PrisesEnChargePage() {
                           {(() => {
                             const d = row.details ?? {};
                             const ro = !canEditSoinCols;
+                            const chk = (key: keyof PecDetails, val: string) => (d[key] as string[] ?? []).includes(val);
+                            const tog = (key: keyof PecDetails, val: string) => toggleDetailItem(row.id, key, val);
                             return (
                               <div className="space-y-1.5">
                                 <DetailGroup title="Urinaire">
-                                  <MiniCheck label="Continent" checked={d.urinaire === 'continent'} onChange={() => setDetailValue(row.id, 'urinaire', 'continent')} disabled={ro} />
-                                  <MiniCheck label="Incontinent" checked={d.urinaire === 'incontinent'} onChange={() => setDetailValue(row.id, 'urinaire', 'incontinent')} disabled={ro} />
+                                  <MiniCheck label="Continent" checked={chk('urinaire', 'continent')} onChange={() => tog('urinaire', 'continent')} disabled={ro} />
+                                  <MiniCheck label="Incontinent" checked={chk('urinaire', 'incontinent')} onChange={() => tog('urinaire', 'incontinent')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Fécale">
-                                  <MiniCheck label="Continent" checked={d.fecale === 'continent'} onChange={() => setDetailValue(row.id, 'fecale', 'continent')} disabled={ro} />
-                                  <MiniCheck label="Incontinent" checked={d.fecale === 'incontinent'} onChange={() => setDetailValue(row.id, 'fecale', 'incontinent')} disabled={ro} />
+                                  <MiniCheck label="Continent" checked={chk('fecale', 'continent')} onChange={() => tog('fecale', 'continent')} disabled={ro} />
+                                  <MiniCheck label="Incontinent" checked={chk('fecale', 'incontinent')} onChange={() => tog('fecale', 'incontinent')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Matériel">
-                                  <MiniCheck label="Urinal" checked={(d.elimMateriel ?? []).includes('urinal')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'urinal')} disabled={ro} />
-                                  <MiniCheck label="Bassin" checked={(d.elimMateriel ?? []).includes('bassin')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'bassin')} disabled={ro} />
-                                  <MiniCheck label="Chaise percée" checked={(d.elimMateriel ?? []).includes('chaise-percee')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'chaise-percee')} disabled={ro} />
+                                  <MiniCheck label="Urinal" checked={chk('elimMateriel', 'urinal')} onChange={() => tog('elimMateriel', 'urinal')} disabled={ro} />
+                                  <MiniCheck label="Bassin" checked={chk('elimMateriel', 'bassin')} onChange={() => tog('elimMateriel', 'bassin')} disabled={ro} />
+                                  <MiniCheck label="Chaise percée" checked={chk('elimMateriel', 'chaise-percee')} onChange={() => tog('elimMateriel', 'chaise-percee')} disabled={ro} />
                                 </DetailGroup>
                               </div>
                             );
@@ -1121,30 +1115,32 @@ export default function PrisesEnChargePage() {
                           {(() => {
                             const d = row.details ?? {};
                             const ro = !canEditSoinCols;
+                            const chk = (key: keyof PecDetails, val: string) => (d[key] as string[] ?? []).includes(val);
+                            const tog = (key: keyof PecDetails, val: string) => toggleDetailItem(row.id, key, val);
                             return (
                               <div className="space-y-1.5">
                                 <DetailGroup title="App. auditif">
-                                  <MiniCheck label="Oui" checked={d.appareilAuditif === 'oui'} onChange={() => setDetailValue(row.id, 'appareilAuditif', 'oui')} disabled={ro} />
-                                  <MiniCheck label="Non" checked={d.appareilAuditif === 'non'} onChange={() => setDetailValue(row.id, 'appareilAuditif', 'non')} disabled={ro} />
+                                  <MiniCheck label="Oui" checked={chk('appareilAuditif', 'oui')} onChange={() => tog('appareilAuditif', 'oui')} disabled={ro} />
+                                  <MiniCheck label="Non" checked={chk('appareilAuditif', 'non')} onChange={() => tog('appareilAuditif', 'non')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Lunettes">
-                                  <MiniCheck label="Oui" checked={d.lunettes === 'oui'} onChange={() => setDetailValue(row.id, 'lunettes', 'oui')} disabled={ro} />
-                                  <MiniCheck label="Non" checked={d.lunettes === 'non'} onChange={() => setDetailValue(row.id, 'lunettes', 'non')} disabled={ro} />
+                                  <MiniCheck label="Oui" checked={chk('lunettes', 'oui')} onChange={() => tog('lunettes', 'oui')} disabled={ro} />
+                                  <MiniCheck label="Non" checked={chk('lunettes', 'non')} onChange={() => tog('lunettes', 'non')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Toilette">
-                                  <MiniCheck label="Lit" checked={d.toilette === 'lit'} onChange={() => setDetailValue(row.id, 'toilette', 'lit')} disabled={ro} />
-                                  <MiniCheck label="SDB" checked={d.toilette === 'sdb'} onChange={() => setDetailValue(row.id, 'toilette', 'sdb')} disabled={ro} />
-                                  <MiniCheck label="Douche impossible" checked={d.toilette === 'douche-impossible'} onChange={() => setDetailValue(row.id, 'toilette', 'douche-impossible')} disabled={ro} />
+                                  <MiniCheck label="Lit" checked={chk('toilette', 'lit')} onChange={() => tog('toilette', 'lit')} disabled={ro} />
+                                  <MiniCheck label="SDB" checked={chk('toilette', 'sdb')} onChange={() => tog('toilette', 'sdb')} disabled={ro} />
+                                  <MiniCheck label="Douche impossible" checked={chk('toilette', 'douche-impossible')} onChange={() => tog('toilette', 'douche-impossible')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Hygiène">
-                                  <MiniCheck label="Autonome" checked={d.hygiene === 'autonome'} onChange={() => setDetailValue(row.id, 'hygiene', 'autonome')} disabled={ro} />
-                                  <MiniCheck label="Aide part." checked={d.hygiene === 'partielle'} onChange={() => setDetailValue(row.id, 'hygiene', 'partielle')} disabled={ro} />
-                                  <MiniCheck label="Aide tot." checked={d.hygiene === 'totale'} onChange={() => setDetailValue(row.id, 'hygiene', 'totale')} disabled={ro} />
+                                  <MiniCheck label="Autonome" checked={chk('hygiene', 'autonome')} onChange={() => tog('hygiene', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={chk('hygiene', 'partielle')} onChange={() => tog('hygiene', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={chk('hygiene', 'totale')} onChange={() => tog('hygiene', 'totale')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Habillage">
-                                  <MiniCheck label="Autonome" checked={d.habillage === 'autonome'} onChange={() => setDetailValue(row.id, 'habillage', 'autonome')} disabled={ro} />
-                                  <MiniCheck label="Aide part." checked={d.habillage === 'partielle'} onChange={() => setDetailValue(row.id, 'habillage', 'partielle')} disabled={ro} />
-                                  <MiniCheck label="Aide tot." checked={d.habillage === 'totale'} onChange={() => setDetailValue(row.id, 'habillage', 'totale')} disabled={ro} />
+                                  <MiniCheck label="Autonome" checked={chk('habillage', 'autonome')} onChange={() => tog('habillage', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={chk('habillage', 'partielle')} onChange={() => tog('habillage', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={chk('habillage', 'totale')} onChange={() => tog('habillage', 'totale')} disabled={ro} />
                                 </DetailGroup>
                               </div>
                             );
@@ -1156,20 +1152,22 @@ export default function PrisesEnChargePage() {
                           {(() => {
                             const d = row.details ?? {};
                             const ro = !canEditSoinCols;
+                            const chk = (key: keyof PecDetails, val: string) => (d[key] as string[] ?? []).includes(val);
+                            const tog = (key: keyof PecDetails, val: string) => toggleDetailItem(row.id, key, val);
                             return (
                               <div className="space-y-1.5">
                                 <DetailGroup title="Locomotion">
-                                  <MiniCheck label="Autonome" checked={d.locomotion === 'autonome'} onChange={() => setDetailValue(row.id, 'locomotion', 'autonome')} disabled={ro} />
-                                  <MiniCheck label="Aide part." checked={d.locomotion === 'partielle'} onChange={() => setDetailValue(row.id, 'locomotion', 'partielle')} disabled={ro} />
-                                  <MiniCheck label="Aide tot." checked={d.locomotion === 'totale'} onChange={() => setDetailValue(row.id, 'locomotion', 'totale')} disabled={ro} />
-                                  <MiniCheck label="Alitement" checked={d.locomotion === 'alitement'} onChange={() => setDetailValue(row.id, 'locomotion', 'alitement')} disabled={ro} />
+                                  <MiniCheck label="Autonome" checked={chk('locomotion', 'autonome')} onChange={() => tog('locomotion', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={chk('locomotion', 'partielle')} onChange={() => tog('locomotion', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={chk('locomotion', 'totale')} onChange={() => tog('locomotion', 'totale')} disabled={ro} />
+                                  <MiniCheck label="Alitement" checked={chk('locomotion', 'alitement')} onChange={() => tog('locomotion', 'alitement')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Matériel">
-                                  <MiniCheck label="Canne" checked={(d.locoMateriel ?? []).includes('canne')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'canne')} disabled={ro} />
-                                  <MiniCheck label="Déambulateur" checked={(d.locoMateriel ?? []).includes('deambulateur')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'deambulateur')} disabled={ro} />
-                                  <MiniCheck label="Fauteuil roul." checked={(d.locoMateriel ?? []).includes('fauteuil-roulant')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'fauteuil-roulant')} disabled={ro} />
-                                  <MiniCheck label="Verticalisateur" checked={(d.locoMateriel ?? []).includes('verticalisateur')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'verticalisateur')} disabled={ro} />
-                                  <MiniCheck label="Lève-malade" checked={(d.locoMateriel ?? []).includes('leve-malade')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'leve-malade')} disabled={ro} />
+                                  <MiniCheck label="Canne" checked={chk('locoMateriel', 'canne')} onChange={() => tog('locoMateriel', 'canne')} disabled={ro} />
+                                  <MiniCheck label="Déambulateur" checked={chk('locoMateriel', 'deambulateur')} onChange={() => tog('locoMateriel', 'deambulateur')} disabled={ro} />
+                                  <MiniCheck label="Fauteuil roul." checked={chk('locoMateriel', 'fauteuil-roulant')} onChange={() => tog('locoMateriel', 'fauteuil-roulant')} disabled={ro} />
+                                  <MiniCheck label="Verticalisateur" checked={chk('locoMateriel', 'verticalisateur')} onChange={() => tog('locoMateriel', 'verticalisateur')} disabled={ro} />
+                                  <MiniCheck label="Lève-malade" checked={chk('locoMateriel', 'leve-malade')} onChange={() => tog('locoMateriel', 'leve-malade')} disabled={ro} />
                                 </DetailGroup>
                               </div>
                             );
