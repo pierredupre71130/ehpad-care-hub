@@ -295,7 +295,7 @@ export default function MutationPage() {
     kineActif: null as boolean | null,
     kineDetail: '',
     motif: '',
-    isolement: false,
+    isolement: '' as '' | 'oui' | 'non',
     aideAlim: '' as '' | 'autonome' | 'aide',
     hydratation: '' as '' | 'petillante' | 'gelifiee',
     dentierHaut: false,
@@ -786,8 +786,8 @@ export default function MutationPage() {
                 <FieldRow label="Allergie :">{allergiesText || <span className="text-slate-400">—</span>}</FieldRow>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="font-semibold">Isolement :</span>
-                  <CheckOption label="Oui" checked={form.isolement} onChange={v => patch('isolement', v)} />
-                  <CheckOption label="Non" checked={!form.isolement} onChange={v => patch('isolement', !v)} />
+                  <CheckOption label="Oui" checked={form.isolement === 'oui'} onChange={v => patch('isolement', v ? 'oui' : '')} />
+                  <CheckOption label="Non" checked={form.isolement === 'non'} onChange={v => patch('isolement', v ? 'non' : '')} />
                 </div>
               </div>
 
