@@ -91,6 +91,7 @@ interface PecRow {
 }
 interface Contention { chambre: string; traitement: string; date_debut: string; date_fin: string; pas_de_fin: boolean; }
 interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; serial_number?: string | null; }
+interface FicheMenu { resident_id: string; repas: string; observation: string; }
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -204,6 +205,7 @@ async function fetchDsiContext(resident: Resident) {
     { data: pecRows },
     { data: contentions },
     { data: matCouss },
+    { data: fichesMenu },
   ] = await Promise.all([
     sb.from('poids_mesure').select('*').eq('resident_id', resident.id).order('date', { ascending: false }).limit(5),
     sb.from('niveau_soin').select('*').eq('resident_id', resident.id).maybeSingle(),
@@ -212,6 +214,7 @@ async function fetchDsiContext(resident: Resident) {
     sb.rpc('get_pec_rows', { p_floor: resident.floor }),
     sb.from('contentions').select('*').eq('type_suivi', 'contention').eq('chambre', resident.room),
     sb.from('mat_couss_items').select('*').eq('resident_id', resident.id).eq('status', 'attribue'),
+    sb.from('fiches_menu').select('*').eq('resident_id', resident.id),
   ]);
 
   const matchingVacc = ((allVacc ?? []) as Vaccination[]).filter(v => matchesResident(v, resident));
@@ -230,6 +233,7 @@ async function fetchDsiContext(resident: Resident) {
     pec,
     contentions: (contentions ?? []) as Contention[],
     matCouss: (matCouss ?? []) as MatCouss[],
+    fichesMenu: (fichesMenu ?? []) as FicheMenu[],
   };
 }
 
@@ -474,7 +478,7 @@ function DsiDossier({
 
         <MedicalSection resident={resident} niveau={ctx?.niveau ?? null} />
 
-        <RegimesSection resident={resident} />
+        <RegimesSection resident={resident} fichesMenu={ctx?.fichesMenu ?? []} />
 
         <TraitementsSection resident={resident} />
 
@@ -653,16 +657,20 @@ function MedicalSection({ resident, niveau }: { resident: Resident; niveau: Nive
 
 // ─── Régimes ─────────────────────────────────────────────────
 
-function RegimesSection({ resident }: { resident: Resident }) {
+function RegimesSection({ resident, fichesMenu }: { resident: Resident; fichesMenu: FicheMenu[] }) {
   const flags: { label: string; color: string }[] = [];
   if (resident.regime_mixe) flags.push({ label: 'Mixé', color: 'sky' });
   if (resident.viande_mixee) flags.push({ label: 'Viande mixée', color: 'sky' });
   if (resident.regime_diabetique) flags.push({ label: 'Diabétique', color: 'amber' });
   if (resident.epargne_intestinale) flags.push({ label: 'Épargne intestinale', color: 'emerald' });
   if (resident.allergie_poisson) flags.push({ label: 'Allergie poisson', color: 'red' });
+  const observations = fichesMenu
+    .filter(f => f.observation && f.observation.trim())
+    .map(f => ({ repas: f.repas === 'midi' ? 'Midi' : f.repas === 'soir' ? 'Soir' : f.repas, observation: f.observation.trim() }));
+  const empty = flags.length === 0 && !resident.allergie_autre && observations.length === 0;
   return (
     <SectionCard icon={<Heart className="h-4 w-4" />} title="Régimes alimentaires" accent="#16a34a">
-      {flags.length === 0 && !resident.allergie_autre ? (
+      {empty ? (
         <p className="text-sm text-slate-400 italic">Régime normal</p>
       ) : (
         <div className="space-y-2">
@@ -674,6 +682,17 @@ function RegimesSection({ resident }: { resident: Resident }) {
             <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-red-50 ring-1 ring-red-200">
               <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
               <span className="text-sm text-red-800 font-medium">⚠ {resident.allergie_autre}</span>
+            </div>
+          )}
+          {observations.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Observations fiches menu</p>
+              {observations.map((o, i) => (
+                <div key={i} className="text-sm bg-emerald-50/60 ring-1 ring-emerald-100 rounded-lg p-2.5">
+                  <span className="font-semibold text-emerald-800">{o.repas} :</span>{' '}
+                  <span className="text-slate-700 whitespace-pre-wrap">{o.observation}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
