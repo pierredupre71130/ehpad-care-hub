@@ -619,9 +619,17 @@ export default function PrisesEnChargePage() {
     });
 
     // Reconstruit la colonne matin : retire l'ancien préfixe auto et préfixe le nouveau
+    // Le strip exige que l'ancien auto soit suivi de " - " ou de la fin de chaîne,
+    // pour éviter de couper "Aide à la toilette" dans "Aide à la toilette au lit".
     let newMatin = row?.matin ?? '';
-    if (oldAuto && newMatin.startsWith(oldAuto)) {
-      newMatin = newMatin.slice(oldAuto.length).replace(/^\s*-\s*/, '').replace(/^\s+/, '');
+    if (oldAuto) {
+      const afterOld = newMatin.slice(oldAuto.length);
+      if (newMatin === oldAuto) {
+        newMatin = '';
+      } else if (afterOld.startsWith(' - ')) {
+        newMatin = afterOld.slice(3);
+      }
+      // sinon le matin ne commence pas exactement par l'ancien auto → on ne touche pas
     }
     if (newAuto) {
       newMatin = newMatin ? `${newAuto} - ${newMatin}` : newAuto;
