@@ -483,6 +483,26 @@ export default function MutationPage() {
       .join(' · ');
   }, [ctx]);
 
+  // Réinitialise les champs auto-remplis dès que le résident change
+  useEffect(() => {
+    setForm(s => ({
+      ...s,
+      aideAlim: '',
+      hydratation: '',
+      dentierHaut: false,
+      dentierBas: false,
+      eliminationUrinaire: '',
+      eliminationFecale: '',
+      materielUrinaire: [],
+      appareilAuditif: '',
+      lunettes: '',
+      hygiene: '',
+      habillage: '',
+      locomotion: '',
+      materielLoco: [],
+    }));
+  }, [selectedId]);
+
   // Auto-remplit les champs du formulaire depuis Prises en Charge (JSONB details)
   useEffect(() => {
     const d = ctx?.pec?.details;
