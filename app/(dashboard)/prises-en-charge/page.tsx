@@ -581,7 +581,8 @@ export default function PrisesEnChargePage() {
     value: string,
   ) => {
     const current = rows.find(r => r.id === id)?.details ?? {};
-    const arr = (current[key] as string[] | undefined) ?? [];
+    const raw = current[key];
+    const arr: string[] = Array.isArray(raw) ? raw : raw ? [raw as string] : [];
     const nextArr = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
     updateDetails(id, { [key]: nextArr });
   };
