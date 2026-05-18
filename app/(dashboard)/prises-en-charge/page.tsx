@@ -24,6 +24,7 @@ interface PecDetails {
   elimMateriel?: string[];
   appareilAuditif?: 'oui' | 'non';
   lunettes?: 'oui' | 'non';
+  toilette?: 'lit' | 'sdb' | 'douche-impossible';
   hygiene?: 'autonome' | 'partielle' | 'totale';
   habillage?: 'autonome' | 'partielle' | 'totale';
   locomotion?: 'autonome' | 'partielle' | 'totale' | 'alitement';
@@ -1133,6 +1134,11 @@ export default function PrisesEnChargePage() {
                                 <DetailGroup title="Lunettes">
                                   <MiniCheck label="Oui" checked={d.lunettes === 'oui'} onChange={() => setDetailValue(row.id, 'lunettes', 'oui')} disabled={ro} />
                                   <MiniCheck label="Non" checked={d.lunettes === 'non'} onChange={() => setDetailValue(row.id, 'lunettes', 'non')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Toilette">
+                                  <MiniCheck label="Lit" checked={d.toilette === 'lit'} onChange={() => setDetailValue(row.id, 'toilette', 'lit')} disabled={ro} />
+                                  <MiniCheck label="SDB" checked={d.toilette === 'sdb'} onChange={() => setDetailValue(row.id, 'toilette', 'sdb')} disabled={ro} />
+                                  <MiniCheck label="Douche impossible" checked={d.toilette === 'douche-impossible'} onChange={() => setDetailValue(row.id, 'toilette', 'douche-impossible')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Hygiène">
                                   <MiniCheck label="Autonome" checked={d.hygiene === 'autonome'} onChange={() => setDetailValue(row.id, 'hygiene', 'autonome')} disabled={ro} />
