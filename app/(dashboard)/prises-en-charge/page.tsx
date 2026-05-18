@@ -414,8 +414,9 @@ function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false
   if (mat.includes('deambulateur')) parts.push('Se déplace en déambulateur');
   if (mat.includes('fauteuil-roulant')) parts.push('Se déplace en fauteuil roulant');
   const loco = asArr(details.locomotion);
-  if (loco.includes('autonome')) parts.push('sans aide');
-  else if (loco.includes('partielle')) parts.push('peut nécessiter aide');
+  const hasSeDeplaceMaterial = mat.includes('canne') || mat.includes('deambulateur') || mat.includes('fauteuil-roulant');
+  if (loco.includes('autonome')) parts.push(hasSeDeplaceMaterial ? 'sans aide' : 'Se déplace sans aide');
+  else if (loco.includes('partielle')) parts.push('peut nécessiter aide au déplacement');
   else if (loco.includes('totale')) parts.push(isFemale ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
   return parts.join(' - ');
 }
