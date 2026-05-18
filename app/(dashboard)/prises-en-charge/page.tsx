@@ -61,6 +61,9 @@ interface Resident {
   photo_url?: string;   // chemin storage ou URL signée
   photo_path?: string;  // chemin brut (avant signature)
   date_naissance?: string | null;
+  chaussettes_de_contention?: boolean | null;
+  bas_de_contention?: boolean | null;
+  bande_de_contention?: boolean | null;
 }
 
 // ── Données initiales (issues des photos) ────────────────────────────────────
@@ -388,8 +391,9 @@ function isFemaleTitle(title?: string): boolean {
   return t === 'mme' || t === 'me' || t === 'mlle' || t === 'madame' || t === 'mademoiselle';
 }
 
-function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false): string {
+function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resident | null): string {
   if (!details) return '';
+  const isFemale = isFemaleTitle(resident?.title);
   const parts: string[] = [];
   if (asArr(details.locomotion).includes('alitement')) parts.push('Alitement');
   const hyg = asArr(details.hygiene);
@@ -426,6 +430,24 @@ function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false
     else if (loco.includes('partielle')) parts.push('peut nécessiter aide au déplacement');
     else if (loco.includes('totale')) parts.push(isFemale ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
   }
+  const dent = asArr(details.dentier);
+  if (dent.includes('haut') && dent.includes('bas')) parts.push('Dentiers haut et bas');
+  else if (dent.includes('haut')) parts.push('Dentier haut');
+  else if (dent.includes('bas')) parts.push('Dentier bas');
+  if (asArr(details.appareilAuditif).includes('oui')) parts.push('Appareils auditifs');
+  if (asArr(details.lunettes).includes('oui')) parts.push('Lunettes');
+  if (resident?.chaussettes_de_contention) parts.push('Chaussettes de contention à mettre');
+  if (resident?.bas_de_contention) parts.push('Bas de contention à mettre');
+  if (resident?.bande_de_contention) parts.push('Bandes de contention à mettre par IDE');
+  return parts.join(' - ');
+}
+
+function buildAutoApresMidi(resident?: Resident | null): string {
+  if (!resident) return '';
+  const parts: string[] = [];
+  if (resident.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
+  if (resident.bas_de_contention) parts.push('Enlever bas de contention');
+  if (resident.bande_de_contention) parts.push('Enlever bandes de contention');
   return parts.join(' - ');
 }
 
@@ -433,7 +455,7 @@ async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('residents')
-    .select('id,title,first_name,last_name,room,floor,archived,photo_url,date_naissance')
+    .select('id,title,first_name,last_name,room,floor,archived,photo_url,date_naissance,chaussettes_de_contention,bas_de_contention,bande_de_contention')
     .order('room');
   if (error) throw new Error(error.message);
   const residents = (data ?? []) as Resident[];
@@ -720,8 +742,8 @@ export default function PrisesEnChargePage() {
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
         ${nomCell}
-        <td>${esc((() => { const a = buildAutoMatin(row.details, isFemaleTitle(matched?.title)); const m = row.matin || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
-        <td>${esc(row.apres_midi || '')}</td>
+        <td>${esc((() => { const a = buildAutoMatin(row.details, matched); const m = row.matin || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
+        <td>${esc((() => { const a = buildAutoApresMidi(matched); const m = row.apres_midi || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
         <td class="prot">${esc(protText)}</td>
       </tr>`;
     }).join('');
@@ -1249,7 +1271,7 @@ export default function PrisesEnChargePage() {
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
                             const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
-                            const auto = buildAutoMatin(row.details, isFemaleTitle(matched?.title));
+                            const auto = buildAutoMatin(row.details, matched);
                             return (
                               <div className="space-y-1">
                                 {auto && (
@@ -1269,11 +1291,24 @@ export default function PrisesEnChargePage() {
 
                         {/* Après-midi / Soir */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
-                          <EditableCell
-                            value={row.apres_midi}
-                            onSave={v => updateField(row.id, 'apres_midi', v)}
-                            readOnly={!canEditSoinCols}
-                          />
+                          {(() => {
+                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const auto = buildAutoApresMidi(matched);
+                            return (
+                              <div className="space-y-1">
+                                {auto && (
+                                  <div className="text-[11px] text-rose-700 font-medium leading-snug border-b border-rose-100 pb-1">
+                                    {auto}
+                                  </div>
+                                )}
+                                <EditableCell
+                                  value={row.apres_midi}
+                                  onSave={v => updateField(row.id, 'apres_midi', v)}
+                                  readOnly={!canEditSoinCols}
+                                />
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Protection */}
