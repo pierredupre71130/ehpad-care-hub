@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Printer, Loader2, BriefcaseMedical, Eye, Lock, Unlock, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,6 +15,21 @@ import { MODULES } from '@/components/dashboard/module-config';
 type TableColor = 'jaune' | 'vert' | 'vert-cercle' | 'bleu' | 'rose' | 'rose-triangle';
 type Floor = 'RDC' | '1ER';
 
+interface PecDetails {
+  aideAlim?: 'autonome' | 'aide';
+  hydratation?: 'autonome' | 'aide' | 'petillante' | 'gelifiee';
+  dentier?: string[];
+  urinaire?: 'continent' | 'incontinent';
+  fecale?: 'continent' | 'incontinent';
+  elimMateriel?: string[];
+  appareilAuditif?: 'oui' | 'non';
+  lunettes?: 'oui' | 'non';
+  hygiene?: 'autonome' | 'partielle' | 'totale';
+  habillage?: 'autonome' | 'partielle' | 'totale';
+  locomotion?: 'autonome' | 'partielle' | 'totale';
+  locoMateriel?: string[];
+}
+
 interface PecRow {
   id: string;
   floor: Floor;
@@ -26,6 +41,7 @@ interface PecRow {
   matin: string;
   apres_midi: string;
   protection: string;
+  details?: PecDetails | null;
 }
 
 interface Resident {
@@ -240,6 +256,45 @@ function ColorBadge({ color }: { color: TableColor }) {
     );
   // rose
   return <span className="inline-flex items-center px-3 py-1 rounded font-bold text-sm bg-pink-400 text-white"><span style={OUTLINE}>ROSE</span></span>;
+}
+
+// ── Mini case à cocher pour cellules détaillées ────────────────────────────────
+
+function MiniCheck({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      className={`inline-flex items-center gap-1 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+      onClick={e => { if (disabled) e.preventDefault(); }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={() => { if (!disabled) onChange(); }}
+        disabled={disabled}
+        className="h-3 w-3 accent-rose-600 cursor-pointer disabled:cursor-not-allowed"
+      />
+      <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
+    </label>
+  );
+}
+
+function DetailGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide">{title}</div>
+      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">{children}</div>
+    </div>
+  );
 }
 
 // ── Cellule éditable ───────────────────────────────────────────────────────────
@@ -501,6 +556,49 @@ export default function PrisesEnChargePage() {
     );
   };
 
+  // Patch partiel de la colonne details (JSONB)
+  const updateDetails = async (id: string, patch: Partial<PecDetails>) => {
+    const current = rows.find(r => r.id === id)?.details ?? {};
+    const next: PecDetails = { ...current, ...patch };
+    // Nettoyer les valeurs vides / arrays vides
+    (Object.keys(next) as (keyof PecDetails)[]).forEach(k => {
+      const v = next[k] as unknown;
+      if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
+        delete next[k];
+      }
+    });
+    const sb = createClient();
+    const { error } = await sb
+      .from('prise_en_charge')
+      .update({ details: next, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) { toast.error(error.message); return; }
+    qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) =>
+      prev.map(r => r.id === id ? { ...r, details: next } : r)
+    );
+  };
+
+  const toggleDetailItem = (
+    id: string,
+    key: 'dentier' | 'elimMateriel' | 'locoMateriel',
+    value: string,
+  ) => {
+    const current = rows.find(r => r.id === id)?.details ?? {};
+    const arr = (current[key] as string[] | undefined) ?? [];
+    const nextArr = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
+    updateDetails(id, { [key]: nextArr });
+  };
+
+  const setDetailValue = <K extends keyof PecDetails>(
+    id: string,
+    key: K,
+    value: PecDetails[K] | undefined,
+  ) => {
+    const current = rows.find(r => r.id === id)?.details ?? {};
+    const same = current[key] === value;
+    updateDetails(id, { [key]: same ? undefined : value } as Partial<PecDetails>);
+  };
+
   // Quand on change la chambre → auto-fill nom
   const updateChambre = async (id: string, chambre: string) => {
     const nom = nomFromRoom(chambre) || rows.find(r => r.id === id)?.nom || '';
@@ -522,7 +620,7 @@ export default function PrisesEnChargePage() {
     const sb = createClient();
     const { data, error } = await sb
       .from('prise_en_charge')
-      .insert({ floor: activeFloor, table_index, table_color, row_order, chambre: '', nom: '', matin: '', apres_midi: '', protection: '' })
+      .insert({ floor: activeFloor, table_index, table_color, row_order, chambre: '', nom: '', matin: '', apres_midi: '', protection: '', details: {} })
       .select()
       .single();
     if (error) { toast.error(error.message); return; }
@@ -660,7 +758,7 @@ export default function PrisesEnChargePage() {
       <div className="print:hidden relative overflow-hidden"
         style={{ background: `linear-gradient(135deg, ${colorFrom} 0%, ${colorTo} 100%)` }}>
         <div className="absolute inset-0 pointer-events-none"><NetworkBackground /></div>
-        <div className="relative z-10 max-w-6xl mx-auto px-6 py-5">
+        <div className="relative z-10 max-w-screen-2xl mx-auto px-6 py-5">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
             <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
@@ -763,7 +861,7 @@ export default function PrisesEnChargePage() {
       </div>
 
       {/* Contenu */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-screen-2xl mx-auto px-4 py-6">
         {baseReadOnly && (
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4 flex-shrink-0" />
@@ -908,6 +1006,10 @@ export default function PrisesEnChargePage() {
                     <tr className="bg-slate-100 text-slate-600 text-xs font-semibold uppercase tracking-wide">
                       <th className="border border-slate-200 px-3 py-2 text-left w-24">Chambre</th>
                       <th className="border border-slate-200 px-3 py-2 text-left w-48">Nom</th>
+                      <th className="border border-slate-200 px-2 py-2 text-left w-40">Alim./Hydrat.</th>
+                      <th className="border border-slate-200 px-2 py-2 text-left w-40">Élimination</th>
+                      <th className="border border-slate-200 px-2 py-2 text-left w-44">Hygiène et confort</th>
+                      <th className="border border-slate-200 px-2 py-2 text-left w-44">Locomotion / Mob.</th>
                       <th className="border border-slate-200 px-3 py-2 text-left">Matin</th>
                       <th className="border border-slate-200 px-3 py-2 text-left">Après-midi / Soir</th>
                       <th className="border border-slate-200 px-3 py-2 text-left w-36">Protection</th>
@@ -964,6 +1066,111 @@ export default function PrisesEnChargePage() {
                               );
                             })()}
                           </div>
+                        </td>
+
+                        {/* Alim./Hydrat. */}
+                        <td className="border border-slate-200 px-2 py-1.5 align-top">
+                          {(() => {
+                            const d = row.details ?? {};
+                            const ro = !canEditSoinCols;
+                            return (
+                              <div className="space-y-1.5">
+                                <DetailGroup title="Aide alim.">
+                                  <MiniCheck label="Autonome" checked={d.aideAlim === 'autonome'} onChange={() => setDetailValue(row.id, 'aideAlim', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide" checked={d.aideAlim === 'aide'} onChange={() => setDetailValue(row.id, 'aideAlim', 'aide')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Hydratation">
+                                  <MiniCheck label="Autonome" checked={d.hydratation === 'autonome'} onChange={() => setDetailValue(row.id, 'hydratation', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide" checked={d.hydratation === 'aide'} onChange={() => setDetailValue(row.id, 'hydratation', 'aide')} disabled={ro} />
+                                  <MiniCheck label="Pétillante" checked={d.hydratation === 'petillante'} onChange={() => setDetailValue(row.id, 'hydratation', 'petillante')} disabled={ro} />
+                                  <MiniCheck label="Gélifiée" checked={d.hydratation === 'gelifiee'} onChange={() => setDetailValue(row.id, 'hydratation', 'gelifiee')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Dentier">
+                                  <MiniCheck label="Haut" checked={(d.dentier ?? []).includes('haut')} onChange={() => toggleDetailItem(row.id, 'dentier', 'haut')} disabled={ro} />
+                                  <MiniCheck label="Bas" checked={(d.dentier ?? []).includes('bas')} onChange={() => toggleDetailItem(row.id, 'dentier', 'bas')} disabled={ro} />
+                                </DetailGroup>
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        {/* Élimination */}
+                        <td className="border border-slate-200 px-2 py-1.5 align-top">
+                          {(() => {
+                            const d = row.details ?? {};
+                            const ro = !canEditSoinCols;
+                            return (
+                              <div className="space-y-1.5">
+                                <DetailGroup title="Urinaire">
+                                  <MiniCheck label="Continent" checked={d.urinaire === 'continent'} onChange={() => setDetailValue(row.id, 'urinaire', 'continent')} disabled={ro} />
+                                  <MiniCheck label="Incontinent" checked={d.urinaire === 'incontinent'} onChange={() => setDetailValue(row.id, 'urinaire', 'incontinent')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Fécale">
+                                  <MiniCheck label="Continent" checked={d.fecale === 'continent'} onChange={() => setDetailValue(row.id, 'fecale', 'continent')} disabled={ro} />
+                                  <MiniCheck label="Incontinent" checked={d.fecale === 'incontinent'} onChange={() => setDetailValue(row.id, 'fecale', 'incontinent')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Matériel">
+                                  <MiniCheck label="Urinal" checked={(d.elimMateriel ?? []).includes('urinal')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'urinal')} disabled={ro} />
+                                  <MiniCheck label="Bassin" checked={(d.elimMateriel ?? []).includes('bassin')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'bassin')} disabled={ro} />
+                                  <MiniCheck label="Chaise percée" checked={(d.elimMateriel ?? []).includes('chaise-percee')} onChange={() => toggleDetailItem(row.id, 'elimMateriel', 'chaise-percee')} disabled={ro} />
+                                </DetailGroup>
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        {/* Hygiène et confort */}
+                        <td className="border border-slate-200 px-2 py-1.5 align-top">
+                          {(() => {
+                            const d = row.details ?? {};
+                            const ro = !canEditSoinCols;
+                            return (
+                              <div className="space-y-1.5">
+                                <DetailGroup title="App. auditif">
+                                  <MiniCheck label="Oui" checked={d.appareilAuditif === 'oui'} onChange={() => setDetailValue(row.id, 'appareilAuditif', 'oui')} disabled={ro} />
+                                  <MiniCheck label="Non" checked={d.appareilAuditif === 'non'} onChange={() => setDetailValue(row.id, 'appareilAuditif', 'non')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Lunettes">
+                                  <MiniCheck label="Oui" checked={d.lunettes === 'oui'} onChange={() => setDetailValue(row.id, 'lunettes', 'oui')} disabled={ro} />
+                                  <MiniCheck label="Non" checked={d.lunettes === 'non'} onChange={() => setDetailValue(row.id, 'lunettes', 'non')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Hygiène">
+                                  <MiniCheck label="Autonome" checked={d.hygiene === 'autonome'} onChange={() => setDetailValue(row.id, 'hygiene', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={d.hygiene === 'partielle'} onChange={() => setDetailValue(row.id, 'hygiene', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={d.hygiene === 'totale'} onChange={() => setDetailValue(row.id, 'hygiene', 'totale')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Habillage">
+                                  <MiniCheck label="Autonome" checked={d.habillage === 'autonome'} onChange={() => setDetailValue(row.id, 'habillage', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={d.habillage === 'partielle'} onChange={() => setDetailValue(row.id, 'habillage', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={d.habillage === 'totale'} onChange={() => setDetailValue(row.id, 'habillage', 'totale')} disabled={ro} />
+                                </DetailGroup>
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        {/* Locomotion / Mobilisation */}
+                        <td className="border border-slate-200 px-2 py-1.5 align-top">
+                          {(() => {
+                            const d = row.details ?? {};
+                            const ro = !canEditSoinCols;
+                            return (
+                              <div className="space-y-1.5">
+                                <DetailGroup title="Locomotion">
+                                  <MiniCheck label="Autonome" checked={d.locomotion === 'autonome'} onChange={() => setDetailValue(row.id, 'locomotion', 'autonome')} disabled={ro} />
+                                  <MiniCheck label="Aide part." checked={d.locomotion === 'partielle'} onChange={() => setDetailValue(row.id, 'locomotion', 'partielle')} disabled={ro} />
+                                  <MiniCheck label="Aide tot." checked={d.locomotion === 'totale'} onChange={() => setDetailValue(row.id, 'locomotion', 'totale')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Matériel">
+                                  <MiniCheck label="Canne" checked={(d.locoMateriel ?? []).includes('canne')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'canne')} disabled={ro} />
+                                  <MiniCheck label="Déambulateur" checked={(d.locoMateriel ?? []).includes('deambulateur')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'deambulateur')} disabled={ro} />
+                                  <MiniCheck label="Fauteuil roul." checked={(d.locoMateriel ?? []).includes('fauteuil-roulant')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'fauteuil-roulant')} disabled={ro} />
+                                  <MiniCheck label="Verticalisateur" checked={(d.locoMateriel ?? []).includes('verticalisateur')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'verticalisateur')} disabled={ro} />
+                                  <MiniCheck label="Lève-malade" checked={(d.locoMateriel ?? []).includes('leve-malade')} onChange={() => toggleDetailItem(row.id, 'locoMateriel', 'leve-malade')} disabled={ro} />
+                                </DetailGroup>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Matin */}

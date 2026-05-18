@@ -106,6 +106,12 @@ function todayFR(): string {
   return new Date().toLocaleDateString('fr-FR');
 }
 
+function isFemaleTitle(title?: string): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase().replace(/\./g, '').trim();
+  return t === 'mme' || t === 'me' || t === 'mlle' || t === 'madame' || t === 'mademoiselle';
+}
+
 // Parse "covid:Refus famille C|grippe:Accepte G|..." → { covid, grippe }
 function parseVaccInfos(infos: string | null | undefined): { covid: string; grippe: string } {
   if (!infos) return { covid: '', grippe: '' };
@@ -250,6 +256,7 @@ export default function MutationPage() {
     personnePrevenue: false,
     tutellePrevenue: false,
     suiviSocial: '',
+    situationFamiliale: '' as '' | 'marie' | 'celibataire' | 'divorce' | 'veuf',
     kineActif: null as boolean | null,
     kineDetail: '',
     motif: '',
@@ -607,16 +614,29 @@ export default function MutationPage() {
               {/* ── ENVIRONNEMENT ── */}
               <SectionTitle>Environnement familial et social</SectionTitle>
               <div className="space-y-1.5">
+                {(() => {
+                  const fem = isFemaleTitle(selected.title);
+                  return (
+                    <div className="flex items-center gap-3 text-sm flex-wrap">
+                      <span className="font-semibold">Situation familiale :</span>
+                      <CheckOption label={fem ? 'Mariée' : 'Marié'} checked={form.situationFamiliale === 'marie'} onChange={v => patch('situationFamiliale', v ? 'marie' : '')} />
+                      <CheckOption label="Célibataire" checked={form.situationFamiliale === 'celibataire'} onChange={v => patch('situationFamiliale', v ? 'celibataire' : '')} />
+                      <CheckOption label={fem ? 'Divorcée' : 'Divorcé'} checked={form.situationFamiliale === 'divorce'} onChange={v => patch('situationFamiliale', v ? 'divorce' : '')} />
+                      <CheckOption label={fem ? 'Veuve' : 'Veuf'} checked={form.situationFamiliale === 'veuf'} onChange={v => patch('situationFamiliale', v ? 'veuf' : '')} />
+                    </div>
+                  );
+                })()}
                 <FieldRow label="Environnement :">Vit en établissement EHPAD La Fourrier</FieldRow>
-                <div>
-                  <Label className="text-sm font-semibold">Suivi social :</Label>
-                  <Input
-                    value={form.suiviSocial || ctx?.niveau?.tutelle || ''}
-                    onChange={e => patch('suiviSocial', e.target.value)}
-                    placeholder={ctx?.niveau?.tutelle ? `Tutelle : ${ctx.niveau.tutelle}` : ''}
-                    className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
+                {ctx?.niveau?.tutelle && (
+                  <div>
+                    <Label className="text-sm font-semibold">Suivi social :</Label>
+                    <Input
+                      value={form.suiviSocial || ctx.niveau.tutelle}
+                      onChange={e => patch('suiviSocial', e.target.value)}
+                      className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* ── INTERVENANTS ── */}
