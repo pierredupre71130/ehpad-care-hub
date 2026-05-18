@@ -410,14 +410,22 @@ function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false
   const mat = asArr(details.locoMateriel);
   if (mat.includes('verticalisateur')) parts.push('Mobilisation pour soins au verticalisateur');
   if (mat.includes('leve-malade')) parts.push('Mobilisation pour soins au lève-malade');
-  if (mat.includes('canne')) parts.push('Se déplace avec canne');
-  if (mat.includes('deambulateur')) parts.push('Se déplace en déambulateur');
-  if (mat.includes('fauteuil-roulant')) parts.push('Se déplace en fauteuil roulant');
+  const seDeplace: string[] = [];
+  if (mat.includes('canne')) seDeplace.push('avec canne');
+  if (mat.includes('deambulateur')) seDeplace.push('en déambulateur');
+  if (mat.includes('fauteuil-roulant')) seDeplace.push('en fauteuil roulant');
   const loco = asArr(details.locomotion);
-  const hasSeDeplaceMaterial = mat.includes('canne') || mat.includes('deambulateur') || mat.includes('fauteuil-roulant');
-  if (loco.includes('autonome')) parts.push(hasSeDeplaceMaterial ? 'sans aide' : 'Se déplace sans aide');
-  else if (loco.includes('partielle')) parts.push('peut nécessiter aide au déplacement');
-  else if (loco.includes('totale')) parts.push(isFemale ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
+  if (seDeplace.length > 0) {
+    const base = `Se déplace ${seDeplace.join(' ou ')}`;
+    if (loco.includes('autonome')) parts.push(`${base} sans aide`);
+    else if (loco.includes('partielle')) parts.push(`${base} et peut nécessiter aide au déplacement`);
+    else if (loco.includes('totale')) parts.push(`${base} et ne peut se mouvoir seul${isFemale ? 'e' : ''}`);
+    else parts.push(base);
+  } else {
+    if (loco.includes('autonome')) parts.push('Se déplace sans aide');
+    else if (loco.includes('partielle')) parts.push('peut nécessiter aide au déplacement');
+    else if (loco.includes('totale')) parts.push(isFemale ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
+  }
   return parts.join(' - ');
 }
 
