@@ -526,21 +526,6 @@ function HeroCard({ resident, fem }: { resident: Resident; fem: boolean }) {
               ({fem ? 'née' : 'né'} {resident.maiden_name.toUpperCase()})
             </p>
           )}
-          <div className="flex flex-wrap gap-3 mt-3 text-xs">
-            <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/20">
-              Chambre {resident.room} · {resident.floor}
-            </span>
-            {resident.date_naissance && (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/20">
-                {fem ? 'Née' : 'Né'} le {formatDate(resident.date_naissance)} · {calcAge(resident.date_naissance)}
-              </span>
-            )}
-            {resident.date_entree && (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/20">
-                {fem ? 'Entrée' : 'Entré'} le {formatDate(resident.date_entree)}
-              </span>
-            )}
-          </div>
         </div>
       </div>
     </div>
