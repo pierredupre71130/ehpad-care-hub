@@ -86,6 +86,30 @@ function CaduceusIcon() {
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
+interface PersonneAPrevenir {
+  nom?: string;
+  prenom?: string;
+  adresse?: string;
+  tel?: string;
+  mobile?: string;
+  lien?: string;
+  personne_confiance?: boolean;
+}
+
+interface AutrePersonne {
+  nom?: string;
+  prenom?: string;
+  lien?: string;
+  adresse?: string;
+  tel?: string;
+}
+
+interface DSI {
+  personne_prevenir?: PersonneAPrevenir;
+  autres_personnes?: AutrePersonne[];
+  motif_entree?: string;
+}
+
 interface Resident {
   id: string;
   room: string;
@@ -124,6 +148,8 @@ interface Resident {
   date_sortie?: string | null;
   // Photo
   photo_url?: string;
+  // DSI — Dossier de Soins Infirmiers
+  dsi?: DSI | null;
 }
 
 type FloorFilter = 'TOUS' | 'RDC' | '1ER';
@@ -197,6 +223,7 @@ const EMPTY_FORM: Omit<Resident, 'id'> = {
   anticoagulants: false, appel_nuit: false,
   chaussettes_de_contention: false, bas_de_contention: false, bande_de_contention: false,
   archived: false, date_sortie: '',
+  dsi: { personne_prevenir: {}, autres_personnes: [], motif_entree: '' },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -827,6 +854,156 @@ function EditForm({
             className="text-sm resize-none"
           />
         </section>
+
+        {/* ══ 6. DSI — Dossier de Soins Infirmiers ═════════════ */}
+        {(() => {
+          const dsi = form.dsi ?? {};
+          const pp = dsi.personne_prevenir ?? {};
+          const autres = dsi.autres_personnes ?? [];
+          const setDsi = (next: Partial<DSI>) =>
+            patch({ dsi: { ...dsi, ...next } });
+          const setPP = (next: Partial<PersonneAPrevenir>) =>
+            setDsi({ personne_prevenir: { ...pp, ...next } });
+          const updateAutre = (i: number, next: Partial<AutrePersonne>) => {
+            const copy = [...autres];
+            copy[i] = { ...copy[i], ...next };
+            setDsi({ autres_personnes: copy });
+          };
+          const addAutre = () => setDsi({ autres_personnes: [...autres, {}] });
+          const removeAutre = (i: number) =>
+            setDsi({ autres_personnes: autres.filter((_, j) => j !== i) });
+
+          return (
+            <section>
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+                DSI — Dossier de Soins Infirmiers
+              </h3>
+
+              {/* Personne à prévenir */}
+              <div className="mb-5">
+                <Label className="text-xs font-semibold text-slate-700 mb-2 block">
+                  Personne à prévenir / informer prioritairement
+                </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Nom</Label>
+                    <Input value={pp.nom ?? ''} onChange={e => setPP({ nom: e.target.value })} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Prénom</Label>
+                    <Input value={pp.prenom ?? ''} onChange={e => setPP({ prenom: e.target.value })} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Lien de parenté</Label>
+                    <Input value={pp.lien ?? ''} onChange={e => setPP({ lien: e.target.value })} placeholder="Ex : fils, épouse…" className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2 sm:col-span-3">
+                    <Label className="text-[10px] text-slate-500">Adresse</Label>
+                    <Input value={pp.adresse ?? ''} onChange={e => setPP({ adresse: e.target.value })} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Téléphone fixe</Label>
+                    <Input value={pp.tel ?? ''} onChange={e => setPP({ tel: e.target.value })} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Téléphone portable</Label>
+                    <Input value={pp.mobile ?? ''} onChange={e => setPP({ mobile: e.target.value })} className="h-9 text-sm" />
+                  </div>
+                  <div className="flex items-end pb-1">
+                    <CheckField
+                      id="f_dsi_personne_confiance"
+                      label="Personne de confiance"
+                      checked={pp.personne_confiance ?? false}
+                      onChange={v => setPP({ personne_confiance: v })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Autres personnes pouvant être informées */}
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Autres personnes pouvant être informées
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addAutre}
+                    className="h-7 text-xs gap-1"
+                  >
+                    + Ajouter une personne
+                  </Button>
+                </div>
+                {autres.length === 0 && (
+                  <p className="text-xs text-slate-400 italic">Aucune autre personne renseignée.</p>
+                )}
+                <div className="space-y-3">
+                  {autres.map((a, i) => (
+                    <div key={i} className="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-semibold text-slate-500">Personne #{i + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAutre(i)}
+                          className="text-[11px] text-red-500 hover:text-red-700"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Nom</Label>
+                          <Input value={a.nom ?? ''} onChange={e => updateAutre(i, { nom: e.target.value })} className="h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Prénom</Label>
+                          <Input value={a.prenom ?? ''} onChange={e => updateAutre(i, { prenom: e.target.value })} className="h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Lien</Label>
+                          <Input value={a.lien ?? ''} onChange={e => updateAutre(i, { lien: e.target.value })} className="h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1 col-span-2">
+                          <Label className="text-[10px] text-slate-500">Adresse</Label>
+                          <Input value={a.adresse ?? ''} onChange={e => updateAutre(i, { adresse: e.target.value })} className="h-9 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-slate-500">Téléphone</Label>
+                          <Input value={a.tel ?? ''} onChange={e => updateAutre(i, { tel: e.target.value })} className="h-9 text-sm" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Motif et date d'entrée */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">Motif d'entrée</Label>
+                  <Textarea
+                    value={dsi.motif_entree ?? ''}
+                    onChange={e => setDsi({ motif_entree: e.target.value })}
+                    rows={2}
+                    className="text-sm resize-y"
+                    placeholder="Raison de l'admission en EHPAD…"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700">Date d'entrée</Label>
+                  <Input
+                    type="date"
+                    value={form.date_entree ?? ''}
+                    onChange={e => patch({ date_entree: e.target.value })}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ══ ACTIONS ══════════════════════════════════════════ */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
