@@ -606,19 +606,12 @@ export default function PrisesEnChargePage() {
     );
   };
 
-  // Patch partiel de la colonne details (JSONB)
-  // Met aussi à jour la colonne matin avec un préfixe auto-généré
-  // (Alitement / Toilette complète / Aide à la toilette) selon les cases cochées.
+  // Patch partiel de la colonne details (JSONB).
+  // N'écrit plus dans matin — le texte auto est calculé à l'affichage.
   const updateDetails = async (id: string, patch: Partial<PecDetails>) => {
     const row = rows.find(r => r.id === id);
     const current = row?.details ?? {};
     const merged: PecDetails = { ...current, ...patch };
-
-    // Recalcule le préfixe auto
-    const oldAuto = current._autoMatin ?? '';
-    const resident = row?.chambre ? residentByRoom(row.chambre) : undefined;
-    const newAuto = buildAutoMatin(merged, isFemaleTitle(resident?.title));
-    merged._autoMatin = newAuto;
 
     // Nettoyer les valeurs vides / arrays vides
     (Object.keys(merged) as (keyof PecDetails)[]).forEach(k => {
@@ -628,38 +621,12 @@ export default function PrisesEnChargePage() {
       }
     });
 
-    // Reconstruit la colonne matin : retire l'ancien préfixe auto et préfixe le nouveau
-    // Le strip exige que l'ancien auto soit suivi de " - " ou de la fin de chaîne,
-    // pour éviter de couper "Aide à la toilette" dans "Aide à la toilette au lit".
-    let newMatin = row?.matin ?? '';
-    if (oldAuto) {
-      const afterOld = newMatin.slice(oldAuto.length);
-      if (newMatin === oldAuto) {
-        newMatin = '';
-      } else if (afterOld.startsWith(' - ')) {
-        newMatin = afterOld.slice(3);
-      }
-      // sinon le matin ne commence pas exactement par l'ancien auto → on ne touche pas
-    }
-    if (newAuto) {
-      newMatin = newMatin ? `${newAuto} - ${newMatin}` : newAuto;
-    }
-    const matinChanged = newMatin !== (row?.matin ?? '');
-
     const sb = createClient();
     const { error } = await sb.rpc('update_pec_details', { p_id: id, p_details: merged });
     if (error) { toast.error(error.message); return; }
 
-    if (matinChanged) {
-      const { error: e2 } = await sb
-        .from('prise_en_charge')
-        .update({ matin: newMatin, updated_at: new Date().toISOString() })
-        .eq('id', id);
-      if (e2) { toast.error(e2.message); return; }
-    }
-
     qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) =>
-      prev.map(r => r.id === id ? { ...r, details: merged, matin: newMatin } : r)
+      prev.map(r => r.id === id ? { ...r, details: merged } : r)
     );
   };
 
@@ -744,7 +711,7 @@ export default function PrisesEnChargePage() {
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
         ${nomCell}
-        <td>${esc(row.matin || '')}</td>
+        <td>${esc((() => { const a = buildAutoMatin(row.details, isFemaleTitle(matched?.title)); const m = row.matin || ''; return a ? (m ? a + ' - ' + m : a) : m; })())}</td>
         <td>${esc(row.apres_midi || '')}</td>
         <td class="prot">${esc(protText)}</td>
       </tr>`;
@@ -1271,11 +1238,24 @@ export default function PrisesEnChargePage() {
 
                         {/* Matin */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
-                          <EditableCell
-                            value={row.matin}
-                            onSave={v => updateField(row.id, 'matin', v)}
-                            readOnly={!canEditSoinCols}
-                          />
+                          {(() => {
+                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const auto = buildAutoMatin(row.details, isFemaleTitle(matched?.title));
+                            return (
+                              <div className="space-y-1">
+                                {auto && (
+                                  <div className="text-[11px] text-rose-700 font-medium leading-snug border-b border-rose-100 pb-1">
+                                    {auto}
+                                  </div>
+                                )}
+                                <EditableCell
+                                  value={row.matin}
+                                  onSave={v => updateField(row.id, 'matin', v)}
+                                  readOnly={!canEditSoinCols}
+                                />
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Après-midi / Soir */}
