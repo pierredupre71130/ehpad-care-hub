@@ -1262,25 +1262,34 @@ export default function PrisesEnChargePage() {
                             const d = row.details ?? {};
                             const ro = !canEditSoinCols;
                             return (
-                              <div className="space-y-1">
-                                {(['Jour', 'Nuit'] as const).map(period => {
-                                  const key = period === 'Jour' ? 'protectionJour' : 'protectionNuit';
-                                  return (
-                                    <div key={period} className="flex items-center gap-1">
-                                      <span className="text-[10px] text-slate-500 w-5 shrink-0 font-medium">{period[0]}</span>
-                                      <select
-                                        value={(d[key] as string) ?? ''}
-                                        onChange={e => updateDetails(row.id, { [key]: e.target.value })}
-                                        disabled={ro}
-                                        className="flex-1 text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed min-w-0"
-                                      >
-                                        {PROTECTION_OPTIONS.map(opt => (
-                                          <option key={opt} value={opt}>{opt === '' ? '—' : opt}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  );
-                                })}
+                              <div className="space-y-1.5">
+                                {/* Texte libre (données existantes) */}
+                                <EditableCell
+                                  value={row.protection}
+                                  onSave={v => updateField(row.id, 'protection', v)}
+                                  readOnly={ro}
+                                />
+                                {/* Menus Jour / Nuit */}
+                                <div className="border-t border-slate-100 pt-1 space-y-1">
+                                  {(['Jour', 'Nuit'] as const).map(period => {
+                                    const key = period === 'Jour' ? 'protectionJour' : 'protectionNuit';
+                                    return (
+                                      <div key={period} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-slate-500 w-5 shrink-0 font-medium">{period[0]}</span>
+                                        <select
+                                          value={(d[key] as string) ?? ''}
+                                          onChange={e => updateDetails(row.id, { [key]: e.target.value })}
+                                          disabled={ro}
+                                          className="flex-1 text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed min-w-0"
+                                        >
+                                          {PROTECTION_OPTIONS.map(opt => (
+                                            <option key={opt} value={opt}>{opt === '' ? '—' : opt}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             );
                           })()}
