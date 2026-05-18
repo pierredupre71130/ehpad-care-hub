@@ -382,7 +382,13 @@ function asArr(v: unknown): string[] {
   return [];
 }
 
-function buildAutoMatin(details: PecDetails | null | undefined): string {
+function isFemaleTitle(title?: string): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase().replace(/\./g, '').trim();
+  return t === 'mme' || t === 'me' || t === 'mlle' || t === 'madame' || t === 'mademoiselle';
+}
+
+function buildAutoMatin(details: PecDetails | null | undefined, isFemale = false): string {
   if (!details) return '';
   const parts: string[] = [];
   if (asArr(details.locomotion).includes('alitement')) parts.push('Alitement');
@@ -397,6 +403,10 @@ function buildAutoMatin(details: PecDetails | null | undefined): string {
     else if (tlt.includes('sdb')) parts.push('Aide à la toilette SDB');
     else parts.push('Aide à la toilette');
   }
+  const hab = asArr(details.habillage);
+  if (hab.includes('autonome')) parts.push(isFemale ? "S'habille seule" : "S'habille seul");
+  else if (hab.includes('partielle')) parts.push("Aide à l'habillage");
+  else if (hab.includes('totale')) parts.push("Aide totale à l'habillage");
   return parts.join(' - ');
 }
 
@@ -596,7 +606,8 @@ export default function PrisesEnChargePage() {
 
     // Recalcule le préfixe auto
     const oldAuto = current._autoMatin ?? '';
-    const newAuto = buildAutoMatin(merged);
+    const resident = row?.chambre ? residentByRoom(row.chambre) : undefined;
+    const newAuto = buildAutoMatin(merged, isFemaleTitle(resident?.title));
     merged._autoMatin = newAuto;
 
     // Nettoyer les valeurs vides / arrays vides
