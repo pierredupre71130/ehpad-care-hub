@@ -117,6 +117,7 @@ interface Resident {
   first_name: string;
   last_name: string;
   maiden_name?: string;
+  situation_familiale?: '' | 'marie' | 'celibataire' | 'divorce' | 'veuf';
   date_naissance: string | null;
   date_entree: string | null;
   floor: 'RDC' | '1ER';
@@ -214,6 +215,7 @@ const TRAITEMENT_BADGES = [
 
 const EMPTY_FORM: Omit<Resident, 'id'> = {
   room: '', title: 'Mme', first_name: '', last_name: '', maiden_name: '',
+  situation_familiale: '',
   date_naissance: '', date_entree: '',
   floor: 'RDC', section: 'MAPAD', sort_order: 999,
   annotations: '', medecin: '', referent: '', antecedents: '', allergie_medicamenteuse: '',
@@ -670,6 +672,48 @@ function EditForm({
               />
             </div>
           </div>
+
+          {/* Situation familiale (accordée selon le sexe) */}
+          {(() => {
+            const t = (form.title ?? '').toLowerCase().replace(/\./g, '').trim();
+            const fem = t === 'mme' || t === 'me' || t === 'mlle' || t === 'madame' || t === 'mademoiselle';
+            const sit = form.situation_familiale ?? '';
+            const set = (v: typeof sit) =>
+              patch({ situation_familiale: sit === v ? '' : v });
+            return (
+              <div className="mt-3">
+                <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+                  Situation familiale
+                </Label>
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  <CheckField
+                    id="f_sit_marie"
+                    label={fem ? 'Mariée' : 'Marié'}
+                    checked={sit === 'marie'}
+                    onChange={() => set('marie')}
+                  />
+                  <CheckField
+                    id="f_sit_celibataire"
+                    label="Célibataire"
+                    checked={sit === 'celibataire'}
+                    onChange={() => set('celibataire')}
+                  />
+                  <CheckField
+                    id="f_sit_divorce"
+                    label={fem ? 'Divorcée' : 'Divorcé'}
+                    checked={sit === 'divorce'}
+                    onChange={() => set('divorce')}
+                  />
+                  <CheckField
+                    id="f_sit_veuf"
+                    label={fem ? 'Veuve' : 'Veuf'}
+                    checked={sit === 'veuf'}
+                    onChange={() => set('veuf')}
+                  />
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         {/* ══ 2. INFORMATIONS MÉDICALES ════════════════════════ */}
