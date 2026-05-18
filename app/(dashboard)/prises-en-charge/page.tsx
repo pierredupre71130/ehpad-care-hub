@@ -29,8 +29,12 @@ interface PecDetails {
   habillage?: string[];
   locomotion?: string[];
   locoMateriel?: string[];
+  protectionJour?: string;
+  protectionNuit?: string;
   _autoMatin?: string;
 }
+
+const PROTECTION_OPTIONS = ['', '∅', 'Anat.', 'Pull ups', 'T1 complt', 'T2 complt', 'T3 complt', 'T4 complt', 'Perso.'];
 
 interface PecRow {
   id: string;
@@ -699,13 +703,19 @@ export default function PrisesEnChargePage() {
         <div class="last">${esc(last) || '—'}${age !== null ? ` <span class="age">(${age} ans)</span>` : ''}</div>
         ${first ? `<div class="first">${esc(first)}</div>` : ''}
       </td>`;
+      const jourProt = (row.details?.protectionJour as string) ?? '';
+      const nuitProt = (row.details?.protectionNuit as string) ?? '';
+      const protText = [
+        jourProt ? `J : ${jourProt}` : '',
+        nuitProt ? `N : ${nuitProt}` : '',
+      ].filter(Boolean).join(' / ') || row.protection || '';
       return `<tr>
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
         ${nomCell}
         <td>${esc(row.matin || '')}</td>
         <td>${esc(row.apres_midi || '')}</td>
-        <td class="prot">${esc(row.protection || '')}</td>
+        <td class="prot">${esc(protText)}</td>
       </tr>`;
     }).join('');
 
@@ -1248,11 +1258,32 @@ export default function PrisesEnChargePage() {
 
                         {/* Protection */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
-                          <EditableCell
-                            value={row.protection}
-                            onSave={v => updateField(row.id, 'protection', v)}
-                            readOnly={!canEditSoinCols}
-                          />
+                          {(() => {
+                            const d = row.details ?? {};
+                            const ro = !canEditSoinCols;
+                            return (
+                              <div className="space-y-1">
+                                {(['Jour', 'Nuit'] as const).map(period => {
+                                  const key = period === 'Jour' ? 'protectionJour' : 'protectionNuit';
+                                  return (
+                                    <div key={period} className="flex items-center gap-1">
+                                      <span className="text-[10px] text-slate-500 w-5 shrink-0 font-medium">{period[0]}</span>
+                                      <select
+                                        value={(d[key] as string) ?? ''}
+                                        onChange={e => updateDetails(row.id, { [key]: e.target.value })}
+                                        disabled={ro}
+                                        className="flex-1 text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed min-w-0"
+                                      >
+                                        {PROTECTION_OPTIONS.map(opt => (
+                                          <option key={opt} value={opt}>{opt === '' ? '—' : opt}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                       </tr>
