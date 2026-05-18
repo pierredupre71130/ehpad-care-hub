@@ -350,14 +350,12 @@ function EditableCell({
 
 async function fetchRows(floor: Floor): Promise<PecRow[]> {
   const sb = createClient();
-  const { data, error } = await sb
-    .from('prise_en_charge')
-    .select('*')
-    .eq('floor', floor)
-    .order('table_index')
-    .order('row_order');
+  // Utilise une fonction RPC pour contourner le cache schéma PostgREST
+  // (nécessaire pour lire la colonne JSONB details)
+  const { data, error } = await sb.rpc('get_pec_rows', { p_floor: floor });
   if (error) throw new Error(error.message);
-  return (data ?? []) as PecRow[];
+  const rows = Array.isArray(data) ? data : (data ? [data] : []);
+  return rows as PecRow[];
 }
 
 function ageFromBirth(iso: string | null | undefined): number | null {
@@ -569,10 +567,8 @@ export default function PrisesEnChargePage() {
       }
     });
     const sb = createClient();
-    const { error } = await sb
-      .from('prise_en_charge')
-      .update({ details: next, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    // RPC pour contourner le cache schéma PostgREST sur la colonne details
+    const { error } = await sb.rpc('update_pec_details', { p_id: id, p_details: next });
     if (error) { toast.error(error.message); return; }
     qc.setQueryData(['prise_en_charge', activeFloor], (prev: PecRow[] = []) =>
       prev.map(r => r.id === id ? { ...r, details: next } : r)
