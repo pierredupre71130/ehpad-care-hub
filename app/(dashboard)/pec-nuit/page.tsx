@@ -443,14 +443,14 @@ function SectionTable({
         </span>
       </header>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[72vh]">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-100 text-slate-600">
-              <th className="border border-slate-200 px-2 py-2 text-left font-semibold min-w-[180px]">Nom</th>
-              <th className="border border-slate-200 px-2 py-2 text-center font-semibold min-w-[70px]">Chambre</th>
+            <tr className="text-slate-600">
+              <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 text-left font-semibold min-w-[180px] bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">Nom</th>
+              <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 text-center font-semibold min-w-[70px] bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">Chambre</th>
               {columns.map(col => (
-                <th key={col.key} className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap">
+                <th key={col.key} className="sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">
                   <div className="flex items-center justify-center gap-1">
                     <span>{col.label}</span>
                     {canEdit && (
@@ -465,10 +465,10 @@ function SectionTable({
                   </div>
                 </th>
               ))}
-              <th className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px]">
+              <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px] shadow-[inset_0_-1px_0_#cbd5e1]">
                 Protec. Jr
               </th>
-              <th className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px]">
+              <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px] shadow-[inset_0_-1px_0_#cbd5e1]">
                 Protec. Nuit
               </th>
             </tr>
