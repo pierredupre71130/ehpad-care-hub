@@ -42,6 +42,11 @@ interface Resident {
 }
 /** residentId → colKey → valeur */
 type ValuesMap = Record<string, Record<string, number | boolean>>;
+/** residentId → { jour, nuit } — alimente la colonne Protection de Prises en Charge */
+type ProtectionsMap = Record<string, { jour?: string; nuit?: string }>;
+
+/** Choix de protection (jour / nuit) — partagés avec Prises en Charge */
+const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 'Pants M', 'Perso.'];
 
 const FLOORS: Floor[] = ['RDC', '1ER'];
 const SECTIONS: { key: Section; label: string }[] = [
@@ -158,6 +163,11 @@ export default function PecNuitPage() {
     queryFn: () => fetchFloorValues(activeFloor),
   });
 
+  const { data: protections = {} } = useQuery({
+    queryKey: ['pec_nuit_protections'],
+    queryFn: () => fetchSetting<ProtectionsMap>('pec_nuit_protections', {}),
+  });
+
   // ── Mutations colonnes ────────────────────────────────────
   const mutateColumns = async (updater: (c: Column[]) => Column[]) => {
     const current = qc.getQueryData<Column[]>(['pec_nuit_columns']) ?? DEFAULT_COLUMNS;
@@ -203,6 +213,24 @@ export default function PecNuitPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erreur de sauvegarde');
       qc.invalidateQueries({ queryKey: ['pec_nuit_values', activeFloor] });
+    }
+  };
+
+  // ── Mutation protections (jour / nuit) ────────────────────
+  const updateProtection = async (
+    residentId: string, period: 'jour' | 'nuit', value: string,
+  ) => {
+    const current = qc.getQueryData<ProtectionsMap>(['pec_nuit_protections']) ?? {};
+    const next: ProtectionsMap = {
+      ...current,
+      [residentId]: { ...(current[residentId] ?? {}), [period]: value },
+    };
+    qc.setQueryData(['pec_nuit_protections'], next);
+    try {
+      await saveSetting('pec_nuit_protections', next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erreur de sauvegarde');
+      qc.invalidateQueries({ queryKey: ['pec_nuit_protections'] });
     }
   };
 
@@ -325,9 +353,11 @@ export default function PecNuitPage() {
                 columns={columns}
                 residents={secResidents}
                 values={values?.[sec.key] ?? {}}
+                protections={protections}
                 canEdit={canEdit}
                 onRemoveColumn={removeColumn}
                 onUpdateCell={(residentId, colKey, v) => updateCell(sec.key, residentId, colKey, v)}
+                onUpdateProtection={updateProtection}
               />
             );
           })
@@ -342,16 +372,19 @@ export default function PecNuitPage() {
 // ─────────────────────────────────────────────────────────────
 
 function SectionTable({
-  title, floor, columns, residents, values, canEdit, onRemoveColumn, onUpdateCell,
+  title, floor, columns, residents, values, protections, canEdit,
+  onRemoveColumn, onUpdateCell, onUpdateProtection,
 }: {
   title: string;
   floor: Floor;
   columns: Column[];
   residents: Resident[];
   values: ValuesMap;
+  protections: ProtectionsMap;
   canEdit: boolean;
   onRemoveColumn: (key: string) => void;
   onUpdateCell: (residentId: string, colKey: string, value: number | boolean) => void;
+  onUpdateProtection: (residentId: string, period: 'jour' | 'nuit', value: string) => void;
 }) {
   return (
     <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
@@ -386,13 +419,19 @@ function SectionTable({
                   </div>
                 </th>
               ))}
+              <th className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px]">
+                Protec. Jr
+              </th>
+              <th className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px]">
+                Protec. Nuit
+              </th>
             </tr>
           </thead>
           <tbody>
             {residents.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + 2}
+                  colSpan={columns.length + 4}
                   className="border border-slate-200 px-3 py-6 text-center text-slate-400 italic"
                 >
                   Aucun résident dans cette section.
@@ -401,6 +440,7 @@ function SectionTable({
             ) : (
               residents.map(r => {
                 const rv = values[r.id] ?? {};
+                const prot = protections[r.id] ?? {};
                 return (
                   <tr key={r.id} className="hover:bg-indigo-50/40">
                     <td className="border border-slate-200 px-2 py-1.5">
@@ -429,6 +469,20 @@ function SectionTable({
                         )}
                       </td>
                     ))}
+                    <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
+                      <ProtecSelect
+                        value={prot.jour ?? ''}
+                        disabled={!canEdit}
+                        onChange={v => onUpdateProtection(r.id, 'jour', v)}
+                      />
+                    </td>
+                    <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
+                      <ProtecSelect
+                        value={prot.nuit ?? ''}
+                        disabled={!canEdit}
+                        onChange={v => onUpdateProtection(r.id, 'nuit', v)}
+                      />
+                    </td>
                   </tr>
                 );
               })
@@ -470,6 +524,23 @@ function NumberCell({
         <Plus className="h-3.5 w-3.5" />
       </button>
     </div>
+  );
+}
+
+function ProtecSelect({
+  value, disabled, onChange,
+}: { value: string; disabled: boolean; onChange: (v: string) => void }) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={e => onChange(e.target.value)}
+      className="w-full text-[12px] border border-slate-200 rounded px-1 py-1 bg-white focus:outline-none focus:border-indigo-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
+    >
+      {PROTECTION_CHOICES.map(opt => (
+        <option key={opt} value={opt}>{opt === '' ? '—' : opt}</option>
+      ))}
+    </select>
   );
 }
 

@@ -29,12 +29,8 @@ interface PecDetails {
   habillage?: string[];
   locomotion?: string[];
   locoMateriel?: string[];
-  protectionJour?: string;
-  protectionNuit?: string;
   _autoMatin?: string;
 }
-
-const PROTECTION_OPTIONS = ['', '∅', 'Anat.', 'Pull ups', 'T1 complt', 'T2 complt', 'T3 complt', 'T4 complt', 'Perso.'];
 
 interface PecRow {
   id: string;
@@ -571,6 +567,16 @@ export default function PrisesEnChargePage() {
     queryFn: fetchResidents,
   });
 
+  // Protections (Jour / Nuit) gérées depuis la page PEC Nuit, clé settings partagée.
+  const { data: pecNuitProtections = {} } = useQuery<Record<string, { jour?: string; nuit?: string }>>({
+    queryKey: ['pec_nuit_protections'],
+    queryFn: async () => {
+      const sb = createClient();
+      const { data } = await sb.from('settings').select('value').eq('key', 'pec_nuit_protections').maybeSingle();
+      return (data?.value as Record<string, { jour?: string; nuit?: string }>) ?? {};
+    },
+  });
+
   // ── Auto-seed si la table est vide pour ce floor ──────────────────────────
   useEffect(() => {
     if (loadingRows || rows.length > 0 || seedingStarted.current) return;
@@ -748,12 +754,13 @@ export default function PrisesEnChargePage() {
         <div class="last">${esc(last) || '—'}${age !== null ? ` <span class="age">(${age} ans)</span>` : ''}</div>
         ${first ? `<div class="first">${esc(first)}</div>` : ''}
       </td>`;
-      const jourProt = (row.details?.protectionJour as string) ?? '';
-      const nuitProt = (row.details?.protectionNuit as string) ?? '';
+      const prot = matched ? pecNuitProtections[matched.id] : undefined;
+      const jourProt = prot?.jour ?? '';
+      const nuitProt = prot?.nuit ?? '';
       const protText = [
         jourProt ? `J : ${jourProt}` : '',
         nuitProt ? `N : ${nuitProt}` : '',
-      ].filter(Boolean).join(' / ') || row.protection || '';
+      ].filter(Boolean).join(' / ');
       return `<tr>
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
@@ -1327,40 +1334,30 @@ export default function PrisesEnChargePage() {
                           })()}
                         </td>
 
-                        {/* Protection */}
+                        {/* Protection — lecture seule, modifiable depuis PEC Nuit */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const d = row.details ?? {};
-                            const ro = !canEditSoinCols;
+                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const prot = matched ? pecNuitProtections[matched.id] : undefined;
+                            const j = prot?.jour ?? '';
+                            const n = prot?.nuit ?? '';
                             return (
-                              <div className="space-y-1.5">
-                                {/* Texte libre (données existantes) */}
-                                <EditableCell
-                                  value={row.protection}
-                                  onSave={v => updateField(row.id, 'protection', v)}
-                                  readOnly={ro}
-                                />
-                                {/* Menus Jour / Nuit */}
-                                <div className="border-t border-slate-100 pt-1 space-y-1">
-                                  {(['Jour', 'Nuit'] as const).map(period => {
-                                    const key = period === 'Jour' ? 'protectionJour' : 'protectionNuit';
-                                    return (
-                                      <div key={period} className="flex items-center gap-1">
-                                        <span className="text-[10px] text-slate-500 w-5 shrink-0 font-medium">{period[0]}</span>
-                                        <select
-                                          value={(d[key] as string) ?? ''}
-                                          onChange={e => updateDetails(row.id, { [key]: e.target.value })}
-                                          disabled={ro}
-                                          className="flex-1 text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed min-w-0"
-                                        >
-                                          {PROTECTION_OPTIONS.map(opt => (
-                                            <option key={opt} value={opt}>{opt === '' ? '—' : opt}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    );
-                                  })}
+                              <div className="space-y-1 text-[11px] leading-snug">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold text-slate-500 w-3 shrink-0">J</span>
+                                  <span className={j ? 'text-slate-800 font-medium' : 'text-slate-300'}>
+                                    {j || '—'}
+                                  </span>
                                 </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold text-slate-500 w-3 shrink-0">N</span>
+                                  <span className={n ? 'text-slate-800 font-medium' : 'text-slate-300'}>
+                                    {n || '—'}
+                                  </span>
+                                </div>
+                                <p className="text-[9px] text-slate-300 italic pt-0.5">
+                                  Modifiable depuis PEC Nuit
+                                </p>
                               </div>
                             );
                           })()}
