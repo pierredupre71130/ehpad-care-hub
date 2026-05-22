@@ -4,15 +4,16 @@
  * PEC Nuit — Prises en charge de nuit.
  * Un tableau de comptage des protections par étage (RDC / 1ER), chaque étage
  * divisé en deux sections : MAPAD et Long séjour.
+ * Les lignes sont les résidents (table residents, filtrés par étage + section).
  * Colonnes numériques (boutons +/-) sauf « Perso. » qui est une case à cocher.
  * Les colonnes sont personnalisables (ajout / suppression).
- * Stockage : table `settings` (clés pec_nuit_*).
+ * Stockage des valeurs : table `settings` (clés pec_nuit_*).
  */
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, Moon, Plus, Minus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Moon, Plus, Minus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -29,12 +30,18 @@ type Section = 'mapad' | 'long';
 type ColType = 'number' | 'check';
 
 interface Column { key: string; label: string; type: ColType; }
-interface NuitRow {
+interface Resident {
   id: string;
-  nom: string;
-  chambre: string;
-  values: Record<string, number | boolean>;
+  room?: string;
+  floor?: string;
+  section?: string;
+  title?: string;
+  first_name?: string;
+  last_name: string;
+  archived?: boolean;
 }
+/** residentId → colKey → valeur */
+type ValuesMap = Record<string, Record<string, number | boolean>>;
 
 const FLOORS: Floor[] = ['RDC', '1ER'];
 const SECTIONS: { key: Section; label: string }[] = [
@@ -55,12 +62,23 @@ const DEFAULT_COLUMNS: Column[] = [
   { key: 'chemise',  label: 'Chemise fendue', type: 'number' },
 ];
 
-function rowsKey(floor: Floor, section: Section): string {
-  return `pec_nuit_rows_${floor}_${section}`;
+function valuesKey(floor: Floor, section: Section): string {
+  return `pec_nuit_values_${floor}_${section}`;
+}
+
+function sectionOf(r: Resident): Section {
+  return (r.section ?? '').toLowerCase().includes('long') ? 'long' : 'mapad';
+}
+
+function sortByRoom(a: Resident, b: Resident): number {
+  const na = parseInt(a.room ?? '0', 10);
+  const nb = parseInt(b.room ?? '0', 10);
+  if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+  return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
 }
 
 // ─────────────────────────────────────────────────────────────
-// SUPABASE (settings)
+// SUPABASE
 // ─────────────────────────────────────────────────────────────
 
 async function fetchSetting<T>(key: string, fallback: T): Promise<T> {
@@ -82,20 +100,33 @@ async function fetchColumns(): Promise<Column[]> {
   return Array.isArray(cols) && cols.length ? cols : DEFAULT_COLUMNS;
 }
 
-async function fetchFloorTables(floor: Floor): Promise<Record<Section, NuitRow[]>> {
+async function fetchResidents(): Promise<Resident[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from('residents')
+    .select('id,room,floor,section,title,first_name,last_name,archived')
+    .eq('archived', false)
+    .order('last_name');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Resident[];
+}
+
+async function fetchFloorValues(floor: Floor): Promise<Record<Section, ValuesMap>> {
   const [mapad, long] = await Promise.all([
-    fetchSetting<NuitRow[]>(rowsKey(floor, 'mapad'), []),
-    fetchSetting<NuitRow[]>(rowsKey(floor, 'long'), []),
+    fetchSetting<ValuesMap>(valuesKey(floor, 'mapad'), {}),
+    fetchSetting<ValuesMap>(valuesKey(floor, 'long'), {}),
   ]);
   return {
-    mapad: Array.isArray(mapad) ? mapad : [],
-    long: Array.isArray(long) ? long : [],
+    mapad: mapad && typeof mapad === 'object' ? mapad : {},
+    long: long && typeof long === 'object' ? long : {},
   };
 }
 
-function newId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  return `id_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+function newColKey(): string {
+  const rnd = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+  return `col_${rnd}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -117,9 +148,14 @@ export default function PecNuitPage() {
     queryFn: fetchColumns,
   });
 
-  const { data: tables, isLoading } = useQuery({
-    queryKey: ['pec_nuit_rows', activeFloor],
-    queryFn: () => fetchFloorTables(activeFloor),
+  const { data: residents = [], isLoading: loadingResidents } = useQuery({
+    queryKey: ['pec_nuit_residents'],
+    queryFn: fetchResidents,
+  });
+
+  const { data: values, isLoading: loadingValues } = useQuery({
+    queryKey: ['pec_nuit_values', activeFloor],
+    queryFn: () => fetchFloorValues(activeFloor),
   });
 
   // ── Mutations colonnes ────────────────────────────────────
@@ -138,7 +174,7 @@ export default function PecNuitPage() {
   const addColumn = () => {
     const label = newColLabel.trim();
     if (!label) { toast.error('Saisir un nom de colonne'); return; }
-    const col: Column = { key: `col_${newId().slice(0, 8)}`, label, type: newColType };
+    const col: Column = { key: newColKey(), label, type: newColType };
     mutateColumns(c => [...c, col]);
     setNewColLabel('');
     setNewColType('number');
@@ -150,37 +186,30 @@ export default function PecNuitPage() {
     mutateColumns(c => c.filter(col => col.key !== key));
   };
 
-  // ── Mutations lignes ──────────────────────────────────────
-  const mutateTable = async (section: Section, updater: (rows: NuitRow[]) => NuitRow[]) => {
-    const current = qc.getQueryData<Record<Section, NuitRow[]>>(['pec_nuit_rows', activeFloor])
-      ?? { mapad: [], long: [] };
-    const next = updater(current[section] ?? []);
-    qc.setQueryData(['pec_nuit_rows', activeFloor], { ...current, [section]: next });
+  // ── Mutation valeurs ──────────────────────────────────────
+  const updateCell = async (
+    section: Section, residentId: string, colKey: string, value: number | boolean,
+  ) => {
+    const current = qc.getQueryData<Record<Section, ValuesMap>>(['pec_nuit_values', activeFloor])
+      ?? { mapad: {}, long: {} };
+    const sectionMap = current[section] ?? {};
+    const nextSection: ValuesMap = {
+      ...sectionMap,
+      [residentId]: { ...(sectionMap[residentId] ?? {}), [colKey]: value },
+    };
+    qc.setQueryData(['pec_nuit_values', activeFloor], { ...current, [section]: nextSection });
     try {
-      await saveSetting(rowsKey(activeFloor, section), next);
+      await saveSetting(valuesKey(activeFloor, section), nextSection);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erreur de sauvegarde');
-      qc.invalidateQueries({ queryKey: ['pec_nuit_rows', activeFloor] });
+      qc.invalidateQueries({ queryKey: ['pec_nuit_values', activeFloor] });
     }
   };
 
-  const addRow = (section: Section) => {
-    mutateTable(section, rows => [...rows, { id: newId(), nom: '', chambre: '', values: {} }]);
-  };
-
-  const removeRow = (section: Section, id: string) => {
-    mutateTable(section, rows => rows.filter(r => r.id !== id));
-  };
-
-  const updateRowField = (section: Section, id: string, field: 'nom' | 'chambre', value: string) => {
-    mutateTable(section, rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r));
-  };
-
-  const updateCellValue = (section: Section, id: string, colKey: string, value: number | boolean) => {
-    mutateTable(section, rows => rows.map(r =>
-      r.id === id ? { ...r, values: { ...r.values, [colKey]: value } } : r
-    ));
-  };
+  const isLoading = loadingResidents || loadingValues;
+  const floorResidents = residents.filter(
+    r => (r.floor ?? '').toUpperCase() === activeFloor && !r.archived,
+  );
 
   return (
     <div className="min-h-screen pb-16" style={{ background: '#dde4ee' }}>
@@ -284,21 +313,24 @@ export default function PecNuitPage() {
         {isLoading ? (
           <p className="text-sm text-slate-500 py-10 text-center">Chargement…</p>
         ) : (
-          SECTIONS.map(sec => (
-            <SectionTable
-              key={sec.key}
-              title={sec.label}
-              floor={activeFloor}
-              columns={columns}
-              rows={tables?.[sec.key] ?? []}
-              canEdit={canEdit}
-              onAddRow={() => addRow(sec.key)}
-              onRemoveRow={id => removeRow(sec.key, id)}
-              onRemoveColumn={removeColumn}
-              onUpdateField={(id, field, v) => updateRowField(sec.key, id, field, v)}
-              onUpdateCell={(id, colKey, v) => updateCellValue(sec.key, id, colKey, v)}
-            />
-          ))
+          SECTIONS.map(sec => {
+            const secResidents = floorResidents
+              .filter(r => sectionOf(r) === sec.key)
+              .sort(sortByRoom);
+            return (
+              <SectionTable
+                key={sec.key}
+                title={sec.label}
+                floor={activeFloor}
+                columns={columns}
+                residents={secResidents}
+                values={values?.[sec.key] ?? {}}
+                canEdit={canEdit}
+                onRemoveColumn={removeColumn}
+                onUpdateCell={(residentId, colKey, v) => updateCell(sec.key, residentId, colKey, v)}
+              />
+            );
+          })
         )}
       </main>
     </div>
@@ -310,19 +342,16 @@ export default function PecNuitPage() {
 // ─────────────────────────────────────────────────────────────
 
 function SectionTable({
-  title, floor, columns, rows, canEdit,
-  onAddRow, onRemoveRow, onRemoveColumn, onUpdateField, onUpdateCell,
+  title, floor, columns, residents, values, canEdit, onRemoveColumn, onUpdateCell,
 }: {
   title: string;
   floor: Floor;
   columns: Column[];
-  rows: NuitRow[];
+  residents: Resident[];
+  values: ValuesMap;
   canEdit: boolean;
-  onAddRow: () => void;
-  onRemoveRow: (id: string) => void;
   onRemoveColumn: (key: string) => void;
-  onUpdateField: (id: string, field: 'nom' | 'chambre', value: string) => void;
-  onUpdateCell: (id: string, colKey: string, value: number | boolean) => void;
+  onUpdateCell: (residentId: string, colKey: string, value: number | boolean) => void;
 }) {
   return (
     <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
@@ -330,15 +359,17 @@ function SectionTable({
         <h2 className="text-sm font-bold uppercase tracking-wide">
           {title} <span className="text-white/50 font-normal">· {floor}</span>
         </h2>
-        <span className="text-xs text-white/60">{rows.length} résident{rows.length > 1 ? 's' : ''}</span>
+        <span className="text-xs text-white/60">
+          {residents.length} résident{residents.length > 1 ? 's' : ''}
+        </span>
       </header>
 
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-600">
-              <th className="border border-slate-200 px-2 py-2 text-left font-semibold min-w-[140px]">Nom</th>
-              <th className="border border-slate-200 px-2 py-2 text-left font-semibold min-w-[80px]">Chambre</th>
+              <th className="border border-slate-200 px-2 py-2 text-left font-semibold min-w-[180px]">Nom</th>
+              <th className="border border-slate-200 px-2 py-2 text-center font-semibold min-w-[70px]">Chambre</th>
               {columns.map(col => (
                 <th key={col.key} className="border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
@@ -355,85 +386,56 @@ function SectionTable({
                   </div>
                 </th>
               ))}
-              {canEdit && <th className="border border-slate-200 px-2 py-2 w-10" />}
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {residents.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + (canEdit ? 3 : 2)}
+                  colSpan={columns.length + 2}
                   className="border border-slate-200 px-3 py-6 text-center text-slate-400 italic"
                 >
-                  Aucune ligne — utilisez « Ajouter une ligne » ci-dessous.
+                  Aucun résident dans cette section.
                 </td>
               </tr>
             ) : (
-              rows.map(row => (
-                <tr key={row.id} className="hover:bg-indigo-50/40">
-                  <td className="border border-slate-200 px-1 py-1">
-                    <input
-                      value={row.nom}
-                      onChange={e => onUpdateField(row.id, 'nom', e.target.value)}
-                      disabled={!canEdit}
-                      placeholder="Nom"
-                      className="w-full px-1.5 py-1 bg-transparent text-sm focus:bg-white focus:ring-1 focus:ring-indigo-300 rounded outline-none disabled:cursor-default"
-                    />
-                  </td>
-                  <td className="border border-slate-200 px-1 py-1">
-                    <input
-                      value={row.chambre}
-                      onChange={e => onUpdateField(row.id, 'chambre', e.target.value)}
-                      disabled={!canEdit}
-                      placeholder="Ch."
-                      className="w-full px-1.5 py-1 bg-transparent text-sm text-center focus:bg-white focus:ring-1 focus:ring-indigo-300 rounded outline-none disabled:cursor-default"
-                    />
-                  </td>
-                  {columns.map(col => (
-                    <td key={col.key} className="border border-slate-200 px-1 py-1 text-center">
-                      {col.type === 'check' ? (
-                        <CheckCell
-                          checked={row.values[col.key] === true}
-                          disabled={!canEdit}
-                          onChange={v => onUpdateCell(row.id, col.key, v)}
-                        />
-                      ) : (
-                        <NumberCell
-                          value={typeof row.values[col.key] === 'number' ? (row.values[col.key] as number) : 0}
-                          disabled={!canEdit}
-                          onChange={v => onUpdateCell(row.id, col.key, v)}
-                        />
-                      )}
+              residents.map(r => {
+                const rv = values[r.id] ?? {};
+                return (
+                  <tr key={r.id} className="hover:bg-indigo-50/40">
+                    <td className="border border-slate-200 px-2 py-1.5">
+                      <span className="font-medium text-slate-800">
+                        <span className="uppercase">{r.last_name}</span>
+                        {r.first_name ? ` ${r.first_name}` : ''}
+                      </span>
                     </td>
-                  ))}
-                  {canEdit && (
-                    <td className="border border-slate-200 px-1 py-1 text-center">
-                      <button
-                        onClick={() => onRemoveRow(row.id)}
-                        title="Supprimer la ligne"
-                        className="text-slate-300 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                    <td className="border border-slate-200 px-2 py-1.5 text-center text-slate-600">
+                      {r.room ?? ''}
                     </td>
-                  )}
-                </tr>
-              ))
+                    {columns.map(col => (
+                      <td key={col.key} className="border border-slate-200 px-1 py-1 text-center">
+                        {col.type === 'check' ? (
+                          <CheckCell
+                            checked={rv[col.key] === true}
+                            disabled={!canEdit}
+                            onChange={v => onUpdateCell(r.id, col.key, v)}
+                          />
+                        ) : (
+                          <NumberCell
+                            value={typeof rv[col.key] === 'number' ? (rv[col.key] as number) : 0}
+                            disabled={!canEdit}
+                            onChange={v => onUpdateCell(r.id, col.key, v)}
+                          />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
-
-      {canEdit && (
-        <div className="px-3 py-2 border-t border-slate-100">
-          <button
-            onClick={onAddRow}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
-          >
-            <Plus className="h-4 w-4" /> Ajouter une ligne
-          </button>
-        </div>
-      )}
     </section>
   );
 }
