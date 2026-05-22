@@ -85,6 +85,22 @@ function sortByRoom(a: Resident, b: Resident): number {
   return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
 }
 
+/**
+ * Protection par défaut d'un résident : si une seule colonne « protection »
+ * (libellé présent dans PROTECTION_CHOICES) est renseignée, renvoie son
+ * libellé ; sinon (0 ou plusieurs types) renvoie ''.
+ */
+function defaultProtection(
+  rv: Record<string, number | boolean>, columns: Column[],
+): string {
+  const active = columns.filter(col => {
+    if (!PROTECTION_CHOICES.includes(col.label)) return false;
+    const v = rv[col.key];
+    return col.type === 'check' ? v === true : typeof v === 'number' && v > 0;
+  });
+  return active.length === 1 ? active[0].label : '';
+}
+
 // ─────────────────────────────────────────────────────────────
 // SUPABASE
 // ─────────────────────────────────────────────────────────────
@@ -520,6 +536,7 @@ function SectionTable({
               residents.map(r => {
                 const rv = values[r.id] ?? {};
                 const prot = protections[r.id] ?? {};
+                const autoProtection = defaultProtection(rv, columns);
                 return (
                   <tr key={r.id} className="hover:bg-indigo-50/40">
                     <td className="border border-slate-200 px-2 py-1.5">
@@ -550,14 +567,14 @@ function SectionTable({
                     ))}
                     <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
                       <ProtecSelect
-                        value={prot.jour ?? ''}
+                        value={prot.jour ?? autoProtection}
                         disabled={!canEdit}
                         onChange={v => onUpdateProtection(r.id, 'jour', v)}
                       />
                     </td>
                     <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
                       <ProtecSelect
-                        value={prot.nuit ?? ''}
+                        value={prot.nuit ?? autoProtection}
                         disabled={!canEdit}
                         onChange={v => onUpdateProtection(r.id, 'nuit', v)}
                       />
