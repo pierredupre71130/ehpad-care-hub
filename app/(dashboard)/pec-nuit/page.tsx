@@ -48,6 +48,9 @@ type ProtectionsMap = Record<string, { jour?: string; nuit?: string }>;
 /** Choix de protection (jour / nuit) — partagés avec Prises en Charge */
 const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 'Pants M', 'Perso.'];
 
+/** Mot de passe admin requis pour supprimer une colonne. */
+const ADMIN_PASSWORD = 'mapad2022';
+
 const FLOORS: Floor[] = ['RDC', '1ER'];
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'mapad', label: 'MAPAD' },
@@ -223,7 +226,16 @@ export default function PecNuitPage() {
   };
 
   const removeColumn = (key: string) => {
-    if (!confirm('Supprimer cette colonne ? Les valeurs saisies seront perdues.')) return;
+    const pwd = prompt(
+      'Suppression de colonne réservée à l\'administrateur.\n\n' +
+      'Saisir le mot de passe admin :',
+    );
+    if (pwd == null) return; // annulé
+    if (pwd !== ADMIN_PASSWORD) {
+      alert('Mot de passe incorrect. La colonne n\'a pas été supprimée.');
+      return;
+    }
+    if (!confirm('Supprimer définitivement cette colonne ? Les valeurs saisies seront perdues.')) return;
     mutateColumns(c => c.filter(col => col.key !== key));
   };
 
