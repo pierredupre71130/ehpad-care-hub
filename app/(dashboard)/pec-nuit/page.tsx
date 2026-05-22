@@ -304,7 +304,7 @@ export default function PecNuitPage() {
         className="relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #3730a3 100%)' }}
       >
-        <div className="relative z-10 max-w-7xl mx-auto px-6 py-5">
+        <div className="relative z-10 px-4 sm:px-6 py-5">
           <div className="flex items-center gap-1.5 text-white/50 text-xs mb-4">
             <Link href="/" className="hover:text-white/80 transition-colors">Accueil</Link>
             <span>›</span>
@@ -332,7 +332,7 @@ export default function PecNuitPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-5">
+      <main className="p-4 sm:p-6 space-y-5">
         {/* Totaux par étage */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {FLOORS.map(f => (
