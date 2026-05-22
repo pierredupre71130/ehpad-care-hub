@@ -116,15 +116,28 @@ async function fetchResidents(): Promise<Resident[]> {
   return (data ?? []) as Resident[];
 }
 
-async function fetchFloorValues(floor: Floor): Promise<Record<Section, ValuesMap>> {
-  const [mapad, long] = await Promise.all([
-    fetchSetting<ValuesMap>(valuesKey(floor, 'mapad'), {}),
-    fetchSetting<ValuesMap>(valuesKey(floor, 'long'), {}),
-  ]);
-  return {
-    mapad: mapad && typeof mapad === 'object' ? mapad : {},
-    long: long && typeof long === 'object' ? long : {},
-  };
+type AllValues = Record<Floor, Record<Section, ValuesMap>>;
+
+function emptyAllValues(): AllValues {
+  return { RDC: { mapad: {}, long: {} }, '1ER': { mapad: {}, long: {} } };
+}
+
+async function fetchAllValues(): Promise<AllValues> {
+  const slots: { floor: Floor; section: Section }[] = [];
+  for (const floor of FLOORS) {
+    for (const section of ['mapad', 'long'] as Section[]) {
+      slots.push({ floor, section });
+    }
+  }
+  const results = await Promise.all(
+    slots.map(s => fetchSetting<ValuesMap>(valuesKey(s.floor, s.section), {})),
+  );
+  const out = emptyAllValues();
+  slots.forEach((s, i) => {
+    const v = results[i];
+    out[s.floor][s.section] = v && typeof v === 'object' ? v : {};
+  });
+  return out;
 }
 
 function newColKey(): string {
@@ -132,6 +145,24 @@ function newColKey(): string {
     ? crypto.randomUUID().slice(0, 8)
     : Math.random().toString(36).slice(2, 10);
   return `col_${rnd}`;
+}
+
+/** Somme, par colonne numérique, sur tous les résidents d'un étage (Mapad + Long). */
+function computeFloorTotals(
+  floor: Floor, residents: Resident[], allValues: AllValues, columns: Column[],
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  columns.filter(c => c.type === 'number').forEach(c => { totals[c.key] = 0; });
+  residents
+    .filter(r => (r.floor ?? '').toUpperCase() === floor && !r.archived)
+    .forEach(r => {
+      const rv = allValues[floor][sectionOf(r)][r.id] ?? {};
+      for (const key of Object.keys(totals)) {
+        const v = rv[key];
+        if (typeof v === 'number') totals[key] += v;
+      }
+    });
+  return totals;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -159,8 +190,8 @@ export default function PecNuitPage() {
   });
 
   const { data: values, isLoading: loadingValues } = useQuery({
-    queryKey: ['pec_nuit_values', activeFloor],
-    queryFn: () => fetchFloorValues(activeFloor),
+    queryKey: ['pec_nuit_values'],
+    queryFn: fetchAllValues,
   });
 
   const { data: protections = {} } = useQuery({
@@ -200,19 +231,22 @@ export default function PecNuitPage() {
   const updateCell = async (
     section: Section, residentId: string, colKey: string, value: number | boolean,
   ) => {
-    const current = qc.getQueryData<Record<Section, ValuesMap>>(['pec_nuit_values', activeFloor])
-      ?? { mapad: {}, long: {} };
-    const sectionMap = current[section] ?? {};
+    const current = qc.getQueryData<AllValues>(['pec_nuit_values']) ?? emptyAllValues();
+    const sectionMap = current[activeFloor][section] ?? {};
     const nextSection: ValuesMap = {
       ...sectionMap,
       [residentId]: { ...(sectionMap[residentId] ?? {}), [colKey]: value },
     };
-    qc.setQueryData(['pec_nuit_values', activeFloor], { ...current, [section]: nextSection });
+    const next: AllValues = {
+      ...current,
+      [activeFloor]: { ...current[activeFloor], [section]: nextSection },
+    };
+    qc.setQueryData(['pec_nuit_values'], next);
     try {
       await saveSetting(valuesKey(activeFloor, section), nextSection);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erreur de sauvegarde');
-      qc.invalidateQueries({ queryKey: ['pec_nuit_values', activeFloor] });
+      qc.invalidateQueries({ queryKey: ['pec_nuit_values'] });
     }
   };
 
@@ -275,6 +309,18 @@ export default function PecNuitPage() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-5">
+        {/* Totaux par étage */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {FLOORS.map(f => (
+            <TotalsBox
+              key={f}
+              floor={f}
+              columns={columns}
+              totals={computeFloorTotals(f, residents, values ?? emptyAllValues(), columns)}
+            />
+          ))}
+        </div>
+
         {/* Barre : étages + ajout colonne */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-1 bg-white rounded-xl p-1 ring-1 ring-slate-200 shadow-sm">
@@ -352,7 +398,7 @@ export default function PecNuitPage() {
                 floor={activeFloor}
                 columns={columns}
                 residents={secResidents}
-                values={values?.[sec.key] ?? {}}
+                values={values?.[activeFloor]?.[sec.key] ?? {}}
                 protections={protections}
                 canEdit={canEdit}
                 onRemoveColumn={removeColumn}
@@ -523,6 +569,33 @@ function NumberCell({
       >
         <Plus className="h-3.5 w-3.5" />
       </button>
+    </div>
+  );
+}
+
+function TotalsBox({
+  floor, columns, totals,
+}: { floor: Floor; columns: Column[]; totals: Record<string, number> }) {
+  const numberCols = columns.filter(c => c.type === 'number');
+  return (
+    <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
+      <header className="flex items-center justify-between px-4 py-2.5 bg-indigo-900 text-white">
+        <h2 className="text-sm font-bold uppercase tracking-wide">Total {floor}</h2>
+        <span className="text-xs text-white/60">Mapad + Long séjour</span>
+      </header>
+      <div className="p-3 grid grid-cols-3 sm:grid-cols-5 gap-2">
+        {numberCols.map(c => (
+          <div
+            key={c.key}
+            className="rounded-lg bg-indigo-50/70 ring-1 ring-indigo-100 px-2 py-1.5 text-center"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 leading-tight truncate">
+              {c.label}
+            </div>
+            <div className="text-xl font-bold text-slate-900 tabular-nums">{totals[c.key] ?? 0}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
