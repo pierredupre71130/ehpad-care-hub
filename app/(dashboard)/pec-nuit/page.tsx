@@ -273,6 +273,18 @@ export default function PecNuitPage() {
     r => (r.floor ?? '').toUpperCase() === activeFloor && !r.archived,
   );
 
+  const safeValues = values ?? emptyAllValues();
+  const floorTotals: Record<Floor, Record<string, number>> = {
+    RDC: computeFloorTotals('RDC', residents, safeValues, columns),
+    '1ER': computeFloorTotals('1ER', residents, safeValues, columns),
+  };
+  const combinedTotals: Record<string, number> = {};
+  columns
+    .filter(c => c.type === 'number')
+    .forEach(c => {
+      combinedTotals[c.key] = (floorTotals.RDC[c.key] ?? 0) + (floorTotals['1ER'][c.key] ?? 0);
+    });
+
   return (
     <div className="min-h-screen pb-16" style={{ background: '#dde4ee' }}>
       {/* HEADER */}
@@ -314,12 +326,21 @@ export default function PecNuitPage() {
           {FLOORS.map(f => (
             <TotalsBox
               key={f}
-              floor={f}
+              title={`Total ${f}`}
+              subtitle="Mapad + Long séjour"
               columns={columns}
-              totals={computeFloorTotals(f, residents, values ?? emptyAllValues(), columns)}
+              totals={floorTotals[f]}
             />
           ))}
         </div>
+
+        {/* Total des deux étages */}
+        <TotalsBox
+          title="Total général"
+          subtitle="RDC + 1ER"
+          columns={columns}
+          totals={combinedTotals}
+        />
 
         {/* Barre : étages + ajout colonne */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -574,14 +595,14 @@ function NumberCell({
 }
 
 function TotalsBox({
-  floor, columns, totals,
-}: { floor: Floor; columns: Column[]; totals: Record<string, number> }) {
+  title, subtitle, columns, totals,
+}: { title: string; subtitle: string; columns: Column[]; totals: Record<string, number> }) {
   const numberCols = columns.filter(c => c.type === 'number');
   return (
     <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
       <header className="flex items-center justify-between px-4 py-2.5 bg-indigo-900 text-white">
-        <h2 className="text-sm font-bold uppercase tracking-wide">Total {floor}</h2>
-        <span className="text-xs text-white/60">Mapad + Long séjour</span>
+        <h2 className="text-sm font-bold uppercase tracking-wide">{title}</h2>
+        <span className="text-xs text-white/60">{subtitle}</span>
       </header>
       <div className="p-3 grid grid-cols-3 sm:grid-cols-5 gap-2">
         {numberCols.map(c => (
