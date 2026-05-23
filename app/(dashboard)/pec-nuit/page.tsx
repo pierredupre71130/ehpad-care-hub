@@ -13,7 +13,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, Moon, Plus, Minus, X } from 'lucide-react';
+import { ArrowLeft, Moon, Plus, Minus, X, ChevronLeft, ChevronRight, Lock, LockOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -46,7 +46,7 @@ type ValuesMap = Record<string, Record<string, number | boolean>>;
 type ProtectionsMap = Record<string, { jour?: string; nuit?: string }>;
 
 /** Choix de protection (jour / nuit) — partagés avec Prises en Charge */
-const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 'Pants M', 'Perso.'];
+const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 'Pants M', 'Perso.', 'Serviette H'];
 
 /** Mot de passe admin requis pour supprimer une colonne. */
 const ADMIN_PASSWORD = 'mapad2022';
@@ -197,6 +197,15 @@ export default function PecNuitPage() {
   const [showAddCol, setShowAddCol] = useState(false);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColType, setNewColType] = useState<ColType>('number');
+  const [adminMode, setAdminMode] = useState(false);
+
+  const toggleAdminMode = () => {
+    if (adminMode) { setAdminMode(false); return; }
+    const pwd = prompt('Accès administrateur — saisir le mot de passe :');
+    if (pwd == null) return;
+    if (pwd === ADMIN_PASSWORD) setAdminMode(true);
+    else alert('Mot de passe incorrect.');
+  };
 
   const { data: columns = DEFAULT_COLUMNS } = useQuery({
     queryKey: ['pec_nuit_columns'],
@@ -242,17 +251,30 @@ export default function PecNuitPage() {
   };
 
   const removeColumn = (key: string) => {
-    const pwd = prompt(
-      'Suppression de colonne réservée à l\'administrateur.\n\n' +
-      'Saisir le mot de passe admin :',
-    );
-    if (pwd == null) return; // annulé
-    if (pwd !== ADMIN_PASSWORD) {
-      alert('Mot de passe incorrect. La colonne n\'a pas été supprimée.');
-      return;
+    if (!adminMode) {
+      const pwd = prompt(
+        'Suppression de colonne réservée à l\'administrateur.\n\n' +
+        'Saisir le mot de passe admin :',
+      );
+      if (pwd == null) return; // annulé
+      if (pwd !== ADMIN_PASSWORD) {
+        alert('Mot de passe incorrect. La colonne n\'a pas été supprimée.');
+        return;
+      }
     }
     if (!confirm('Supprimer définitivement cette colonne ? Les valeurs saisies seront perdues.')) return;
     mutateColumns(c => c.filter(col => col.key !== key));
+  };
+
+  const moveColumn = (key: string, dir: 'left' | 'right') => {
+    const current = qc.getQueryData<Column[]>(['pec_nuit_columns']) ?? DEFAULT_COLUMNS;
+    const idx = current.findIndex(c => c.key === key);
+    if (idx === -1) return;
+    const newIdx = dir === 'left' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= current.length) return;
+    const next = [...current];
+    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+    mutateColumns(() => next);
   };
 
   // ── Mutation valeurs ──────────────────────────────────────
@@ -429,6 +451,20 @@ export default function PecNuitPage() {
                   <Plus className="h-4 w-4" /> Ajouter une colonne
                 </Button>
               )}
+              {/* Bouton mode admin (réorganisation des colonnes) */}
+              <button
+                onClick={toggleAdminMode}
+                title={adminMode ? 'Désactiver le mode admin' : 'Activer le mode admin (réorganiser les colonnes)'}
+                className={cn(
+                  'h-9 px-3 rounded-xl text-sm font-semibold flex items-center gap-1.5 border transition-colors',
+                  adminMode
+                    ? 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
+                    : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                )}
+              >
+                {adminMode ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                Admin
+              </button>
             </div>
           )}
         </div>
@@ -450,7 +486,9 @@ export default function PecNuitPage() {
                 values={values?.[activeFloor]?.[sec.key] ?? {}}
                 protections={protections}
                 canEdit={canEdit}
+                adminMode={adminMode}
                 onRemoveColumn={removeColumn}
+                onMoveColumn={moveColumn}
                 onUpdateCell={(residentId, colKey, v) => updateCell(sec.key, residentId, colKey, v)}
                 onUpdateProtection={updateProtection}
               />
@@ -467,8 +505,8 @@ export default function PecNuitPage() {
 // ─────────────────────────────────────────────────────────────
 
 function SectionTable({
-  title, floor, columns, residents, values, protections, canEdit,
-  onRemoveColumn, onUpdateCell, onUpdateProtection,
+  title, floor, columns, residents, values, protections, canEdit, adminMode,
+  onRemoveColumn, onMoveColumn, onUpdateCell, onUpdateProtection,
 }: {
   title: string;
   floor: Floor;
@@ -477,7 +515,9 @@ function SectionTable({
   values: ValuesMap;
   protections: ProtectionsMap;
   canEdit: boolean;
+  adminMode: boolean;
   onRemoveColumn: (key: string) => void;
+  onMoveColumn: (key: string, dir: 'left' | 'right') => void;
   onUpdateCell: (residentId: string, colKey: string, value: number | boolean) => void;
   onUpdateProtection: (residentId: string, period: 'jour' | 'nuit', value: string) => void;
 }) {
@@ -498,20 +538,54 @@ function SectionTable({
             <tr className="text-slate-600">
               <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 text-left font-semibold min-w-[180px] bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">Nom</th>
               <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 text-center font-semibold min-w-[70px] bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">Chambre</th>
-              {columns.map(col => (
-                <th key={col.key} className="sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]">
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{col.label}</span>
-                    {canEdit && (
+              {columns.map((col, colIdx) => (
+                <th key={col.key} className={cn(
+                  'sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-slate-100 shadow-[inset_0_-1px_0_#cbd5e1]',
+                  adminMode && 'bg-amber-50'
+                )}>
+                  {adminMode ? (
+                    /* Mode admin : flèches gauche/droite + croix de suppression */
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button
+                        onClick={() => onMoveColumn(col.key, 'left')}
+                        disabled={colIdx === 0}
+                        title="Déplacer à gauche"
+                        className="h-5 w-5 flex items-center justify-center rounded text-amber-600 hover:bg-amber-200 disabled:opacity-20 disabled:cursor-default transition-colors"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="px-1">{col.label}</span>
+                      <button
+                        onClick={() => onMoveColumn(col.key, 'right')}
+                        disabled={colIdx === columns.length - 1}
+                        title="Déplacer à droite"
+                        className="h-5 w-5 flex items-center justify-center rounded text-amber-600 hover:bg-amber-200 disabled:opacity-20 disabled:cursor-default transition-colors"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => onRemoveColumn(col.key)}
                         title="Supprimer la colonne"
-                        className="text-slate-300 hover:text-red-500 transition-colors"
+                        className="h-5 w-5 flex items-center justify-center rounded text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
                         <X className="h-3 w-3" />
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    /* Mode normal */
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{col.label}</span>
+                      {canEdit && (
+                        <button
+                          onClick={() => onRemoveColumn(col.key)}
+                          title="Supprimer la colonne"
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </th>
               ))}
               <th className="sticky top-0 z-20 border border-slate-200 px-2 py-2 font-semibold whitespace-nowrap bg-indigo-50 text-indigo-800 min-w-[110px] shadow-[inset_0_-1px_0_#cbd5e1]">
