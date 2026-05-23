@@ -607,12 +607,20 @@ function SectionTable({
                 </td>
               </tr>
             ) : (
-              residents.map(r => {
+              residents.map((r, rowIdx) => {
                 const rv = values[r.id] ?? {};
                 const prot = protections[r.id] ?? {};
                 const autoProtection = defaultProtection(rv, columns);
+                const stripe = rowIdx % 2 !== 0;
                 return (
-                  <tr key={r.id} className="hover:bg-indigo-50/40">
+                  <tr
+                    key={r.id}
+                    className={cn(
+                      'transition-colors',
+                      stripe ? 'bg-slate-50/80' : 'bg-white',
+                      'hover:bg-indigo-50/50',
+                    )}
+                  >
                     <td className="border border-slate-200 px-2 py-1.5">
                       <span className="font-medium text-slate-800">
                         <span className="uppercase">{r.last_name}</span>
@@ -639,14 +647,20 @@ function SectionTable({
                         )}
                       </td>
                     ))}
-                    <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
+                    <td className={cn(
+                      'border border-slate-200 px-1 py-1',
+                      stripe ? 'bg-indigo-100/50' : 'bg-indigo-50/60',
+                    )}>
                       <ProtecSelect
                         value={prot.jour ?? autoProtection}
                         disabled={!canEdit}
                         onChange={v => onUpdateProtection(r.id, 'jour', v)}
                       />
                     </td>
-                    <td className="border border-slate-200 px-1 py-1 bg-indigo-50/40">
+                    <td className={cn(
+                      'border border-slate-200 px-1 py-1',
+                      stripe ? 'bg-indigo-100/50' : 'bg-indigo-50/60',
+                    )}>
                       <ProtecSelect
                         value={prot.nuit ?? autoProtection}
                         disabled={!canEdit}
