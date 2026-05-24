@@ -132,7 +132,7 @@ interface PecDetails {
 }
 interface PecRow { chambre: string; protection: string; details?: PecDetails | null; }
 interface Contention { chambre: string; traitement: string; date_debut: string; date_fin: string; pas_de_fin: boolean; }
-interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; }
+interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; notes: string | null; }
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -577,7 +577,13 @@ export default function MutationPage() {
 
   const matelasAirText = useMemo(() => {
     if (!ctx?.matCouss?.length) return '';
-    return ctx.matCouss.filter(m => m.kind === 'matelas' && m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
+    // Inclut tous les matelas attribués au résident (l'utilisateur les a enregistrés dans
+    // le module Matelas/Coussins ; inutile de filtrer sur le nom).
+    // Format : "Type — Notes" quand des notes (couchage, etc.) sont renseignées.
+    return ctx.matCouss
+      .filter(m => m.kind === 'matelas')
+      .map(m => [m.type_name, m.notes].filter(Boolean).join(' — '))
+      .join(', ');
   }, [ctx]);
 
   const contentionText = useMemo(() => {
