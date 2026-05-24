@@ -553,11 +553,6 @@ export default function MutationPage() {
     return ctx.matCouss.filter(m => m.kind === 'matelas' && m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
   }, [ctx]);
 
-  const matelasAntiText = useMemo(() => {
-    if (!ctx?.matCouss?.length) return '';
-    return ctx.matCouss.filter(m => m.kind === 'matelas' && !m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
-  }, [ctx]);
-
   const contentionText = useMemo(() => {
     if (!ctx?.contentions?.length) return '';
     return ctx.contentions.map(c => {
@@ -709,12 +704,9 @@ export default function MutationPage() {
       matelasAirOui: matelasAirText.length > 0,
       matelasAirNon: matelasAirText.length === 0,
       matelasAirLequel: matelasAirText,
-      matelasAntiEscarreOui: matelasAntiText.length > 0,
-      matelasAntiEscarreNon: matelasAntiText.length === 0,
-      matelasAntiEscarreLequel: matelasAntiText,
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.pec, selected, matelasAirText, matelasAntiText]);
+  }, [ctx?.pec, selected, matelasAirText]);
 
   const fem = isFemaleTitle(selected?.title);
 
