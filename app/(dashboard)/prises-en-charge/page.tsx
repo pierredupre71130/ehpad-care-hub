@@ -926,8 +926,8 @@ export default function PrisesEnChargePage() {
         ? ((autoProtByRoom[normCh] ?? (prefCh ? autoProtByRoom[prefCh] : '')) ?? '')
         : '';
       const protText = [
-        (jourProt || autoP) ? `J : ${jourProt || autoP}` : '',
-        (nuitProt || autoP) ? `N : ${nuitProt || autoP}` : '',
+        (jourProt || autoP) ? `Jour : ${jourProt || autoP}` : '',
+        (nuitProt || autoP) ? `Nuit : ${nuitProt || autoP}` : '',
       ].filter(Boolean).join(' / ') || row.protection || '';
       return `<tr>
         <td class="ch">${esc(row.chambre || '—')}</td>
@@ -1531,13 +1531,13 @@ export default function PrisesEnChargePage() {
                               return (
                                 <div className="space-y-1 text-[11px] leading-snug">
                                   <div className="flex items-center gap-1">
-                                    <span className="font-semibold text-slate-500 w-3 shrink-0">J</span>
+                                    <span className="font-semibold text-slate-500 shrink-0">Jour</span>
                                     <span className={j ? 'text-slate-800 font-medium' : 'text-slate-300'}>
                                       {j || '—'}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <span className="font-semibold text-slate-500 w-3 shrink-0">N</span>
+                                    <span className="font-semibold text-slate-500 shrink-0">Nuit</span>
                                     <span className={n ? 'text-slate-800 font-medium' : 'text-slate-300'}>
                                       {n || '—'}
                                     </span>
@@ -1553,11 +1553,11 @@ export default function PrisesEnChargePage() {
                               return (
                                 <div className="space-y-1 text-[11px] leading-snug">
                                   <div className="flex items-center gap-1">
-                                    <span className="font-semibold text-slate-500 w-3 shrink-0">J</span>
+                                    <span className="font-semibold text-slate-500 shrink-0">Jour</span>
                                     <span className="text-slate-800 font-medium">{auto}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    <span className="font-semibold text-slate-500 w-3 shrink-0">N</span>
+                                    <span className="font-semibold text-slate-500 shrink-0">Nuit</span>
                                     <span className="text-slate-800 font-medium">{auto}</span>
                                   </div>
                                   <p className="text-[9px] text-slate-300 italic pt-0.5">
