@@ -21,6 +21,21 @@ import { cn } from '@/lib/utils';
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
+interface PersonneAPrevenir {
+  nom?: string;
+  prenom?: string;
+  lien?: string;
+  adresse?: string;
+  tel?: string;
+  mobile?: string;
+}
+
+interface DSI {
+  personne_prevenir?: PersonneAPrevenir;
+  autres_personnes?: Array<{ nom?: string; prenom?: string; lien?: string; adresse?: string; tel?: string }>;
+  motif_entree?: string;
+}
+
 interface Resident {
   id: string;
   room: string;
@@ -41,6 +56,7 @@ interface Resident {
   epargne_intestinale?: boolean;
   photo_url?: string | null;
   archived?: boolean;
+  dsi?: DSI | null;
 }
 
 interface PoidsMesure { resident_id: string; date: string; poids_kg: number; }
@@ -487,11 +503,19 @@ export default function MutationPage() {
   }, [selected]);
 
   const personnePrevenir = useMemo(() => {
-    if (!ctx?.niveau) return '';
+    const pp = selected?.dsi?.personne_prevenir;
+    if (!pp) return '';
     const parts: string[] = [];
-    if (ctx.niveau.appel_nuit_info) parts.push(ctx.niveau.appel_nuit_info);
-    return parts.join(' — ');
-  }, [ctx]);
+    if (pp.prenom || pp.nom) parts.push([pp.prenom, pp.nom].filter(Boolean).join(' '));
+    if (pp.lien) parts.push(`(${pp.lien})`);
+    return parts.join(' ');
+  }, [selected]);
+
+  const telPrevenir = useMemo(() => {
+    const pp = selected?.dsi?.personne_prevenir;
+    if (!pp) return '';
+    return pp.tel || pp.mobile || '';
+  }, [selected]);
 
   const tutelleText = useMemo(() => ctx?.niveau?.tutelle || '', [ctx]);
 
@@ -749,11 +773,13 @@ export default function MutationPage() {
                 <div className="grid grid-cols-2 gap-x-4">
                   <Ligne label="Personne à prévenir :">
                     {personnePrevenir
-                      ? <span>{personnePrevenir}</span>
+                      ? <span className="font-medium">{personnePrevenir}</span>
                       : <ZoneSaisie value={form.personneAPrevenirManuel} onChange={v => patch('personneAPrevenirManuel', v)} />}
                   </Ligne>
                   <Ligne label="N° tél :">
-                    <ZoneSaisie value={form.telPrevenir} onChange={v => patch('telPrevenir', v)} />
+                    {telPrevenir
+                      ? <span className="font-medium">{telPrevenir}</span>
+                      : <ZoneSaisie value={form.telPrevenir} onChange={v => patch('telPrevenir', v)} />}
                   </Ligne>
                 </div>
                 <div className="flex items-center gap-4">
