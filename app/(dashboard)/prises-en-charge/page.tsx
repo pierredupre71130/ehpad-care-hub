@@ -490,6 +490,11 @@ async function fetchResidents(): Promise<Resident[]> {
   return residents;
 }
 
+/** Normalise un numéro de chambre pour la comparaison : supprime espaces, minuscule */
+function normalizeRoom(s: string): string {
+  return s.replace(/\s+/g, '').toLowerCase();
+}
+
 // ── Page principale ────────────────────────────────────────────────────────────
 
 export default function PrisesEnChargePage() {
@@ -638,9 +643,6 @@ export default function PrisesEnChargePage() {
     .sort((a, b) =>
       (a.room ?? '').localeCompare(b.room ?? '', undefined, { numeric: true, sensitivity: 'base' })
     );
-
-  /** Normalise un numéro de chambre pour la comparaison : supprime espaces, minuscule */
-  const normalizeRoom = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
   /** Extrait le préfixe numérique d'une chambre (ex : '30 SDB' → '30', '29 P' → '29') */
   const roomNumPrefix = (s: string) => normalizeRoom(s).match(/^(\d+)/)?.[1] ?? normalizeRoom(s);
