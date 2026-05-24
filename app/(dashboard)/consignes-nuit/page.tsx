@@ -140,7 +140,8 @@ const CONTENTION_ICONS: Record<string, React.ReactNode> = {
 function buildRespiText(resp: RespirationDSI | undefined | null): { o2: string; vni: string } {
   let o2 = '';
   let vni = '';
-  if (resp?.o2 === true) {
+  // Accepte true ou toute valeur truthy (robustesse si le JSONB renvoie 1 ou "true")
+  if (resp?.o2) {
     const parts: string[] = ['O2'];
     if (resp.o2Debit) parts.push(`${resp.o2Debit} L/min`);
     if (resp.o2Jour && resp.o2Nuit) parts.push('/24h');
@@ -148,12 +149,22 @@ function buildRespiText(resp: RespirationDSI | undefined | null): { o2: string; 
     else if (resp.o2Nuit) parts.push('(Nuit)');
     o2 = parts.join(' ');
   }
-  if (resp?.vni === true) {
+  if (resp?.vni) {
     const parts: string[] = ['VNI'];
     if (resp.vniDebit) parts.push(`${resp.vniDebit} L/min`);
     vni = parts.join(' ');
   }
   return { o2, vni };
+}
+
+/** Échappe les caractères HTML spéciaux dans du texte brut destiné à être inséré dans du HTML. */
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── Network background (style page d'accueil) ────────────────────────────────
@@ -884,27 +895,34 @@ export default function ConsignesNuitPage() {
         r.bande_de_contention       ? emojiImg(EMOJI_ROLL, 'Bande de contention')       : '',
       ].filter(Boolean).join(' ');
 
-      const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
+      // Annotations : chaque ligne échappée puis rejointe avec <br/>
+      const annotationsText = (r.annotations ?? '')
+        .split('\n')
+        .filter((l: string) => !l.startsWith('---SUPPL:'))
+        .map((l: string) => escHtml(l))
+        .join('<br/>');
 
       // O2 / VNI depuis DSI → affiché dans la colonne Consignes de nuit
       const { o2: o2Text, vni: vniText } = buildRespiText((r.dsi as { respiration?: RespirationDSI } | null)?.respiration);
       const respiHtml = [
-        o2Text  ? `<span style='color:#1d4ed8;font-weight:bold;white-space:nowrap'>💨 ${o2Text}</span>`  : '',
-        vniText ? `<span style='color:#7c3aed;font-weight:bold;white-space:nowrap'>🫁 ${vniText}</span>` : '',
+        o2Text  ? `<span style='color:#1d4ed8;font-weight:bold;white-space:nowrap'>💨 ${escHtml(o2Text)}</span>`  : '',
+        vniText ? `<span style='color:#7c3aed;font-weight:bold;white-space:nowrap'>🫁 ${escHtml(vniText)}</span>` : '',
       ].filter(Boolean).join('<br/>');
+      // Note : les sauts de ligne sont préservés via white-space:pre-wrap sur le <td>
+      const noteEscaped = escHtml(note);
       const consigneHtml = respiHtml
-        ? `<div style='border-bottom:1px solid #bfdbfe;margin-bottom:3px;padding-bottom:2px;font-size:9px'>${respiHtml}</div>${note}`
-        : note;
+        ? `<div style='border-bottom:1px solid #bfdbfe;margin-bottom:3px;padding-bottom:2px;font-size:9px'>${respiHtml}</div>${noteEscaped}`
+        : noteEscaped;
 
       return `<tr>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;font-weight:500;color:#334155">
           <div style='display:flex;align-items:center;justify-content:space-between;gap:2px'>
-            <span>${r.room ?? ''}</span>${girSoinHtml}
+            <span>${escHtml(r.room ?? '')}</span>${girSoinHtml}
           </div>${iconsHtml}
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:10px">
-          <strong>${r.last_name}</strong><br/>
-          <span style='color:#64748b'>${r.first_name ?? ''}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
+          <strong>${escHtml(r.last_name)}</strong><br/>
+          <span style='color:#64748b'>${escHtml(r.first_name ?? '')}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${annotationsText}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:11px;white-space:pre-wrap;word-break:break-word">${consigneHtml}</td>
