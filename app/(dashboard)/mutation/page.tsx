@@ -36,11 +36,27 @@ interface TutelleCuratelle {
   tel?: string;
 }
 
+interface Respiration {
+  normale?: boolean;
+  dyspnee?: boolean;
+  o2?: boolean;
+  o2Debit?: string;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
+interface Comportement {
+  coherent?: boolean;
+  communique?: boolean;
+}
+
 interface DSI {
   personne_prevenir?: PersonneAPrevenir;
   autres_personnes?: Array<{ nom?: string; prenom?: string; lien?: string; adresse?: string; tel?: string }>;
   motif_entree?: string;
   tutelle_curatelle?: TutelleCuratelle;
+  respiration?: Respiration;
+  comportement?: Comportement;
 }
 
 interface Resident {
@@ -420,8 +436,9 @@ export default function MutationPage() {
     o2Oui: false,
     o2Non: false,
     o2Debit: '',
-    vmiOui: false,
-    vmiNon: false,
+    vniOui: false,
+    vniNon: false,
+    vniDebit: '',
     tracheotomie: false,
     coherentOui: false,
     coherentNon: false,
@@ -605,6 +622,8 @@ export default function MutationPage() {
 
     const sf = selected?.situation_familiale ?? '';
     const tc = selected?.dsi?.tutelle_curatelle;
+    const resp = selected?.dsi?.respiration;
+    const comp = selected?.dsi?.comportement;
     setForm(s => ({
       ...s,
       // Situation familiale
@@ -619,6 +638,20 @@ export default function MutationPage() {
       suiviSocialOui: !!(tc?.type),
       suiviSocialNom: tc?.nom ?? '',
       suiviSocialTel: tc?.tel ?? '',
+      // Respiration depuis DSI
+      respirationNormale: !!(resp?.normale),
+      dyspnee: !!(resp?.dyspnee),
+      o2Oui: resp?.o2 === true,
+      o2Non: resp?.o2 === false,
+      o2Debit: resp?.o2Debit ?? '',
+      vniOui: resp?.vni === true,
+      vniNon: resp?.vni === false,
+      vniDebit: resp?.vniDebit ?? '',
+      // Comportement depuis DSI
+      coherentOui: comp?.coherent === true,
+      coherentNon: comp?.coherent === false,
+      communiqueOui: comp?.communique === true,
+      communiqueNon: comp?.communique === false,
       // Alimentation
       alimentNormale: !selected?.regime_mixe && !selected?.viande_mixee,
       alimentMixee: !!(selected?.regime_mixe || selected?.viande_mixee),
@@ -1068,9 +1101,12 @@ export default function MutationPage() {
                       <ZoneSaisie value={form.o2Debit} onChange={v => patch('o2Debit', v)} className="w-16" />
                     </div>
                     <div className="flex gap-2 items-center flex-wrap">
-                      <span className="font-semibold">VMI :</span>
-                      <Case checked={form.vmiOui} onChange={v => { patch('vmiOui', v); if (v) patch('vmiNon', false); }} label="Oui" />
-                      <Case checked={form.vmiNon} onChange={v => { patch('vmiNon', v); if (v) patch('vmiOui', false); }} label="Non" />
+                      <span className="font-semibold">VNI :</span>
+                      <Case checked={form.vniOui} onChange={v => { patch('vniOui', v); if (v) patch('vniNon', false); }} label="Oui" />
+                      <Case checked={form.vniNon} onChange={v => { patch('vniNon', v); if (v) patch('vniOui', false); }} label="Non" />
+                      {form.vniOui && (
+                        <ZoneSaisie value={form.vniDebit} onChange={v => patch('vniDebit', v)} placeholder="réglages…" className="w-28" />
+                      )}
                       <Case checked={form.tracheotomie} onChange={v => patch('tracheotomie', v)} label="Trachéotomie" />
                     </div>
                     <div className="border-t border-black mt-1 pt-1">
