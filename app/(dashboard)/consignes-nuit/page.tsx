@@ -1139,19 +1139,30 @@ export default function ConsignesNuitPage() {
 
       const pageContentH = 1083;
 
+      // ── Fetch résidents frais (select('*') avec dsi) pour contourner le cache
+      // React Query partagé qui peut être pollué par d'autres pages (morphiniques,
+      // fiches-menu, bas-de-contention) qui utilisent un select partiel sans dsi.
+      const sbPrint = createClient();
+      const { data: freshData } = await sbPrint
+        .from('residents')
+        .select('*')
+        .eq('archived', false)
+        .order('last_name');
+      const printResidents = (freshData ?? residents) as Resident[];
+
       // ── RDC ──────────────────────────────────────────────────
       const rdcNotes = notesByFloor['RDC'] ?? {};
       const rdcInfos = infosByFloor['RDC'] ?? '';
-      const rdcMapad = residents.filter(r => r.floor === 'RDC' && r.section === 'Mapad');
-      const rdcLS    = residents.filter(r => r.floor === 'RDC' && r.section === 'Long Séjour');
+      const rdcMapad = printResidents.filter(r => r.floor === 'RDC' && r.section === 'Mapad');
+      const rdcLS    = printResidents.filter(r => r.floor === 'RDC' && r.section === 'Long Séjour');
       const rdcMapadZoom = (() => { const h = measureNaturalHeight('Mapad', rdcMapad, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
       const rdcLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', rdcLS, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
 
       // ── 1ER ──────────────────────────────────────────────────
       const erNotes = notesByFloor['1ER'] ?? {};
       const erInfos = infosByFloor['1ER'] ?? '';
-      const erMapad = residents.filter(r => r.floor === '1ER' && r.section === 'Mapad');
-      const erLS    = residents.filter(r => r.floor === '1ER' && r.section === 'Long Séjour');
+      const erMapad = printResidents.filter(r => r.floor === '1ER' && r.section === 'Mapad');
+      const erLS    = printResidents.filter(r => r.floor === '1ER' && r.section === 'Long Séjour');
       const erMapadZoom = (() => { const h = measureNaturalHeight('Mapad', erMapad, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
       const erLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', erLS, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
 
