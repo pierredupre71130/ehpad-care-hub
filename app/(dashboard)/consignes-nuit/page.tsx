@@ -847,6 +847,14 @@ export default function ConsignesNuitPage() {
       if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
       return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
     });
+    // Debug : log les résidents avec O2/VNI pour diagnostiquer les problèmes d'affichage
+    const withO2 = sorted.filter(r => !!(r.dsi as { respiration?: RespirationDSI } | null)?.respiration?.o2 || !!(r.dsi as { respiration?: RespirationDSI } | null)?.respiration?.vni);
+    if (withO2.length > 0) {
+      console.log('[consignes-nuit print] Résidents avec O2/VNI :', withO2.map(r => ({ nom: r.last_name, dsi: r.dsi })));
+    } else {
+      console.log('[consignes-nuit print] Aucun résident avec O2/VNI dans ce groupe. Total résidents :', sorted.length);
+    }
+
     const rows = sorted.map(r => {
       const note = notes[r.id] ?? '';
       const age = r.date_naissance ? calcAge(r.date_naissance) : null;
@@ -904,15 +912,22 @@ export default function ConsignesNuitPage() {
 
       // O2 / VNI depuis DSI → affiché dans la colonne Consignes de nuit
       const { o2: o2Text, vni: vniText } = buildRespiText((r.dsi as { respiration?: RespirationDSI } | null)?.respiration);
-      const respiHtml = [
-        o2Text  ? `<span style='color:#1d4ed8;font-weight:bold;white-space:nowrap'>💨 ${escHtml(o2Text)}</span>`  : '',
-        vniText ? `<span style='color:#7c3aed;font-weight:bold;white-space:nowrap'>🫁 ${escHtml(vniText)}</span>` : '',
-      ].filter(Boolean).join('<br/>');
-      // Note : les sauts de ligne sont préservés via white-space:pre-wrap sur le <td>
       const noteEscaped = escHtml(note);
-      const consigneHtml = respiHtml
-        ? `<div style='border-bottom:1px solid #bfdbfe;margin-bottom:3px;padding-bottom:2px;font-size:9px'>${respiHtml}</div>${noteEscaped}`
-        : noteEscaped;
+
+      // Construction de la cellule Consignes :
+      // On utilise une <div> flex-column pour éviter le mélange block/texte dans un TD
+      // avec white-space:pre-wrap (qui se comporte différemment dans Chrome print).
+      let consigneCellContent = '';
+      if (o2Text || vniText) {
+        const o2Part  = o2Text  ? `<span style='color:#1d4ed8;font-weight:bold'>💨 ${escHtml(o2Text)}</span>`  : '';
+        const vniPart = vniText ? `<span style='color:#7c3aed;font-weight:bold'>🫁 ${escHtml(vniText)}</span>` : '';
+        const respiBlock = [o2Part, vniPart].filter(Boolean).join('<br/>');
+        consigneCellContent =
+          `<div style='border-bottom:1px solid #bfdbfe;padding-bottom:2px;margin-bottom:3px;font-size:9px;line-height:1.4'>${respiBlock}</div>` +
+          `<div style='font-size:11px;white-space:pre-wrap;word-break:break-word;line-height:1.3'>${noteEscaped}</div>`;
+      } else {
+        consigneCellContent = `<div style='font-size:11px;white-space:pre-wrap;word-break:break-word;line-height:1.3'>${noteEscaped}</div>`;
+      }
 
       return `<tr>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;font-weight:500;color:#334155">
@@ -925,7 +940,7 @@ export default function ConsignesNuitPage() {
           <span style='color:#64748b'>${escHtml(r.first_name ?? '')}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${annotationsText}</td>
-        <td style="border:1px solid #475569;padding:2px 4px;font-size:11px;white-space:pre-wrap;word-break:break-word">${consigneHtml}</td>
+        <td style="border:1px solid #475569;padding:2px 4px">${consigneCellContent}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:8px;text-align:center"><div style="display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center">${contentionBadges}${contentionEmojis ? ' ' + contentionEmojis : ''}</div></td>
       </tr>`;
     }).join('');
