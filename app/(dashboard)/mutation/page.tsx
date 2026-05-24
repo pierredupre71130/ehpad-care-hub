@@ -30,10 +30,17 @@ interface PersonneAPrevenir {
   mobile?: string;
 }
 
+interface TutelleCuratelle {
+  type?: 'tutelle' | 'curatelle';
+  nom?: string;
+  tel?: string;
+}
+
 interface DSI {
   personne_prevenir?: PersonneAPrevenir;
   autres_personnes?: Array<{ nom?: string; prenom?: string; lien?: string; adresse?: string; tel?: string }>;
   motif_entree?: string;
+  tutelle_curatelle?: TutelleCuratelle;
 }
 
 interface Resident {
@@ -90,6 +97,7 @@ interface FicheMenu { resident_id: string; repas: string; observation: string; }
 interface PecDetails {
   aideAlim?: string[];
   hydratation?: string[];
+  fausseRoute?: string[];
   dentier?: string[];
   urinaire?: string[];
   fecale?: string[];
@@ -345,9 +353,9 @@ export default function MutationPage() {
     vit: { famille: false, seul: false, etablissement: true, autre: '' },
     suiviSocialOui: false,
     suiviSocialNom: '',
+    suiviSocialTel: '',
     tutelle: false,
     curatelle: false,
-    apa: false,
     // Devenir
     retourDomicileOui: false,
     retourDomicileNon: false,
@@ -518,7 +526,6 @@ export default function MutationPage() {
     return pp.tel || pp.mobile || '';
   }, [selected]);
 
-  const tutelleText = useMemo(() => ctx?.niveau?.tutelle || '', [ctx]);
 
   const matelasAirText = useMemo(() => {
     if (!ctx?.matCouss?.length) return '';
@@ -594,8 +601,10 @@ export default function MutationPage() {
     const dent = asArr(d?.dentier);
     const aideA = asArr(d?.aideAlim);
     const hyd = asArr(d?.hydratation);
+    const fausseRouteArr = asArr(d?.fausseRoute);
 
     const sf = selected?.situation_familiale ?? '';
+    const tc = selected?.dsi?.tutelle_curatelle;
     setForm(s => ({
       ...s,
       // Situation familiale
@@ -604,9 +613,16 @@ export default function MutationPage() {
         marie: sf === 'marie',
         veuf: sf === 'veuf',
       },
+      // Tutelle / Curatelle depuis DSI
+      tutelle: tc?.type === 'tutelle',
+      curatelle: tc?.type === 'curatelle',
+      suiviSocialOui: !!(tc?.type),
+      suiviSocialNom: tc?.nom ?? '',
+      suiviSocialTel: tc?.tel ?? '',
       // Alimentation
       alimentNormale: !selected?.regime_mixe && !selected?.viande_mixee,
       alimentMixee: !!(selected?.regime_mixe || selected?.viande_mixee),
+      fausseRoute: fausseRouteArr.includes('oui'),
       eauGelifiee: hyd.includes('gelifiee'),
       aideAlim: {
         autonome: aideA.includes('autonome'),
@@ -649,12 +665,9 @@ export default function MutationPage() {
       matelasAntiEscarreOui: matelasAntiText.length > 0,
       matelasAntiEscarreNon: matelasAntiText.length === 0,
       matelasAntiEscarreLequel: matelasAntiText,
-      // Tutelle
-      tutelle: !!(tutelleText && /tutelle/i.test(tutelleText)),
-      curatelle: !!(tutelleText && /curatelle/i.test(tutelleText)),
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.pec, selected, matelasAirText, matelasAntiText, tutelleText]);
+  }, [ctx?.pec, selected, matelasAirText, matelasAntiText]);
 
   const fem = isFemaleTitle(selected?.title);
 
@@ -827,12 +840,17 @@ export default function MutationPage() {
                   <Case checked={form.suiviSocialOui} onChange={v => patch('suiviSocialOui', v)} label="Oui" />
                   <Case checked={!form.suiviSocialOui} onChange={v => patch('suiviSocialOui', !v)} label="Non" />
                   <span className="font-semibold ml-2">Nom :</span>
-                  <ZoneSaisie value={form.suiviSocialNom || tutelleText} onChange={v => patch('suiviSocialNom', v)} className="flex-1" />
+                  <ZoneSaisie value={form.suiviSocialNom} onChange={v => patch('suiviSocialNom', v)} className="flex-1" />
                 </div>
-                <div className="flex gap-8 flex-wrap">
+                <div className="flex gap-6 flex-wrap items-center">
                   <Case checked={form.tutelle} onChange={v => patch('tutelle', v)} label="Tutelle" />
                   <Case checked={form.curatelle} onChange={v => patch('curatelle', v)} label="Curatelle" />
-                  <Case checked={form.apa} onChange={v => patch('apa', v)} label="APA" />
+                  {(form.tutelle || form.curatelle) && (
+                    <>
+                      <span className="font-semibold">Tél :</span>
+                      <ZoneSaisie value={form.suiviSocialTel} onChange={v => patch('suiviSocialTel', v)} className="w-32" />
+                    </>
+                  )}
                 </div>
                 <div className="flex gap-2 items-center">
                   <span className="font-semibold">Devenir :</span>

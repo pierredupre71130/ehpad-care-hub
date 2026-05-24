@@ -104,10 +104,17 @@ interface AutrePersonne {
   tel?: string;
 }
 
+interface TutelleCuratelle {
+  type?: 'tutelle' | 'curatelle';
+  nom?: string;
+  tel?: string;
+}
+
 interface DSI {
   personne_prevenir?: PersonneAPrevenir;
   autres_personnes?: AutrePersonne[];
   motif_entree?: string;
+  tutelle_curatelle?: TutelleCuratelle;
 }
 
 interface Resident {
@@ -917,11 +924,55 @@ function EditForm({
           const removeAutre = (i: number) =>
             setDsi({ autres_personnes: autres.filter((_, j) => j !== i) });
 
+          const tc = dsi.tutelle_curatelle ?? {};
+          const setTC = (next: Partial<TutelleCuratelle>) =>
+            setDsi({ tutelle_curatelle: { ...tc, ...next } });
+
           return (
             <section>
               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
                 DSI — Dossier de Soins Infirmiers
               </h3>
+
+              {/* Tutelle / Curatelle */}
+              <div className="mb-5">
+                <Label className="text-xs font-semibold text-slate-700 mb-2 block">
+                  Tutelle / Curatelle
+                </Label>
+                <div className="flex gap-4 mb-3">
+                  <CheckField
+                    id="f_dsi_tutelle"
+                    label="Tutelle"
+                    checked={tc.type === 'tutelle'}
+                    onChange={v => setTC({ type: v ? 'tutelle' : undefined })}
+                  />
+                  <CheckField
+                    id="f_dsi_curatelle"
+                    label="Curatelle"
+                    checked={tc.type === 'curatelle'}
+                    onChange={v => setTC({ type: v ? 'curatelle' : undefined })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Nom du tuteur / curateur</Label>
+                    <Input
+                      value={tc.nom ?? ''}
+                      onChange={e => setTC({ nom: e.target.value })}
+                      placeholder="Ex : Me Dupont…"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Téléphone</Label>
+                    <Input
+                      value={tc.tel ?? ''}
+                      onChange={e => setTC({ tel: e.target.value })}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Personne à prévenir */}
               <div className="mb-5">

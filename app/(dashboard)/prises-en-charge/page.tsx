@@ -18,6 +18,7 @@ type Floor = 'RDC' | '1ER';
 interface PecDetails {
   aideAlim?: string[];
   hydratation?: string[];
+  fausseRoute?: string[];
   dentier?: string[];
   urinaire?: string[];
   fecale?: string[];
@@ -1189,6 +1190,9 @@ export default function PrisesEnChargePage() {
                                   <MiniCheck label="Aide" checked={chk('hydratation', 'aide')} onChange={() => tog('hydratation', 'aide')} disabled={ro} />
                                   <MiniCheck label="Pétillante" checked={chk('hydratation', 'petillante')} onChange={() => tog('hydratation', 'petillante')} disabled={ro} />
                                   <MiniCheck label="Gélifiée" checked={chk('hydratation', 'gelifiee')} onChange={() => tog('hydratation', 'gelifiee')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Risques">
+                                  <MiniCheck label="Fausse route" checked={chk('fausseRoute', 'oui')} onChange={() => tog('fausseRoute', 'oui')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Dentier">
                                   <MiniCheck label="Haut" checked={chk('dentier', 'haut')} onChange={() => tog('dentier', 'haut')} disabled={ro} />
