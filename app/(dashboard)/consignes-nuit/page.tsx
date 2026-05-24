@@ -29,6 +29,15 @@ interface AstreinteSettings {
   cadreEmail: string;
 }
 
+interface RespirationDSI {
+  o2?: boolean;
+  o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
 interface Resident {
   id: string;
   first_name?: string;
@@ -46,6 +55,7 @@ interface Resident {
   bande_de_contention?: boolean;
   date_naissance?: string;
   medecin?: string;
+  dsi?: { respiration?: RespirationDSI } | null;
 }
 
 interface NiveauSoin {
@@ -125,6 +135,25 @@ const CONTENTION_ICONS: Record<string, React.ReactNode> = {
   'barrière droite': <ContentionIconSmall label="BD" bg="#fef3c7" border="#d97706" />,
   'barrière x2': <ContentionIconSmall label="B2" bg="#fef3c7" border="#d97706" />,
 };
+
+/** Construit les libellés O2 / VNI depuis les données DSI d'un résident. */
+function buildRespiText(resp: RespirationDSI | undefined | null): { o2: string; vni: string } {
+  let o2 = '';
+  let vni = '';
+  if (resp?.o2 === true) {
+    const parts: string[] = ['O2'];
+    if (resp.o2Debit) parts.push(`${resp.o2Debit} L/min`);
+    const when = [resp.o2Jour && 'Jour', resp.o2Nuit && 'Nuit'].filter(Boolean).join('+');
+    if (when) parts.push(`(${when})`);
+    o2 = parts.join(' ');
+  }
+  if (resp?.vni === true) {
+    const parts: string[] = ['VNI'];
+    if (resp.vniDebit) parts.push(`${resp.vniDebit} L/min`);
+    vni = parts.join(' ');
+  }
+  return { o2, vni };
+}
 
 // ── Network background (style page d'accueil) ────────────────────────────────
 
@@ -416,6 +445,15 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
         {annotationsText && (
           <div className="whitespace-normal break-words">{annotationsText}</div>
         )}
+        {(() => {
+          const { o2, vni } = buildRespiText(resident.dsi?.respiration);
+          return (
+            <>
+              {o2 && <div className="font-bold text-blue-700 whitespace-nowrap mt-0.5">💨 {o2}</div>}
+              {vni && <div className="font-bold text-purple-700 whitespace-nowrap mt-0.5">🫁 {vni}</div>}
+            </>
+          );
+        })()}
       </td>
       {/* Consigne de nuit (éditable) */}
       <td style={{ border: '1px solid #475569', padding: '2px 4px' }} className="text-[9px]">
@@ -845,6 +883,14 @@ export default function ConsignesNuitPage() {
 
       const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
 
+      // O2 / VNI depuis DSI
+      const { o2: o2Text, vni: vniText } = buildRespiText((r.dsi as { respiration?: RespirationDSI } | null)?.respiration);
+      const respiHtml = [
+        o2Text  ? `<span style='color:#1d4ed8;font-weight:bold'>💨 ${o2Text}</span>`  : '',
+        vniText ? `<span style='color:#7c3aed;font-weight:bold'>🫁 ${vniText}</span>` : '',
+      ].filter(Boolean).join('<br/>');
+      const infosHtml = [annotationsText, respiHtml].filter(Boolean).join('<br/>');
+
       return `<tr>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;font-weight:500;color:#334155">
           <div style='display:flex;align-items:center;justify-content:space-between;gap:2px'>
@@ -855,7 +901,7 @@ export default function ConsignesNuitPage() {
           <strong>${r.last_name}</strong><br/>
           <span style='color:#64748b'>${r.first_name ?? ''}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
         </td>
-        <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${annotationsText}</td>
+        <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${infosHtml}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:11px;white-space:pre-wrap;word-break:break-word">${note}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:8px;text-align:center"><div style="display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center">${contentionBadges}${contentionEmojis ? ' ' + contentionEmojis : ''}</div></td>
       </tr>`;
