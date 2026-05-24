@@ -115,6 +115,8 @@ interface Respiration {
   dyspnee?: boolean;
   o2?: boolean;
   o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
   vni?: boolean;
   vniDebit?: string;
 }
@@ -928,6 +930,8 @@ function EditForm({
                     <Label className="text-sm text-slate-600">Débit :</Label>
                     <Input value={resp.o2Debit ?? ''} onChange={e => setResp({ o2Debit: e.target.value })} placeholder="ex : 2L/min" className="h-8 w-28 text-sm" />
                   </div>
+                  <CheckField id="f_o2_jour" label="Jour" checked={resp.o2Jour ?? false} onChange={v => setResp({ o2Jour: v })} />
+                  <CheckField id="f_o2_nuit" label="Nuit" checked={resp.o2Nuit ?? false} onChange={v => setResp({ o2Nuit: v })} />
                 </div>
                 <div className="flex flex-wrap gap-4 items-center">
                   <span className="text-sm font-semibold text-slate-700">VNI :</span>

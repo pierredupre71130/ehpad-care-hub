@@ -41,6 +41,8 @@ interface Respiration {
   dyspnee?: boolean;
   o2?: boolean;
   o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
   vni?: boolean;
   vniDebit?: string;
 }
@@ -436,6 +438,8 @@ export default function MutationPage() {
     o2Oui: false,
     o2Non: false,
     o2Debit: '',
+    o2Jour: false,
+    o2Nuit: false,
     vniOui: false,
     vniNon: false,
     vniDebit: '',
@@ -644,6 +648,8 @@ export default function MutationPage() {
       o2Oui: resp?.o2 === true,
       o2Non: resp?.o2 === false,
       o2Debit: resp?.o2Debit ?? '',
+      o2Jour: !!(resp?.o2Jour),
+      o2Nuit: !!(resp?.o2Nuit),
       vniOui: resp?.vni === true,
       vniNon: resp?.vni === false,
       vniDebit: resp?.vniDebit ?? '',
@@ -1099,6 +1105,11 @@ export default function MutationPage() {
                       <Case checked={form.o2Non} onChange={v => { patch('o2Non', v); if (v) patch('o2Oui', false); }} label="Non" />
                       <span className="font-semibold">Débit :</span>
                       <ZoneSaisie value={form.o2Debit} onChange={v => patch('o2Debit', v)} className="w-16" />
+                      {form.o2Oui && (
+                        <span className="text-[10px]">
+                          ({form.o2Jour && form.o2Nuit ? '24H' : form.o2Jour ? 'Jour' : form.o2Nuit ? 'Nuit' : ''})
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2 items-center flex-wrap">
                       <span className="font-semibold">VNI :</span>
