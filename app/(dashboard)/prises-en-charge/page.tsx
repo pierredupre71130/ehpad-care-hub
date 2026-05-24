@@ -571,6 +571,8 @@ export default function PrisesEnChargePage() {
   // Protections (Jour / Nuit) gérées depuis la page PEC Nuit, clé settings partagée.
   const { data: pecNuitProtections = {} } = useQuery<Record<string, { jour?: string; nuit?: string }>>({
     queryKey: ['pec_nuit_protections'],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const sb = createClient();
       const { data } = await sb.from('settings').select('value').eq('key', 'pec_nuit_protections').maybeSingle();
@@ -608,8 +610,11 @@ export default function PrisesEnChargePage() {
       (a.room ?? '').localeCompare(b.room ?? '', undefined, { numeric: true, sensitivity: 'base' })
     );
 
+  /** Normalise un numéro de chambre pour la comparaison : supprime espaces, minuscule */
+  const normalizeRoom = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+
   const residentByRoom = (room: string) =>
-    floorResidents.find(r => (r.room ?? '') === room);
+    floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(room));
 
   const nomFromRoom = (room: string): string => {
     const r = residentByRoom(room);
@@ -743,7 +748,7 @@ export default function PrisesEnChargePage() {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
 
     const trRows = tableRows.map(row => {
-      const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+      const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
       const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
       const first = matched?.first_name || '';
       const age = ageFromBirth(matched?.date_naissance);
@@ -1130,7 +1135,7 @@ export default function PrisesEnChargePage() {
                             disabled={!canEditAdminCols}
                             className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                           >
-                            {row.chambre && !floorResidents.find(r => r.room === row.chambre) && (
+                            {row.chambre && !floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? '')) && (
                               <option value={row.chambre}>Ch. {row.chambre}</option>
                             )}
                             {floorResidents.map(r => (
@@ -1146,7 +1151,7 @@ export default function PrisesEnChargePage() {
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           <div className="flex items-center gap-2">
                             {(() => {
-                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
                               return matched?.photo_url ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={matched.photo_url} alt={row.nom || ''}
@@ -1154,7 +1159,7 @@ export default function PrisesEnChargePage() {
                               ) : null;
                             })()}
                             {(() => {
-                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
                               const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
                               const first = matched?.first_name || '';
                               const age = ageFromBirth(matched?.date_naissance);
@@ -1297,7 +1302,7 @@ export default function PrisesEnChargePage() {
                         {/* Matin */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
                             const auto = buildAutoMatin(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1319,7 +1324,7 @@ export default function PrisesEnChargePage() {
                         {/* Après-midi / Soir */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
                             const auto = buildAutoApresMidi(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1341,7 +1346,7 @@ export default function PrisesEnChargePage() {
                         {/* Protection — lecture seule, modifiable depuis PEC Nuit */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
                             const prot = matched ? pecNuitProtections[matched.id] : undefined;
                             const j = prot?.jour ?? '';
                             const n = prot?.nuit ?? '';
