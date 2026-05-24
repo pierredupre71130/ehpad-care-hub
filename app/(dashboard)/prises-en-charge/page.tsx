@@ -774,7 +774,7 @@ export default function PrisesEnChargePage() {
         <div class="last">${esc(last) || '—'}${age !== null ? ` <span class="age">(${age} ans)</span>` : ''}</div>
         ${first ? `<div class="first">${esc(first)}</div>` : ''}
       </td>`;
-      const prot = matched ? pecNuitProtections[matched.id] : undefined;
+      const prot = pecNuitProtections[normalizeRoom(row.chambre ?? '')];
       const jourProt = prot?.jour ?? '';
       const nuitProt = prot?.nuit ?? '';
       const protText = [
@@ -1360,8 +1360,8 @@ export default function PrisesEnChargePage() {
                         {/* Protection — lecture seule, modifiable depuis PEC Nuit */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = residentByRoom(row.chambre ?? '');
-                            const prot = matched ? pecNuitProtections[matched.id] : undefined;
+                            // Clé = chambre normalisée, même format que pec-nuit
+                            const prot = pecNuitProtections[normalizeRoom(row.chambre ?? '')];
                             const j = prot?.jour ?? '';
                             const n = prot?.nuit ?? '';
                             // Fallback : si aucune donnée structurée, affiche le champ texte row.protection

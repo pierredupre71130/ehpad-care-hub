@@ -74,6 +74,12 @@ function valuesKey(floor: Floor, section: Section): string {
   return `pec_nuit_values_${floor}_${section}`;
 }
 
+/** Normalise un numéro de chambre : supprime espaces, minuscule.
+ *  Clé utilisée dans pec_nuit_protections pour éviter les problèmes de format. */
+function normalizeRoom(s: string): string {
+  return s.replace(/\s+/g, '').toLowerCase();
+}
+
 function sectionOf(r: Resident): Section {
   return (r.section ?? '').toLowerCase().includes('long') ? 'long' : 'mapad';
 }
@@ -301,13 +307,16 @@ export default function PecNuitPage() {
   };
 
   // ── Mutation protections (jour / nuit) ────────────────────
+  // Clé = chambre normalisée (ex: '29p', '30sdb') pour correspondre directement
+  // aux valeurs row.chambre de la page Prises en Charge sans dépendre du resident ID.
   const updateProtection = async (
-    residentId: string, period: 'jour' | 'nuit', value: string,
+    room: string, period: 'jour' | 'nuit', value: string,
   ) => {
+    const key = normalizeRoom(room);
     const current = qc.getQueryData<ProtectionsMap>(['pec_nuit_protections']) ?? {};
     const next: ProtectionsMap = {
       ...current,
-      [residentId]: { ...(current[residentId] ?? {}), [period]: value },
+      [key]: { ...(current[key] ?? {}), [period]: value },
     };
     qc.setQueryData(['pec_nuit_protections'], next);
     try {
@@ -519,7 +528,7 @@ function SectionTable({
   onRemoveColumn: (key: string) => void;
   onMoveColumn: (key: string, dir: 'left' | 'right') => void;
   onUpdateCell: (residentId: string, colKey: string, value: number | boolean) => void;
-  onUpdateProtection: (residentId: string, period: 'jour' | 'nuit', value: string) => void;
+  onUpdateProtection: (room: string, period: 'jour' | 'nuit', value: string) => void;
 }) {
   return (
     <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
@@ -609,7 +618,7 @@ function SectionTable({
             ) : (
               residents.map((r, rowIdx) => {
                 const rv = values[r.id] ?? {};
-                const prot = protections[r.id] ?? {};
+                const prot = protections[normalizeRoom(r.room ?? '')] ?? {};
                 const autoProtection = defaultProtection(rv, columns);
                 const stripe = rowIdx % 2 !== 0;
                 return (
@@ -654,7 +663,7 @@ function SectionTable({
                       <ProtecSelect
                         value={prot.jour ?? autoProtection}
                         disabled={!canEdit}
-                        onChange={v => onUpdateProtection(r.id, 'jour', v)}
+                        onChange={v => onUpdateProtection(r.room ?? '', 'jour', v)}
                       />
                     </td>
                     <td className={cn(
@@ -664,7 +673,7 @@ function SectionTable({
                       <ProtecSelect
                         value={prot.nuit ?? autoProtection}
                         disabled={!canEdit}
-                        onChange={v => onUpdateProtection(r.id, 'nuit', v)}
+                        onChange={v => onUpdateProtection(r.room ?? '', 'nuit', v)}
                       />
                     </td>
                   </tr>
