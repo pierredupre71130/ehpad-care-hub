@@ -975,12 +975,18 @@ export default function MutationPage() {
                 {vaccinsText && (
                   <Ligne label="Vaccins :"><span className="text-[9px]">{vaccinsText}</span></Ligne>
                 )}
-                {ctx?.niveau?.niveau_soin && (
+                <div className="grid grid-cols-2 gap-x-4">
                   <Ligne label="Niveau de soins :">
-                    <span className="font-medium">{ctx.niveau.niveau_soin}</span>
-                    {ctx.niveau.gir && <span className="ml-2">— GIR {ctx.niveau.gir}</span>}
+                    {ctx?.niveau?.niveau_soin
+                      ? <span className="font-medium">{ctx.niveau.niveau_soin}</span>
+                      : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
                   </Ligne>
-                )}
+                  <Ligne label="GIR :">
+                    {ctx?.niveau?.gir
+                      ? <span className="font-medium">{ctx.niveau.gir}</span>
+                      : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
+                  </Ligne>
+                </div>
                 {contentionText && (
                   <Ligne label="Contention :"><span>{contentionText}</span></Ligne>
                 )}
