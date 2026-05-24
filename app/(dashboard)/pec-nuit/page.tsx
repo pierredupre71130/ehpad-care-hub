@@ -313,10 +313,17 @@ export default function PecNuitPage() {
     room: string, period: 'jour' | 'nuit', value: string,
   ) => {
     const key = normalizeRoom(room);
+    // Préfixe numérique seul (ex: '32f' → '32') : sauvegardé en double pour que
+    // prises-en-charge puisse retrouver la protection même si row.chambre ne contient
+    // que le numéro (ex: room='32' dans residents, chambre='32 F' dans pec_rows).
+    const prefix = key.match(/^(\d+)/)?.[1] ?? '';
     const current = qc.getQueryData<ProtectionsMap>(['pec_nuit_protections']) ?? {};
     const next: ProtectionsMap = {
       ...current,
       [key]: { ...(current[key] ?? {}), [period]: value },
+      ...(prefix && prefix !== key
+        ? { [prefix]: { ...(current[prefix] ?? {}), [period]: value } }
+        : {}),
     };
     qc.setQueryData(['pec_nuit_protections'], next);
     try {
