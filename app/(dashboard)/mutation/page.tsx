@@ -1011,7 +1011,7 @@ export default function MutationPage() {
                 <div className="grid grid-cols-2 gap-x-4">
                   <Ligne label="Niveau de soins :">
                     {ctx?.niveau?.niveau_soin
-                      ? <span className="font-medium">{ctx.niveau.niveau_soin}</span>
+                      ? <span className="font-medium">{ctx.niveau.niveau_soin}{' '}<span className="font-normal italic">acté avec famille / résident par Médecin Co.</span></span>
                       : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
                   </Ligne>
                   <Ligne label="GIR :">
