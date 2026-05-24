@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * Lettre de Liaison des Soins Infirmiers — feuille de mutation
- * Auto-remplit les données depuis les modules (Résidents, GIR, Vaccination,
- * Surveillance Poids, Fiches Menu, Prises en Charge, Contentions, Matelas).
- * Les zones libres restent éditables. Bouton « Imprimer » pour export papier.
+ * Fiche de Liaison des Soins Infirmiers — CHPLM-ENR-00499
+ * Présentation calquée sur le document officiel.
+ * Auto-remplit depuis : Résidents, GIR, Vaccination, Poids, Fiches Menu,
+ * Prises en Charge, Contentions, Matelas.
  */
 
 import { useState, useMemo, useEffect, type ReactNode } from 'react';
@@ -15,8 +15,6 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────────────────────────────────────────
@@ -71,11 +69,7 @@ interface VaccinationLT {
   pneumovax_date?: string | null;
   notes?: string | null;
 }
-interface FicheMenu {
-  resident_id: string;
-  repas: string;
-  observation: string;
-}
+interface FicheMenu { resident_id: string; repas: string; observation: string; }
 interface PecDetails {
   aideAlim?: string[];
   hydratation?: string[];
@@ -143,23 +137,16 @@ function isFemaleTitle(title?: string): boolean {
   return t === 'mme' || t === 'me' || t === 'mlle' || t === 'madame' || t === 'mademoiselle';
 }
 
-// Parse "covid:Refus famille C|grippe:Accepte G|..." → { covid, grippe }
 function parseVaccInfos(infos: string | null | undefined): { covid: string; grippe: string } {
   if (!infos) return { covid: '', grippe: '' };
   const map: Record<string, string> = {};
   infos.split('|').forEach(p => {
     const idx = p.indexOf(':');
-    if (idx > 0) {
-      const k = p.slice(0, idx).trim();
-      const v = p.slice(idx + 1).trim();
-      if (k) map[k] = v;
-    }
+    if (idx > 0) { map[p.slice(0, idx).trim()] = p.slice(idx + 1).trim(); }
   });
   return { covid: map.covid || '', grippe: map.grippe || '' };
 }
 
-// Mirror of the matching logic from vaccination/page.tsx: id, then full name,
-// then last-name fallback. Vaccination rows often miss resident_id.
 function matchesResident(row: { resident_id?: string; resident_name?: string }, resident: Resident): boolean {
   if (row.resident_id === resident.id) return true;
   const vName = (row.resident_name || '').toLowerCase().trim();
@@ -176,26 +163,16 @@ function matchesResident(row: { resident_id?: string; resident_name?: string }, 
 
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
-  const { data, error } = await sb
-    .from('residents')
-    .select('*')
-    .eq('archived', false)
-    .order('last_name', { ascending: true });
+  const { data, error } = await sb.from('residents').select('*').eq('archived', false).order('last_name');
   if (error) throw new Error(error.message);
   const residents = (data ?? []) as Resident[];
-
-  // Sign photo URLs
   const withPhotos = residents.filter(r => r.photo_url && !r.photo_url.startsWith('http'));
   if (withPhotos.length > 0) {
-    const { data: signed } = await sb.storage
-      .from('resident-photos')
-      .createSignedUrls(withPhotos.map(r => r.photo_url!), 3600);
+    const { data: signed } = await sb.storage.from('resident-photos').createSignedUrls(withPhotos.map(r => r.photo_url!), 3600);
     if (signed) {
       const urlMap: Record<string, string> = {};
       signed.forEach(s => { if (s.signedUrl && s.path) urlMap[s.path] = s.signedUrl; });
-      return residents.map(r =>
-        r.photo_url && urlMap[r.photo_url] ? { ...r, photo_url: urlMap[r.photo_url] } : r
-      );
+      return residents.map(r => r.photo_url && urlMap[r.photo_url] ? { ...r, photo_url: urlMap[r.photo_url] } : r);
     }
   }
   return residents;
@@ -203,42 +180,29 @@ async function fetchResidents(): Promise<Resident[]> {
 
 async function fetchMutationContext(resident: Resident) {
   const sb = createClient();
-
   const [
-    { data: lastWeight },
-    { data: niveau },
-    { data: allVacc },
-    { data: allVaccLT },
-    { data: fichesMenu },
-    { data: pecRows },
-    { data: contentions },
-    { data: matCouss },
+    { data: lastWeight }, { data: niveau }, { data: allVacc }, { data: allVaccLT },
+    { data: fichesMenu }, { data: pecRows }, { data: contentions }, { data: matCouss },
   ] = await Promise.all([
     sb.from('poids_mesure').select('*').eq('resident_id', resident.id).order('date', { ascending: false }).limit(1).maybeSingle(),
     sb.from('niveau_soin').select('*').eq('resident_id', resident.id).maybeSingle(),
     sb.from('vaccination').select('*'),
     sb.from('vaccination_long_terme').select('*'),
     sb.from('fiches_menu').select('*').eq('resident_id', resident.id),
-    // RPC pour récupérer la colonne JSONB details (contourne le cache schéma PostgREST)
     sb.rpc('get_pec_rows', { p_floor: resident.floor }),
     sb.from('contentions').select('*').eq('type_suivi', 'contention').eq('chambre', resident.room),
     sb.from('mat_couss_items').select('*').eq('resident_id', resident.id).eq('status', 'attribue'),
   ]);
-
   const pecArr = Array.isArray(pecRows) ? pecRows : (pecRows ? [pecRows] : []);
   const pec = (pecArr as PecRow[]).find(r => r.chambre === resident.room) ?? null;
-
   const matchingVacc = ((allVacc ?? []) as Vaccination[]).filter(v => matchesResident(v, resident));
   const vaccination = matchingVacc.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0] ?? null;
-
   const matchingVaccLT = ((allVaccLT ?? []) as VaccinationLT[]).filter(v => matchesResident(v, resident));
   const vaccinationLT = matchingVaccLT[0] ?? null;
-
   return {
     lastWeight: lastWeight as PoidsMesure | null,
     niveau: niveau as NiveauSoin | null,
-    vaccination,
-    vaccinationLT,
+    vaccination, vaccinationLT,
     fichesMenu: (fichesMenu ?? []) as FicheMenu[],
     pec: pec as PecRow | null,
     contentions: (contentions ?? []) as Contention[],
@@ -247,32 +211,96 @@ async function fetchMutationContext(resident: Resident) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// UI HELPERS
+// UI HELPERS (présentation fiche officielle)
 // ─────────────────────────────────────────────────────────────
 
-function SectionTitle({ children }: { children: ReactNode }) {
+/** Titre de section avec fond gris foncé, texte blanc, uppercase */
+function Titre({ children }: { children: ReactNode }) {
   return (
-    <h2 className="bg-blue-900 text-white text-sm font-bold uppercase tracking-wide px-3 py-1.5 mb-2 mt-4 print:bg-slate-200 print:text-black print:border print:border-black">
+    <div className="bg-[#4a4a4a] text-white text-[10px] font-bold uppercase tracking-widest text-center py-[3px] px-2 print:bg-[#aaaaaa] print:text-black">
       {children}
-    </h2>
-  );
-}
-
-function FieldRow({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('flex items-baseline gap-2 text-sm', className)}>
-      <span className="font-semibold whitespace-nowrap">{label}</span>
-      <span className="flex-1">{children}</span>
     </div>
   );
 }
 
-function CheckOption({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+/** Titre de sous-section (ex: ALIMENTATION ET HYDRATATION) dans les 2 colonnes */
+function SousTitre({ children }: { children: ReactNode }) {
   return (
-    <label className="inline-flex items-center gap-1.5 cursor-pointer text-sm">
-      <Checkbox checked={checked} onCheckedChange={v => onChange(!!v)} className="h-4 w-4" />
+    <div className="text-[9px] font-bold uppercase text-center py-[2px] border-b border-black">
+      {children}
+    </div>
+  );
+}
+
+/** Ligne de champ avec label + zone de saisie soulignée */
+function Ligne({ label, children, className }: { label: string; children?: ReactNode; className?: string }) {
+  return (
+    <div className={cn('flex items-baseline gap-1 text-[10px] leading-tight', className)}>
+      <span className="font-semibold whitespace-nowrap shrink-0">{label}</span>
+      <span className="flex-1 border-b border-black min-h-[14px] leading-tight">{children}</span>
+    </div>
+  );
+}
+
+/** Case à cocher style officiel */
+function Case({
+  checked, onChange, label, readOnly = false
+}: {
+  checked: boolean;
+  onChange?: (v: boolean) => void;
+  label: string;
+  readOnly?: boolean;
+}) {
+  return (
+    <label className={cn('inline-flex items-center gap-1 text-[10px] cursor-pointer', readOnly && 'cursor-default')}>
+      <span
+        className={cn(
+          'inline-block w-3 h-3 border border-black shrink-0 flex items-center justify-center',
+          checked && 'bg-black'
+        )}
+        onClick={() => !readOnly && onChange?.(!checked)}
+      >
+        {checked && <span className="text-white text-[8px] leading-none">✓</span>}
+      </span>
       <span>{label}</span>
     </label>
+  );
+}
+
+/** Zone de texte inline éditable (style soulignement) */
+function ZoneSaisie({ value, onChange, placeholder, className, multiline = false, rows = 1 }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+  multiline?: boolean;
+  rows?: number;
+}) {
+  if (multiline) {
+    return (
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className={cn(
+          'w-full border-0 border-b border-black bg-transparent text-[10px] leading-tight resize-none outline-none focus:bg-blue-50 print:focus:bg-transparent px-0',
+          className
+        )}
+      />
+    );
+  }
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={cn(
+        'w-full border-0 border-b border-black bg-transparent text-[10px] leading-tight outline-none focus:bg-blue-50 print:focus:bg-transparent px-0',
+        className
+      )}
+    />
   );
 }
 
@@ -284,85 +312,149 @@ export default function MutationPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Editable free-text fields (state local — pour impression)
   const [form, setForm] = useState({
-    tel: '',
+    // En-tête
+    nomService: 'EHPAD La Fourrier – Gueugnon',
+    telService: '03 85 85 85 47',
+    elaborePar: 'IDE',
+    // Identification
+    adresse: '5 route de Toulon, 71130 Gueugnon',
+    taille: '',
     personneAPrevenirManuel: '',
-    personnePrevenue: '' as '' | 'oui' | 'non',
-    tutellePrevenue: '' as '' | 'oui' | 'non',
-    suiviSocial: '',
-    situationFamiliale: '' as '' | 'marie' | 'celibataire' | 'divorce' | 'veuf',
-    kineActif: null as boolean | null,
-    kineDetail: '',
+    telPrevenir: '',
+    personnePrevenue: false,
+    // Environnement
+    sitFamiliale: { celibataire: false, marie: false, veuf: false },
+    vit: { famille: false, seul: false, etablissement: true, autre: '' },
+    suiviSocialOui: false,
+    suiviSocialNom: '',
+    tutelle: false,
+    curatelle: false,
+    apa: false,
+    // Devenir
+    retourDomicileOui: false,
+    retourDomicileNon: false,
+    ssrOui: false,
+    ssrNon: false,
+    ssrLesquels: '',
+    ehpadOui: false,
+    ehpadNon: false,
+    ehpadLesquels: '',
+    // Intervenants
+    ideLiberale: '',
+    ssiad: '',
+    kinesitherapeute: '',
+    aidedomicile: '',
+    ambulancier: '',
+    portageRepas: '',
+    teleAlarme: '',
+    autreIntervenant: '',
+    // Hospitalisation
     motif: '',
-    isolement: '' as '' | 'oui' | 'non',
-    aideAlim: '' as '' | 'autonome' | 'aide',
-    hydratation: '' as '' | 'petillante' | 'gelifiee',
-    dentierHaut: false,
-    dentierBas: false,
-    dentierNonApportes: false,
-    eliminationUrinaire: '' as '' | 'continent' | 'incontinent',
-    eliminationFecale: '' as '' | 'continent' | 'incontinent',
-    materielUrinaire: [] as string[],
-    sadOui: '' as '' | 'oui' | 'non',
+    isolementOui: false,
+    isolementNon: false,
+    // Alimentation
+    alimentNormale: false,
+    alimentMixee: false,
+    alimentAjeun: false,
+    regimeLequel: '',
+    fausseRoute: false,
+    alimentParenterale: false,
+    eauGelifiee: false,
+    complementAlimentaire: false,
+    aideAlim: { autonome: false, partielle: false, totale: false },
+    protheseDentaireOui: false,
+    protheseDentaireNon: false,
+    // Elimination
+    urinesContinent: false,
+    urinesIncontinent: false,
+    sellesContinent: false,
+    sellesIncontinent: false,
+    quelleProtection: '',
+    dateDerniereSelle: '',
+    urinal: false,
+    bassin: false,
+    penilex: false,
+    chaisePerce: false,
+    sadOui: false,
     sadDate: '',
-    derniereSelle: '',
-    appareilAuditif: '' as '' | 'oui' | 'non' | 'non-apportes',
-    lunettes: '' as '' | 'oui' | 'non' | 'non-apportees',
-    hygiene: '' as '' | 'autonome' | 'partielle' | 'totale',
-    habillage: '' as '' | 'autonome' | 'partielle' | 'totale',
+    // Hygiène
+    hygieneAutonome: false,
+    hygienePartielle: false,
+    hygieneTotale: false,
     hygieneCommentaire: '',
-    sommeil: '' as '' | 'satisfaisant' | 'perturbe',
-    etatGeneral: [] as string[],
-    capacite: '' as '' | 'adaptees' | 'demence' | 'mutique',
-    locomotion: '' as '' | 'autonome' | 'partielle' | 'totale',
-    materielLoco: [] as string[],
-    escarrePresent: '' as '' | 'oui' | 'non',
-    escarres: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    pansementPresent: '' as '' | 'oui' | 'non',
-    pansements: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    mycosePresent: '' as '' | 'oui' | 'non',
-    mycoses: [{ localisation: '', stade: '', protocole: '' }] as Array<{ localisation: string; stade: string; protocole: string }>,
-    perfusion: '' as '' | 'oui' | 'non',
-    perfusionDetail: '',
-    perfusionKtDate: '',
-    dernierBilanSanguin: '',
-    soinsIdeAutre: '',
+    habillageAutonome: false,
+    habillagePartielle: false,
+    habillageTotale: false,
+    sommeilNormal: false,
+    sommeilPerturbe: false,
+    sommeilTraitement: '',
+    // Respiration
+    respirationNormale: false,
+    dyspnee: false,
+    o2Oui: false,
+    o2Non: false,
+    o2Debit: '',
+    vmiOui: false,
+    vmiNon: false,
+    tracheotomie: false,
+    coherentOui: false,
+    coherentNon: false,
+    communiqueOui: false,
+    communiqueNon: false,
+    // Locomotion
+    locoAutonome: false,
+    locoPartielle: false,
+    locoBrancardier: false,
+    deambulateur: false,
+    canne: false,
+    fauteuilRoulant: false,
+    locoAutreDetail: '',
+    leveMalade: false,
+    verticalisateur: false,
+    // Autres
+    lunettes: false,
+    appareilAuditif: false,
+    // État cutané
+    matelasAirOui: false,
+    matelasAirNon: false,
+    matelasAirLequel: '',
+    matelasAntiEscarreOui: false,
+    matelasAntiEscarreNon: false,
+    matelasAntiEscarreLequel: '',
+    escarreOui: false,
+    escarreNon: false,
+    escarreLocalisation: '',
+    escarreStade: '',
+    pansementProtOui: false,
+    pansementProtNon: false,
+    pansementProtLocalisation: '',
+    mycoseOui: false,
+    mycoseNon: false,
+    mycoseLocalisation: '',
+    etatCutaneAutre: '',
+    // Pansement (tableau)
+    plaies: [
+      { type: '', localisation: '', protocole: '' },
+      { type: '', localisation: '', protocole: '' },
+      { type: '', localisation: '', protocole: '' },
+    ] as Array<{ type: string; localisation: string; protocole: string }>,
+    ablationFils: '',
+    ablationAgrafes: '',
+    drainageOui: false,
+    drainageNon: false,
+    drainageLequel: '',
+    // Traitement
+    traitementJour: '',
+    perfusion: '',
+    ktPoseLe: '',
+    examensPrevus: '',
+    // Vécu hospitalisation
+    vecuHospitalisation: '',
   });
 
   const patch = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm(s => ({ ...s, [k]: v }));
-
-  const toggleList = (key: 'materielUrinaire' | 'etatGeneral' | 'materielLoco', value: string) => {
-    setForm(s => {
-      const arr = s[key];
-      return { ...s, [key]: arr.includes(value) ? arr.filter(x => x !== value) : [...arr, value] };
-    });
-  };
-
-  const updateLesion = (
-    key: 'escarres' | 'pansements' | 'mycoses',
-    index: number,
-    field: 'localisation' | 'stade' | 'protocole',
-    value: string,
-  ) => {
-    setForm(s => {
-      const arr = [...s[key]];
-      arr[index] = { ...arr[index], [field]: value };
-      return { ...s, [key]: arr };
-    });
-  };
-
-  const addLesion = (key: 'escarres' | 'pansements' | 'mycoses') => {
-    setForm(s => ({ ...s, [key]: [...s[key], { localisation: '', stade: '', protocole: '' }] }));
-  };
-
-  const removeLesion = (key: 'escarres' | 'pansements' | 'mycoses', index: number) => {
-    setForm(s => {
-      const arr = s[key].filter((_, i) => i !== index);
-      return { ...s, [key]: arr.length ? arr : [{ localisation: '', stade: '', protocole: '' }] };
-    });
-  };
 
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
     queryKey: ['mutation-residents'],
@@ -372,15 +464,10 @@ export default function MutationPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return residents;
-    return residents.filter(r =>
-      `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q)
-    );
+    return residents.filter(r => `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q));
   }, [residents, search]);
 
-  const selected = useMemo(
-    () => residents.find(r => r.id === selectedId) ?? null,
-    [residents, selectedId]
-  );
+  const selected = useMemo(() => residents.find(r => r.id === selectedId) ?? null, [residents, selectedId]);
 
   const { data: ctx } = useQuery({
     queryKey: ['mutation-context', selectedId],
@@ -388,152 +475,74 @@ export default function MutationPage() {
     enabled: !!selected,
   });
 
-  // Régime synthétique depuis les flags residents — défaut "Normal" si rien
-  const regimeText = useMemo(() => {
+  // ── Données calculées auto-remplies ──
+  const regimeAutoText = useMemo(() => {
     if (!selected) return '';
     const flags: string[] = [];
     if (selected.regime_mixe) flags.push('Mixé');
     if (selected.viande_mixee) flags.push('Viande mixée');
     if (selected.regime_diabetique) flags.push('Diabétique');
     if (selected.epargne_intestinale) flags.push('Épargne intestinale');
-    return flags.length ? flags.join(', ') : 'Normal';
+    return flags.join(', ');
   }, [selected]);
-
-  const alimentationObs = useMemo(() => {
-    if (!ctx?.fichesMenu?.length) return '';
-    return ctx.fichesMenu
-      .map(f => `${f.repas === 'midi' ? 'Midi' : 'Soir'}: ${f.observation || '—'}`)
-      .join(' | ');
-  }, [ctx]);
 
   const personnePrevenir = useMemo(() => {
     if (!ctx?.niveau) return '';
     const parts: string[] = [];
     if (ctx.niveau.appel_nuit_info) parts.push(ctx.niveau.appel_nuit_info);
-    if (ctx.niveau.tutelle) parts.push(`Tutelle : ${ctx.niveau.tutelle}`);
     return parts.join(' — ');
   }, [ctx]);
 
-  const allergiesText = useMemo(() => {
-    if (!selected) return '';
-    return selected.allergie_medicamenteuse?.trim() ?? '';
-  }, [selected]);
+  const tutelleText = useMemo(() => ctx?.niveau?.tutelle || '', [ctx]);
+
+  const matelasAirText = useMemo(() => {
+    if (!ctx?.matCouss?.length) return '';
+    return ctx.matCouss.filter(m => m.kind === 'matelas' && m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
+  }, [ctx]);
+
+  const matelasAntiText = useMemo(() => {
+    if (!ctx?.matCouss?.length) return '';
+    return ctx.matCouss.filter(m => m.kind === 'matelas' && !m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
+  }, [ctx]);
+
+  const contentionText = useMemo(() => {
+    if (!ctx?.contentions?.length) return '';
+    return ctx.contentions.map(c => {
+      const fin = c.pas_de_fin ? 'sans fin' : c.date_fin ? `→ ${formatDate(c.date_fin)}` : '';
+      return `${c.traitement}${c.date_debut ? ` (depuis ${formatDate(c.date_debut)}${fin ? ' ' + fin : ''})` : ''}`;
+    }).join(' · ');
+  }, [ctx]);
 
   const vaccinsText = useMemo(() => {
     if (!ctx) return '';
     const lines: string[] = [];
     const refus: string[] = [];
-
     if (ctx.vaccination) {
       const annee = ctx.vaccination.year;
       const { covid: covidChoice, grippe: grippeChoice } = parseVaccInfos(ctx.vaccination.infos);
       const isDate = (s: string | null | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
-
-      // ── COVID ──
       if (covidChoice && /refus/i.test(covidChoice)) {
-        const famille = /famille/i.test(covidChoice);
-        refus.push(`COVID (${famille ? 'refus famille' : 'refus résident'})`);
+        refus.push(`COVID (${/famille/i.test(covidChoice) ? 'refus famille' : 'refus résident'})`);
       } else {
-        const covidDates = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3]
-          .filter(isDate)
-          .sort()
-          .reverse();
-        if (covidDates.length) {
-          lines.push(`COVID ${annee} : dernière injection le ${formatDate(covidDates[0])}`);
-        } else if (covidChoice) {
-          lines.push(`COVID ${annee} : ${covidChoice}`);
-        }
+        const dates = [ctx.vaccination.covid_inj1, ctx.vaccination.covid_inj2, ctx.vaccination.covid_inj3].filter(isDate).sort().reverse();
+        if (dates.length) lines.push(`COVID ${annee} : dernière inj. ${formatDate(dates[0])}`);
+        else if (covidChoice) lines.push(`COVID ${annee} : ${covidChoice}`);
       }
-
-      // ── GRIPPE ──
       if (grippeChoice && /refus/i.test(grippeChoice)) {
-        const famille = /famille/i.test(grippeChoice);
-        refus.push(`Grippe (${famille ? 'refus famille' : 'refus résident'})`);
+        refus.push(`Grippe (${/famille/i.test(grippeChoice) ? 'refus famille' : 'refus résident'})`);
       } else if (isDate(ctx.vaccination.grippe_inj1)) {
         lines.push(`Grippe ${annee} : ${formatDate(ctx.vaccination.grippe_inj1)}`);
       } else if (grippeChoice) {
         lines.push(`Grippe ${annee} : ${grippeChoice}`);
       }
     }
-
     if (ctx.vaccinationLT) {
       if (ctx.vaccinationLT.tetanos_date) lines.push(`Tétanos : ${formatDate(ctx.vaccinationLT.tetanos_date)}`);
       if (ctx.vaccinationLT.pneumovax_date) lines.push(`Pneumovax : ${formatDate(ctx.vaccinationLT.pneumovax_date)}`);
     }
-
     if (refus.length) lines.push(`Refus : ${refus.join(', ')}`);
     return lines.join(' · ');
   }, [ctx]);
-
-  const matelasText = useMemo(() => {
-    if (!ctx?.matCouss?.length) return '';
-    return ctx.matCouss
-      .filter(m => m.kind === 'matelas')
-      .map(m => m.type_name ?? '—')
-      .join(', ');
-  }, [ctx]);
-
-  const contentionText = useMemo(() => {
-    if (!ctx?.contentions?.length) return '';
-    return ctx.contentions
-      .map(c => {
-        const fin = c.pas_de_fin ? 'sans fin' : c.date_fin ? `→ ${formatDate(c.date_fin)}` : '';
-        return `${c.traitement}${c.date_debut ? ` (depuis ${formatDate(c.date_debut)}${fin ? ' ' + fin : ''})` : ''}`;
-      })
-      .join(' · ');
-  }, [ctx]);
-
-  // Réinitialise les champs auto-remplis dès que le résident change
-  useEffect(() => {
-    setForm(s => ({
-      ...s,
-      aideAlim: '',
-      hydratation: '',
-      dentierHaut: false,
-      dentierBas: false,
-      eliminationUrinaire: '',
-      eliminationFecale: '',
-      materielUrinaire: [],
-      appareilAuditif: '',
-      lunettes: '',
-      hygiene: '',
-      habillage: '',
-      locomotion: '',
-      materielLoco: [],
-    }));
-  }, [selectedId]);
-
-  // Auto-remplit les champs du formulaire depuis Prises en Charge (JSONB details)
-  useEffect(() => {
-    const d = ctx?.pec?.details;
-    if (!d) return;
-    const aideA = asArr(d.aideAlim);
-    const hyd = asArr(d.hydratation);
-    const dent = asArr(d.dentier);
-    const uri = asArr(d.urinaire);
-    const fec = asArr(d.fecale);
-    const aud = asArr(d.appareilAuditif);
-    const lun = asArr(d.lunettes);
-    const hyg = asArr(d.hygiene);
-    const hab = asArr(d.habillage);
-    const loc = asArr(d.locomotion);
-    setForm(s => ({
-      ...s,
-      aideAlim: aideA.includes('autonome') ? 'autonome' : aideA.includes('aide') ? 'aide' : '',
-      hydratation: hyd.includes('petillante') ? 'petillante' : hyd.includes('gelifiee') ? 'gelifiee' : '',
-      dentierHaut: dent.includes('haut'),
-      dentierBas: dent.includes('bas'),
-      eliminationUrinaire: uri.includes('continent') ? 'continent' : uri.includes('incontinent') ? 'incontinent' : '',
-      eliminationFecale: fec.includes('continent') ? 'continent' : fec.includes('incontinent') ? 'incontinent' : '',
-      materielUrinaire: asArr(d.elimMateriel),
-      appareilAuditif: aud.includes('oui') ? 'oui' : aud.includes('non') ? 'non' : '',
-      lunettes: lun.includes('oui') ? 'oui' : lun.includes('non') ? 'non' : '',
-      hygiene: hyg.includes('autonome') ? 'autonome' : hyg.includes('partielle') ? 'partielle' : hyg.includes('totale') ? 'totale' : '',
-      habillage: hab.includes('autonome') ? 'autonome' : hab.includes('partielle') ? 'partielle' : hab.includes('totale') ? 'totale' : '',
-      locomotion: loc.includes('autonome') ? 'autonome' : loc.includes('partielle') ? 'partielle' : loc.includes('totale') ? 'totale' : '',
-      materielLoco: asArr(d.locoMateriel).map(v => LOCO_MATERIEL_MAP[v]).filter(Boolean),
-    }));
-  }, [ctx?.pec]);
 
   const protectionText = useMemo(() => {
     const d = ctx?.pec?.details;
@@ -545,14 +554,86 @@ export default function MutationPage() {
     return ctx?.pec?.protection || '';
   }, [ctx?.pec]);
 
+  // Reset + auto-remplit depuis PEC quand résident change
+  useEffect(() => {
+    const d = ctx?.pec?.details;
+    const uri = asArr(d?.urinaire);
+    const fec = asArr(d?.fecale);
+    const matElim = asArr(d?.elimMateriel);
+    const hyg = asArr(d?.hygiene);
+    const hab = asArr(d?.habillage);
+    const loc = asArr(d?.locomotion);
+    const locoMat = asArr(d?.locoMateriel);
+    const aud = asArr(d?.appareilAuditif);
+    const lun = asArr(d?.lunettes);
+    const dent = asArr(d?.dentier);
+    const aideA = asArr(d?.aideAlim);
+    const hyd = asArr(d?.hydratation);
+
+    setForm(s => ({
+      ...s,
+      // Alimentation
+      alimentNormale: !selected?.regime_mixe && !selected?.viande_mixee,
+      alimentMixee: !!(selected?.regime_mixe || selected?.viande_mixee),
+      eauGelifiee: hyd.includes('gelifiee'),
+      aideAlim: {
+        autonome: aideA.includes('autonome'),
+        partielle: false,
+        totale: aideA.includes('aide'),
+      },
+      protheseDentaireOui: dent.includes('haut') || dent.includes('bas'),
+      protheseDentaireNon: dent.length === 0,
+      // Élimination
+      urinesContinent: uri.includes('continent'),
+      urinesIncontinent: uri.includes('incontinent'),
+      sellesContinent: fec.includes('continent'),
+      sellesIncontinent: fec.includes('incontinent'),
+      urinal: matElim.includes('urinal'),
+      bassin: matElim.includes('bassin'),
+      chaisePerce: matElim.includes('chaise-percee'),
+      // Hygiène
+      hygieneAutonome: hyg.includes('autonome'),
+      hygienePartielle: hyg.includes('partielle'),
+      hygieneTotale: hyg.includes('totale'),
+      habillageAutonome: hab.includes('autonome'),
+      habillagePartielle: hab.includes('partielle'),
+      habillageTotale: hab.includes('totale'),
+      // Locomotion
+      locoAutonome: loc.includes('autonome'),
+      locoPartielle: loc.includes('partielle'),
+      locoBrancardier: loc.includes('totale'),
+      deambulateur: locoMat.includes('deambulateur'),
+      canne: locoMat.includes('canne'),
+      fauteuilRoulant: locoMat.includes('fauteuil-roulant'),
+      verticalisateur: locoMat.includes('verticalisateur'),
+      leveMalade: locoMat.includes('leve-malade'),
+      // Autres
+      appareilAuditif: aud.includes('oui'),
+      lunettes: lun.includes('oui'),
+      // Matelas
+      matelasAirOui: matelasAirText.length > 0,
+      matelasAirNon: matelasAirText.length === 0,
+      matelasAirLequel: matelasAirText,
+      matelasAntiEscarreOui: matelasAntiText.length > 0,
+      matelasAntiEscarreNon: matelasAntiText.length === 0,
+      matelasAntiEscarreLequel: matelasAntiText,
+      // Tutelle
+      tutelle: !!(tutelleText && /tutelle/i.test(tutelleText)),
+      curatelle: !!(tutelleText && /curatelle/i.test(tutelleText)),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx?.pec, selected, matelasAirText, matelasAntiText, tutelleText]);
+
+  const fem = isFemaleTitle(selected?.title);
+
   return (
-    <div className="min-h-screen bg-slate-50 print:bg-white">
-      {/* ── Top bar (cachée à l'impression) ── */}
+    <div className="min-h-screen bg-slate-100 print:bg-white">
+      {/* Barre supérieure (cachée à l'impression) */}
       <div className="bg-blue-900 text-white px-4 py-3 flex items-center gap-3 sticky top-0 z-10 print:hidden">
         <Link href="/" className="text-white/70 hover:text-white">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-base font-bold flex-1">Lettre de Liaison des Soins Infirmiers</h1>
+        <h1 className="text-base font-bold flex-1">Fiche de Liaison des Soins Infirmiers</h1>
         {selected && (
           <Button onClick={() => window.print()} size="sm" className="bg-white text-blue-900 hover:bg-slate-100">
             <Printer className="h-4 w-4 mr-1.5" /> Imprimer
@@ -561,7 +642,8 @@ export default function MutationPage() {
       </div>
 
       <div className="max-w-4xl mx-auto p-4 sm:p-6 print:p-0 print:max-w-none">
-        {/* ── Sélecteur résident (caché à l'impression) ── */}
+
+        {/* ── Sélecteur résident ── */}
         {!selected && (
           <div className="bg-white border border-slate-200 rounded-lg p-4 print:hidden">
             <div className="relative mb-3">
@@ -583,15 +665,11 @@ export default function MutationPage() {
                     onClick={() => setSelectedId(r.id)}
                     className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center gap-3 transition-colors"
                   >
-                    {r.photo_url ? (
-                      <img src={r.photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-slate-200" />
-                    )}
+                    {r.photo_url
+                      ? <img src={r.photo_url} alt="" className="h-10 w-10 rounded-full object-cover" />
+                      : <div className="h-10 w-10 rounded-full bg-slate-200" />}
                     <div className="flex-1">
-                      <div className="text-sm font-medium">
-                        {r.title} <span className="uppercase">{r.last_name}</span> {r.first_name}
-                      </div>
+                      <div className="text-sm font-medium">{r.title} <span className="uppercase">{r.last_name}</span> {r.first_name}</div>
                       <div className="text-xs text-slate-500">Chambre {r.room} · {r.floor}</div>
                     </div>
                   </button>
@@ -604,595 +682,538 @@ export default function MutationPage() {
 
         {selected && (
           <>
-            {/* Bouton retour (non-print) */}
             <div className="mb-3 print:hidden">
-              <button
-                onClick={() => setSelectedId(null)}
-                className="text-sm text-blue-700 hover:underline"
-              >
+              <button onClick={() => setSelectedId(null)} className="text-sm text-blue-700 hover:underline">
                 ← Changer de résident
               </button>
             </div>
 
-            {/* ── DOCUMENT IMPRIMABLE ── */}
-            <article className="bg-white border border-slate-300 rounded-lg p-6 print:border-0 print:rounded-none print:p-4 print:shadow-none shadow-sm">
-              {/* En-tête */}
-              <header className="border-b-2 border-blue-900 pb-3 mb-3 text-center">
-                <h1 className="text-lg font-bold uppercase tracking-wide">Lettre de Liaison des Soins Infirmiers</h1>
-                <p className="text-sm mt-1">Site de Gueugnon · EHPAD La Fourrier · 5 route de Toulon · 71130</p>
-                <p className="text-xs text-slate-700 mt-0.5">
-                  Secrétariat : 03 85 85 85 47 · IDE : 03 85 85 85 53 · Email : medecins.mapad@ch-paray.fr
-                </p>
-              </header>
+            {/* ══════════════════════════════════════════════════════
+                DOCUMENT OFFICIEL
+            ══════════════════════════════════════════════════════ */}
+            <div className="bg-white border-2 border-black font-sans text-[10px] print:border-0 print:shadow-none shadow-lg">
 
-              {/* Bloc service / date / élaboré par */}
-              <div className="grid grid-cols-3 gap-2 text-sm mb-2">
-                <FieldRow label="Nom du service :">EHPAD Gueugnon La Fourrier</FieldRow>
-                <FieldRow label="Fait le :">{todayFR()}</FieldRow>
-                <FieldRow label="Élaboré par :">IDE</FieldRow>
+              {/* ── En-tête ── */}
+              <div className="border-b-2 border-black px-3 pt-2 pb-1">
+                <div className="flex justify-between items-start">
+                  <h1 className="text-[13px] font-bold uppercase tracking-wide text-center flex-1">
+                    Fiche de Liaison des Soins Infirmiers
+                  </h1>
+                  <span className="text-[9px] font-bold ml-2 mt-1 whitespace-nowrap">CHPLM-ENR-00499</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 mt-1">
+                  <div className="flex gap-1 items-baseline">
+                    <span className="font-semibold whitespace-nowrap">Nom du service :</span>
+                    <ZoneSaisie value={form.nomService} onChange={v => patch('nomService', v)} className="flex-1" />
+                  </div>
+                  <div className="flex gap-1 items-baseline">
+                    <span className="font-semibold whitespace-nowrap">N° tél :</span>
+                    <ZoneSaisie value={form.telService} onChange={v => patch('telService', v)} className="flex-1" />
+                  </div>
+                  <div className="flex gap-1 items-baseline mt-1">
+                    <span className="font-semibold whitespace-nowrap">Fiche élaborée par :</span>
+                    <ZoneSaisie value={form.elaborePar} onChange={v => patch('elaborePar', v)} className="flex-1" />
+                  </div>
+                  <div className="flex gap-1 items-baseline mt-1">
+                    <span className="font-semibold whitespace-nowrap">Fait le :</span>
+                    <span className="border-b border-black flex-1 font-medium">{todayFR()}</span>
+                  </div>
+                </div>
               </div>
 
               {/* ── IDENTIFICATION ── */}
-              <SectionTitle>Identification de la personne soignée</SectionTitle>
-              <div className="flex gap-4">
-                {/* Photo */}
-                <div className="flex-shrink-0">
-                  {selected.photo_url ? (
-                    <img
-                      src={selected.photo_url}
-                      alt=""
-                      className="h-24 w-20 object-cover border border-slate-300 rounded"
-                    />
-                  ) : (
-                    <div className="h-24 w-20 bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-[10px] text-slate-400">
-                      Photo
-                    </div>
-                  )}
+              <Titre>Identification de la personne soignée</Titre>
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="grid grid-cols-2 gap-x-4">
+                  <Ligne label="Nom :">
+                    <span className="font-bold uppercase">{selected.last_name}</span>
+                  </Ligne>
+                  <Ligne label="Prénom :">
+                    <span className="font-medium">{selected.first_name}</span>
+                  </Ligne>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <FieldRow label="NOM :">
-                    <span className="uppercase font-medium">{selected.last_name}</span>
-                    {selected.maiden_name && (
-                      <span className="text-slate-700"> (née {selected.maiden_name.toUpperCase()})</span>
-                    )}
-                  </FieldRow>
-                  <FieldRow label="PRÉNOM :">{selected.first_name}</FieldRow>
-                  <div className="flex gap-4">
-                    <FieldRow label="Né(e) le :" className="flex-1">{formatDate(selected.date_naissance)}</FieldRow>
-                    <FieldRow label="ÂGE :" className="flex-1">{calcAge(selected.date_naissance)}</FieldRow>
-                  </div>
-                  <div className="flex gap-4">
-                    <FieldRow label="ÉTAGE :" className="flex-1">{selected.floor}</FieldRow>
-                    <FieldRow label="CHAMBRE :" className="flex-1">{selected.room}</FieldRow>
-                  </div>
-                  <FieldRow label="Poids :">
-                    {ctx?.lastWeight
-                      ? `${ctx.lastWeight.poids_kg} kg (mesuré le ${formatDate(ctx.lastWeight.date)})`
-                      : '—'}
-                  </FieldRow>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-4">
+                  <Ligne label="Nom de jeune fille :">
+                    {selected.maiden_name ? <span className="uppercase">{selected.maiden_name}</span> : ''}
+                  </Ligne>
+                  <Ligne label="Né(e) le :">
+                    <span className="font-medium">{formatDate(selected.date_naissance)}</span>
+                  </Ligne>
+                  <Ligne label="Âge :">
+                    <span className="font-medium">{calcAge(selected.date_naissance)}</span>
+                  </Ligne>
                 </div>
-              </div>
-
-              <div className="mt-3 space-y-1.5">
-                {personnePrevenir ? (
-                  <FieldRow label="Personne à prévenir :">{personnePrevenir}</FieldRow>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-semibold whitespace-nowrap">Personne à prévenir :</Label>
-                    <Input
-                      value={form.personneAPrevenirManuel}
-                      onChange={e => patch('personneAPrevenirManuel', e.target.value)}
-                      className="h-7 flex-1 print:border-0 print:border-b print:rounded-none print:px-0"
-                    />
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm font-semibold">Tél :</Label>
-                  <Input
-                    value={form.tel}
-                    onChange={e => patch('tel', e.target.value)}
-                    className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
+                <Ligne label="Adresse :">
+                  <ZoneSaisie value={form.adresse} onChange={v => patch('adresse', v)} />
+                </Ligne>
+                <div className="grid grid-cols-2 gap-x-4">
+                  <Ligne label="Personne à prévenir :">
+                    {personnePrevenir
+                      ? <span>{personnePrevenir}</span>
+                      : <ZoneSaisie value={form.personneAPrevenirManuel} onChange={v => patch('personneAPrevenirManuel', v)} />}
+                  </Ligne>
+                  <Ligne label="N° tél :">
+                    <ZoneSaisie value={form.telPrevenir} onChange={v => patch('telPrevenir', v)} />
+                  </Ligne>
                 </div>
-                <div className="flex flex-wrap gap-4 text-sm pt-1">
+                <div className="flex items-center gap-4">
                   <span className="font-semibold">Personne prévenue :</span>
-                  <CheckOption label="Oui" checked={form.personnePrevenue === 'oui'} onChange={v => patch('personnePrevenue', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.personnePrevenue === 'non'} onChange={v => patch('personnePrevenue', v ? 'non' : '')} />
-                  {ctx?.niveau?.tutelle && (
-                    <>
-                      <span className="font-semibold ml-4">Tutelle prévenue :</span>
-                      <CheckOption label="Oui" checked={form.tutellePrevenue === 'oui'} onChange={v => patch('tutellePrevenue', v ? 'oui' : '')} />
-                      <CheckOption label="Non" checked={form.tutellePrevenue === 'non'} onChange={v => patch('tutellePrevenue', v ? 'non' : '')} />
-                    </>
-                  )}
+                  <Case checked={form.personnePrevenue} onChange={v => patch('personnePrevenue', v)} label="Oui" />
+                  <Case checked={!form.personnePrevenue} onChange={v => patch('personnePrevenue', !v)} label="Non" />
+                </div>
+                <div className="grid grid-cols-2 gap-x-4">
+                  <Ligne label="Poids :">
+                    {ctx?.lastWeight
+                      ? <span className="font-medium">{ctx.lastWeight.poids_kg} kg (le {formatDate(ctx.lastWeight.date)})</span>
+                      : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
+                  </Ligne>
+                  <Ligne label="Taille :">
+                    <ZoneSaisie value={form.taille} onChange={v => patch('taille', v)} placeholder="…" />
+                  </Ligne>
                 </div>
               </div>
 
-              {/* ── ENVIRONNEMENT ── */}
-              <SectionTitle>Environnement familial et social</SectionTitle>
-              <div className="space-y-1.5">
-                {(() => {
-                  const fem = isFemaleTitle(selected.title);
-                  return (
-                    <div className="flex items-center gap-3 text-sm flex-wrap">
-                      <span className="font-semibold">Situation familiale :</span>
-                      <CheckOption label={fem ? 'Mariée' : 'Marié'} checked={form.situationFamiliale === 'marie'} onChange={v => patch('situationFamiliale', v ? 'marie' : '')} />
-                      <CheckOption label="Célibataire" checked={form.situationFamiliale === 'celibataire'} onChange={v => patch('situationFamiliale', v ? 'celibataire' : '')} />
-                      <CheckOption label={fem ? 'Divorcée' : 'Divorcé'} checked={form.situationFamiliale === 'divorce'} onChange={v => patch('situationFamiliale', v ? 'divorce' : '')} />
-                      <CheckOption label={fem ? 'Veuve' : 'Veuf'} checked={form.situationFamiliale === 'veuf'} onChange={v => patch('situationFamiliale', v ? 'veuf' : '')} />
-                    </div>
-                  );
-                })()}
-                <FieldRow label="Environnement :">Vit en établissement EHPAD La Fourrier</FieldRow>
-                {ctx?.niveau?.tutelle && (
-                  <div>
-                    <Label className="text-sm font-semibold">Suivi social :</Label>
-                    <Input
-                      value={form.suiviSocial || ctx.niveau.tutelle}
-                      onChange={e => patch('suiviSocial', e.target.value)}
-                      className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                    />
-                  </div>
-                )}
+              {/* ── ENVIRONNEMENT FAMILIAL ET SOCIAL ── */}
+              <Titre>Environnement familial et social</Titre>
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="flex gap-6 flex-wrap">
+                  <Case checked={form.sitFamiliale.celibataire} onChange={v => patch('sitFamiliale', { ...form.sitFamiliale, celibataire: v, marie: false, veuf: false })} label="Célibataire" />
+                  <Case checked={form.sitFamiliale.marie} onChange={v => patch('sitFamiliale', { ...form.sitFamiliale, marie: v, celibataire: false, veuf: false })} label={fem ? 'Mariée' : 'Marié(e)'} />
+                  <Case checked={form.sitFamiliale.veuf} onChange={v => patch('sitFamiliale', { ...form.sitFamiliale, veuf: v, celibataire: false, marie: false })} label={fem ? 'Veuve' : 'Veuf(ve)'} />
+                </div>
+                <div className="flex gap-4 flex-wrap items-center">
+                  <Case checked={form.vit.famille} onChange={v => patch('vit', { ...form.vit, famille: v })} label="Vit en famille" />
+                  <Case checked={form.vit.seul} onChange={v => patch('vit', { ...form.vit, seul: v })} label={fem ? 'Vit seule' : 'Vit seul(e)'} />
+                  <Case checked={form.vit.etablissement} onChange={v => patch('vit', { ...form.vit, etablissement: v })} label="En établissement" />
+                  <span className="font-semibold">Autre :</span>
+                  <ZoneSaisie value={form.vit.autre} onChange={v => patch('vit', { ...form.vit, autre: v })} className="w-40" />
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-semibold">Suivi social :</span>
+                  <Case checked={form.suiviSocialOui} onChange={v => patch('suiviSocialOui', v)} label="Oui" />
+                  <Case checked={!form.suiviSocialOui} onChange={v => patch('suiviSocialOui', !v)} label="Non" />
+                  <span className="font-semibold ml-2">Nom :</span>
+                  <ZoneSaisie value={form.suiviSocialNom || tutelleText} onChange={v => patch('suiviSocialNom', v)} className="flex-1" />
+                </div>
+                <div className="flex gap-8 flex-wrap">
+                  <Case checked={form.tutelle} onChange={v => patch('tutelle', v)} label="Tutelle" />
+                  <Case checked={form.curatelle} onChange={v => patch('curatelle', v)} label="Curatelle" />
+                  <Case checked={form.apa} onChange={v => patch('apa', v)} label="APA" />
+                </div>
+                <div className="flex gap-2 items-center">
+                  <span className="font-semibold">Devenir :</span>
+                </div>
+                <div className="flex gap-2 items-center flex-wrap pl-3">
+                  <span className="font-semibold">Retour à domicile :</span>
+                  <Case checked={form.retourDomicileOui} onChange={v => { patch('retourDomicileOui', v); if (v) patch('retourDomicileNon', false); }} label="Oui" />
+                  <Case checked={form.retourDomicileNon} onChange={v => { patch('retourDomicileNon', v); if (v) patch('retourDomicileOui', false); }} label="Non" />
+                </div>
+                <div className="flex gap-2 items-center flex-wrap pl-3">
+                  <span className="font-semibold">Inscription SSR :</span>
+                  <Case checked={form.ssrOui} onChange={v => { patch('ssrOui', v); if (v) patch('ssrNon', false); }} label="Oui" />
+                  <Case checked={form.ssrNon} onChange={v => { patch('ssrNon', v); if (v) patch('ssrOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">lesquels :</span>
+                  <ZoneSaisie value={form.ssrLesquels} onChange={v => patch('ssrLesquels', v)} className="flex-1" />
+                </div>
+                <div className="flex gap-2 items-center flex-wrap pl-3">
+                  <span className="font-semibold">Inscription EHPAD :</span>
+                  <Case checked={form.ehpadOui} onChange={v => { patch('ehpadOui', v); if (v) patch('ehpadNon', false); }} label="Oui" />
+                  <Case checked={form.ehpadNon} onChange={v => { patch('ehpadNon', v); if (v) patch('ehpadOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">lesquels :</span>
+                  <ZoneSaisie value={form.ehpadLesquels} onChange={v => patch('ehpadLesquels', v)} className="flex-1" />
+                </div>
               </div>
 
               {/* ── INTERVENANTS ── */}
-              <SectionTitle>Intervenants</SectionTitle>
-              <div className="space-y-1.5">
-                <FieldRow label="Médecin traitant :">{selected.medecin || '—'}</FieldRow>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold">Kiné :</span>
-                  <CheckOption label="Oui" checked={form.kineActif === true} onChange={v => patch('kineActif', v ? true : null)} />
-                  <CheckOption label="Non" checked={form.kineActif === false} onChange={v => patch('kineActif', v ? false : null)} />
-                  <Input
-                    value={form.kineDetail}
-                    onChange={e => patch('kineDetail', e.target.value)}
-                    placeholder="Type de kiné"
-                    className="h-7 flex-1 print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
+              <Titre>Intervenants</Titre>
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="grid grid-cols-2 gap-x-4">
+                  <Ligne label="Médecin traitant :">
+                    <span className="font-medium">{selected.medecin || ''}</span>
+                  </Ligne>
+                  <Ligne label="IDE Libéral(e) :">
+                    <ZoneSaisie value={form.ideLiberale} onChange={v => patch('ideLiberale', v)} />
+                  </Ligne>
+                  <Ligne label="SSIAD :">
+                    <ZoneSaisie value={form.ssiad} onChange={v => patch('ssiad', v)} />
+                  </Ligne>
+                  <Ligne label="Kinésithérapeute :">
+                    <ZoneSaisie value={form.kinesitherapeute} onChange={v => patch('kinesitherapeute', v)} />
+                  </Ligne>
+                  <Ligne label="Aide à domicile :">
+                    <ZoneSaisie value={form.aidedomicile} onChange={v => patch('aidedomicile', v)} />
+                  </Ligne>
+                  <Ligne label="Ambulancier :">
+                    <ZoneSaisie value={form.ambulancier} onChange={v => patch('ambulancier', v)} />
+                  </Ligne>
+                </div>
+                <div className="flex gap-2 items-baseline flex-wrap">
+                  <span className="font-semibold whitespace-nowrap">Portage de repas :</span>
+                  <ZoneSaisie value={form.portageRepas} onChange={v => patch('portageRepas', v)} className="w-28" />
+                  <span className="font-semibold whitespace-nowrap ml-3">Télé-alarme :</span>
+                  <ZoneSaisie value={form.teleAlarme} onChange={v => patch('teleAlarme', v)} className="w-28" />
+                  <span className="font-semibold whitespace-nowrap ml-3">Autre :</span>
+                  <ZoneSaisie value={form.autreIntervenant} onChange={v => patch('autreIntervenant', v)} className="flex-1" />
                 </div>
               </div>
 
-              {/* ── VACCINATION / NIVEAU DE SOINS / GIR ── */}
-              <SectionTitle>Vaccination / Niveau de soins / GIR</SectionTitle>
-              <div className="space-y-1.5">
-                <FieldRow label="Niveau de soins :">
-                  {ctx?.niveau?.niveau_soin
-                    ? `${ctx.niveau.niveau_soin} (décidé par Médecin Co. avec Personne référente / résident)`
-                    : 'non évalué par Médecin Co.'}
-                </FieldRow>
-                <FieldRow label="GIR :">{ctx?.niveau?.gir || '—'}</FieldRow>
-                <FieldRow label="Vaccins :">{vaccinsText || '—'}</FieldRow>
-              </div>
-
-              {/* ── VECU D'HOSPITALISATION ── */}
-              <SectionTitle>Vécu d&apos;hospitalisation</SectionTitle>
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-sm font-semibold">Motif :</Label>
-                  <Textarea
-                    value={form.motif}
-                    onChange={e => patch('motif', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
+              {/* ── Motif / Antécédents / Allergies ── */}
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="flex gap-1 items-start">
+                  <span className="font-semibold whitespace-nowrap shrink-0">Motif d&apos;hospitalisation, résumé :</span>
+                  <div className="flex-1">
+                    <ZoneSaisie value={form.motif} onChange={v => patch('motif', v)} multiline rows={2} />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-sm font-semibold">ATCD :</Label>
-                  <div className="text-sm whitespace-pre-wrap border border-slate-200 rounded p-2 bg-slate-50 print:bg-white">
+                <div className="flex gap-1 items-start">
+                  <span className="font-semibold whitespace-nowrap shrink-0">Antécédents :</span>
+                  <div className="flex-1 text-[10px] border-b border-black leading-tight whitespace-pre-wrap">
                     {selected.antecedents || <span className="text-slate-400">—</span>}
                   </div>
                 </div>
-                <FieldRow label="Allergie :">{allergiesText || <span className="text-slate-400">—</span>}</FieldRow>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold">Isolement :</span>
-                  <CheckOption label="Oui" checked={form.isolement === 'oui'} onChange={v => patch('isolement', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.isolement === 'non'} onChange={v => patch('isolement', v ? 'non' : '')} />
+                <div className="grid grid-cols-2 gap-x-4 mt-1">
+                  <Ligne label="Allergies :">
+                    <span>{selected.allergie_medicamenteuse || ''}</span>
+                  </Ligne>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold">Isolement :</span>
+                    <Case checked={form.isolementOui} onChange={v => { patch('isolementOui', v); if (v) patch('isolementNon', false); }} label="Oui" />
+                    <Case checked={form.isolementNon} onChange={v => { patch('isolementNon', v); if (v) patch('isolementOui', false); }} label="Non" />
+                  </div>
                 </div>
+                {vaccinsText && (
+                  <Ligne label="Vaccins :"><span className="text-[9px]">{vaccinsText}</span></Ligne>
+                )}
+                {ctx?.niveau?.niveau_soin && (
+                  <Ligne label="Niveau de soins :">
+                    <span className="font-medium">{ctx.niveau.niveau_soin}</span>
+                    {ctx.niveau.gir && <span className="ml-2">— GIR {ctx.niveau.gir}</span>}
+                  </Ligne>
+                )}
+                {contentionText && (
+                  <Ligne label="Contention :"><span>{contentionText}</span></Ligne>
+                )}
               </div>
 
-              {/* ── ALIMENTATION ── */}
-              <SectionTitle>Alimentation et hydratation</SectionTitle>
-              <div className="space-y-1.5">
-                <FieldRow label="Alimentation :">{alimentationObs || <span className="text-slate-400">—</span>}</FieldRow>
-                <FieldRow label="Régime :">{regimeText || <span className="text-slate-400">—</span>}</FieldRow>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold">Aide alimentation :</span>
-                  <CheckOption label="Autonome" checked={form.aideAlim === 'autonome'} onChange={v => patch('aideAlim', v ? 'autonome' : '')} />
-                  <CheckOption label="Aide" checked={form.aideAlim === 'aide'} onChange={v => patch('aideAlim', v ? 'aide' : '')} />
+              {/* ── SOINS DE BASE : 2 colonnes ── */}
+              <Titre>Soins de base</Titre>
+              <div className="grid grid-cols-2 border-b-2 border-black" style={{ borderTop: 'none' }}>
+                {/* Gauche : Alimentation */}
+                <div className="border-r border-black">
+                  <SousTitre>Alimentation et hydratation</SousTitre>
+                  <div className="px-2 py-1 space-y-0.5">
+                    <div className="flex gap-3 flex-wrap">
+                      <Case checked={form.alimentNormale} onChange={v => patch('alimentNormale', v)} label="Normale" />
+                      <Case checked={form.alimentMixee} onChange={v => patch('alimentMixee', v)} label="Mixée" />
+                      <Case checked={form.alimentAjeun} onChange={v => patch('alimentAjeun', v)} label="À jeun" />
+                    </div>
+                    <div className="flex gap-1 items-baseline">
+                      <span className="font-semibold shrink-0">Régime - Lequel :</span>
+                      <ZoneSaisie value={form.regimeLequel || regimeAutoText} onChange={v => patch('regimeLequel', v)} className="flex-1" />
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                      <Case checked={form.fausseRoute} onChange={v => patch('fausseRoute', v)} label="Fausse route" />
+                      <Case checked={form.alimentParenterale} onChange={v => patch('alimentParenterale', v)} label="Alim. parentérale" />
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                      <Case checked={form.eauGelifiee} onChange={v => patch('eauGelifiee', v)} label="Eau gélifiée" />
+                      <Case checked={form.complementAlimentaire} onChange={v => patch('complementAlimentaire', v)} label="Complément alim." />
+                    </div>
+                    <div className="flex gap-3 flex-wrap">
+                      <Case checked={form.aideAlim.autonome} onChange={v => patch('aideAlim', { autonome: v, partielle: false, totale: false })} label="Autonome" />
+                      <Case checked={form.aideAlim.partielle} onChange={v => patch('aideAlim', { autonome: false, partielle: v, totale: false })} label="Aide partielle" />
+                      <Case checked={form.aideAlim.totale} onChange={v => patch('aideAlim', { autonome: false, partielle: false, totale: v })} label="Aide totale" />
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-semibold">Prothèse dentaire :</span>
+                      <Case checked={form.protheseDentaireOui} onChange={v => { patch('protheseDentaireOui', v); if (v) patch('protheseDentaireNon', false); }} label="Oui" />
+                      <Case checked={form.protheseDentaireNon} onChange={v => { patch('protheseDentaireNon', v); if (v) patch('protheseDentaireOui', false); }} label="Non" />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold">Hydratation :</span>
-                  <CheckOption label="Eau pétillante" checked={form.hydratation === 'petillante'} onChange={v => patch('hydratation', v ? 'petillante' : '')} />
-                  <CheckOption label="Eau gélifiée" checked={form.hydratation === 'gelifiee'} onChange={v => patch('hydratation', v ? 'gelifiee' : '')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Dentiers :</span>
-                  <CheckOption label="Haut" checked={form.dentierHaut} onChange={v => patch('dentierHaut', v)} />
-                  <CheckOption label="Bas" checked={form.dentierBas} onChange={v => patch('dentierBas', v)} />
-                  <CheckOption label="Non apportés" checked={form.dentierNonApportes} onChange={v => patch('dentierNonApportes', v)} />
-                </div>
-              </div>
-
-              {/* ── ÉLIMINATION ── */}
-              <SectionTitle>Élimination</SectionTitle>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Urinaire :</span>
-                  <CheckOption label="Continent" checked={form.eliminationUrinaire === 'continent'} onChange={v => patch('eliminationUrinaire', v ? 'continent' : '')} />
-                  <CheckOption label="Incontinent" checked={form.eliminationUrinaire === 'incontinent'} onChange={v => patch('eliminationUrinaire', v ? 'incontinent' : '')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Fécale :</span>
-                  <CheckOption label="Continent" checked={form.eliminationFecale === 'continent'} onChange={v => patch('eliminationFecale', v ? 'continent' : '')} />
-                  <CheckOption label="Incontinent" checked={form.eliminationFecale === 'incontinent'} onChange={v => patch('eliminationFecale', v ? 'incontinent' : '')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Matériel :</span>
-                  <CheckOption label="Urinal" checked={form.materielUrinaire.includes('urinal')} onChange={() => toggleList('materielUrinaire', 'urinal')} />
-                  <CheckOption label="Bassin" checked={form.materielUrinaire.includes('bassin')} onChange={() => toggleList('materielUrinaire', 'bassin')} />
-                  <CheckOption label="Chaise percée" checked={form.materielUrinaire.includes('chaise-percee')} onChange={() => toggleList('materielUrinaire', 'chaise-percee')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">SAD :</span>
-                  <CheckOption label="Oui" checked={form.sadOui === 'oui'} onChange={v => patch('sadOui', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.sadOui === 'non'} onChange={v => patch('sadOui', v ? 'non' : '')} />
-                  <span>Date de pose :</span>
-                  <Input
-                    value={form.sadDate}
-                    onChange={e => patch('sadDate', e.target.value)}
-                    className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="font-semibold">Date dernière selle :</span>
-                  <Input
-                    value={form.derniereSelle}
-                    onChange={e => patch('derniereSelle', e.target.value)}
-                    className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
-                </div>
-                <FieldRow label="Protection :">{protectionText || <span className="text-slate-400">—</span>}</FieldRow>
-              </div>
-
-              {/* ── HYGIENE ── */}
-              <SectionTitle>Hygiène et confort</SectionTitle>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Appareil auditif :</span>
-                  <CheckOption label="Oui" checked={form.appareilAuditif === 'oui'} onChange={v => patch('appareilAuditif', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.appareilAuditif === 'non'} onChange={v => patch('appareilAuditif', v ? 'non' : '')} />
-                  <CheckOption label="Non apportés" checked={form.appareilAuditif === 'non-apportes'} onChange={v => patch('appareilAuditif', v ? 'non-apportes' : '')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Lunettes :</span>
-                  <CheckOption label="Oui" checked={form.lunettes === 'oui'} onChange={v => patch('lunettes', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.lunettes === 'non'} onChange={v => patch('lunettes', v ? 'non' : '')} />
-                  <CheckOption label="Non apportées" checked={form.lunettes === 'non-apportees'} onChange={v => patch('lunettes', v ? 'non-apportees' : '')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Hygiène :</span>
-                  <CheckOption label="Autonome" checked={form.hygiene === 'autonome'} onChange={() => patch('hygiene', 'autonome')} />
-                  <CheckOption label="Aide partielle" checked={form.hygiene === 'partielle'} onChange={() => patch('hygiene', 'partielle')} />
-                  <CheckOption label="Aide totale" checked={form.hygiene === 'totale'} onChange={() => patch('hygiene', 'totale')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Habillage :</span>
-                  <CheckOption label="Autonome" checked={form.habillage === 'autonome'} onChange={() => patch('habillage', 'autonome')} />
-                  <CheckOption label="Aide partielle" checked={form.habillage === 'partielle'} onChange={() => patch('habillage', 'partielle')} />
-                  <CheckOption label="Aide totale" checked={form.habillage === 'totale'} onChange={() => patch('habillage', 'totale')} />
-                </div>
+                {/* Droite : Elimination */}
                 <div>
-                  <Label className="text-sm font-semibold">Commentaire :</Label>
-                  <Textarea
-                    value={form.hygieneCommentaire}
-                    onChange={e => patch('hygieneCommentaire', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Sommeil :</span>
-                  <CheckOption label="Satisfaisant" checked={form.sommeil === 'satisfaisant'} onChange={v => patch('sommeil', v ? 'satisfaisant' : '')} />
-                  <CheckOption label="Perturbé" checked={form.sommeil === 'perturbe'} onChange={v => patch('sommeil', v ? 'perturbe' : '')} />
-                </div>
-              </div>
-
-              {/* ── COMPORTEMENT ── */}
-              <SectionTitle>Comportement</SectionTitle>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">État général :</span>
-                  {['Calme', 'Agitation', 'Déambulation', 'Agressivité', 'Risque de fugue'].map(opt => (
-                    <CheckOption
-                      key={opt}
-                      label={opt}
-                      checked={form.etatGeneral.includes(opt)}
-                      onChange={() => toggleList('etatGeneral', opt)}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Capacité :</span>
-                  <CheckOption label="Réponses adaptées" checked={form.capacite === 'adaptees'} onChange={() => patch('capacite', 'adaptees')} />
-                  <CheckOption label="Démence" checked={form.capacite === 'demence'} onChange={() => patch('capacite', 'demence')} />
-                  <CheckOption label="Mutique" checked={form.capacite === 'mutique'} onChange={() => patch('capacite', 'mutique')} />
-                </div>
-                <FieldRow label="Contention physique :">{contentionText || <span className="text-slate-400">—</span>}</FieldRow>
-              </div>
-
-              {/* ── LOCOMOTION ── */}
-              <SectionTitle>Locomotion / Mobilisation</SectionTitle>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Locomotion :</span>
-                  <CheckOption label="Autonome" checked={form.locomotion === 'autonome'} onChange={() => patch('locomotion', 'autonome')} />
-                  <CheckOption label="Aide partielle" checked={form.locomotion === 'partielle'} onChange={() => patch('locomotion', 'partielle')} />
-                  <CheckOption label="Aide totale" checked={form.locomotion === 'totale'} onChange={() => patch('locomotion', 'totale')} />
-                </div>
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Matériel :</span>
-                  {['Canne', 'Déambulateur', 'Fauteuil roulant', 'Verticalisateur', 'Lève-malade'].map(opt => (
-                    <CheckOption
-                      key={opt}
-                      label={opt}
-                      checked={form.materielLoco.includes(opt)}
-                      onChange={() => toggleList('materielLoco', opt)}
-                    />
-                  ))}
+                  <SousTitre>Elimination</SousTitre>
+                  <div className="px-2 py-1 space-y-0.5">
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-semibold">Urines :</span>
+                      <Case checked={form.urinesContinent} onChange={v => { patch('urinesContinent', v); if (v) patch('urinesIncontinent', false); }} label="Continent" />
+                      <Case checked={form.urinesIncontinent} onChange={v => { patch('urinesIncontinent', v); if (v) patch('urinesContinent', false); }} label="Incontinent" />
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-semibold">Selles :</span>
+                      <Case checked={form.sellesContinent} onChange={v => { patch('sellesContinent', v); if (v) patch('sellesIncontinent', false); }} label="Continent" />
+                      <Case checked={form.sellesIncontinent} onChange={v => { patch('sellesIncontinent', v); if (v) patch('sellesContinent', false); }} label="Incontinent" />
+                    </div>
+                    <Ligne label="Quelle protection :">
+                      <ZoneSaisie value={form.quelleProtection || protectionText} onChange={v => patch('quelleProtection', v)} />
+                    </Ligne>
+                    <Ligne label="Date dernières selles :">
+                      <ZoneSaisie value={form.dateDerniereSelle} onChange={v => patch('dateDerniereSelle', v)} />
+                    </Ligne>
+                    <div className="flex gap-3 flex-wrap">
+                      <Case checked={form.urinal} onChange={v => patch('urinal', v)} label="Urinal" />
+                      <Case checked={form.bassin} onChange={v => patch('bassin', v)} label="Bassin" />
+                      <Case checked={form.penilex} onChange={v => patch('penilex', v)} label="Pénilex" />
+                    </div>
+                    <div className="flex gap-3 flex-wrap items-center">
+                      <Case checked={form.chaisePerce} onChange={v => patch('chaisePerce', v)} label="Chaise percée" />
+                      <span className="font-semibold">SAD posé le</span>
+                      <ZoneSaisie value={form.sadDate} onChange={v => patch('sadDate', v)} className="w-24" />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* ── ETAT CUTANE ── */}
-              <SectionTitle>État cutané</SectionTitle>
-              <div className="space-y-2">
-                <div className={cn('flex items-baseline gap-2 text-sm', matelasText && 'font-bold')}>
-                  <span className="font-semibold whitespace-nowrap">Matelas :</span>
-                  <span className="flex-1">{matelasText || <span className="text-slate-400 font-normal">—</span>}</span>
+              {/* ── HYGIENE / RESPIRATION : 2 colonnes ── */}
+              <div className="grid grid-cols-2 border-b-2 border-black">
+                {/* Gauche : Hygiène et confort */}
+                <div className="border-r border-black">
+                  <SousTitre>Hygiène et confort</SousTitre>
+                  <div className="px-2 py-1 space-y-0.5">
+                    <div>
+                      <span className="font-bold">Hygiène :</span>
+                      <div className="flex gap-3 flex-wrap pl-2">
+                        <Case checked={form.hygieneAutonome} onChange={v => { patch('hygieneAutonome', v); if (v) { patch('hygienePartielle', false); patch('hygieneTotale', false); } }} label="Autonome" />
+                        <Case checked={form.hygienePartielle} onChange={v => { patch('hygienePartielle', v); if (v) { patch('hygieneAutonome', false); patch('hygieneTotale', false); } }} label="Aide partielle" />
+                        <Case checked={form.hygieneTotale} onChange={v => { patch('hygieneTotale', v); if (v) { patch('hygieneAutonome', false); patch('hygienePartielle', false); } }} label="Aide totale" />
+                      </div>
+                      <Ligne label="Commentaire :">
+                        <ZoneSaisie value={form.hygieneCommentaire} onChange={v => patch('hygieneCommentaire', v)} />
+                      </Ligne>
+                    </div>
+                    <div>
+                      <span className="font-bold">Habillage :</span>
+                      <div className="flex gap-3 flex-wrap pl-2">
+                        <Case checked={form.habillageAutonome} onChange={v => { patch('habillageAutonome', v); if (v) { patch('habillagePartielle', false); patch('habillageTotale', false); } }} label="Autonome" />
+                        <Case checked={form.habillagePartielle} onChange={v => { patch('habillagePartielle', v); if (v) { patch('habillageAutonome', false); patch('habillageTotale', false); } }} label="Aide partielle" />
+                        <Case checked={form.habillageTotale} onChange={v => { patch('habillageTotale', v); if (v) { patch('habillageAutonome', false); patch('habillagePartielle', false); } }} label="Aide totale" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-bold">Sommeil :</span>
+                      <Case checked={form.sommeilNormal} onChange={v => { patch('sommeilNormal', v); if (v) patch('sommeilPerturbe', false); }} label="Normal" />
+                      <Case checked={form.sommeilPerturbe} onChange={v => { patch('sommeilPerturbe', v); if (v) patch('sommeilNormal', false); }} label="Perturbé" />
+                    </div>
+                    <Ligne label="Traitement :">
+                      <ZoneSaisie value={form.sommeilTraitement} onChange={v => patch('sommeilTraitement', v)} />
+                    </Ligne>
+                  </div>
                 </div>
+                {/* Droite : Respiration + Comportement */}
+                <div>
+                  <SousTitre>Respiration</SousTitre>
+                  <div className="px-2 py-1 space-y-0.5">
+                    <div className="flex gap-4 flex-wrap">
+                      <Case checked={form.respirationNormale} onChange={v => { patch('respirationNormale', v); if (v) patch('dyspnee', false); }} label="Normale" />
+                      <Case checked={form.dyspnee} onChange={v => { patch('dyspnee', v); if (v) patch('respirationNormale', false); }} label="Dyspnée" />
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-semibold">O2 :</span>
+                      <Case checked={form.o2Oui} onChange={v => { patch('o2Oui', v); if (v) patch('o2Non', false); }} label="Oui" />
+                      <Case checked={form.o2Non} onChange={v => { patch('o2Non', v); if (v) patch('o2Oui', false); }} label="Non" />
+                      <span className="font-semibold">Débit :</span>
+                      <ZoneSaisie value={form.o2Debit} onChange={v => patch('o2Debit', v)} className="w-16" />
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <span className="font-semibold">VMI :</span>
+                      <Case checked={form.vmiOui} onChange={v => { patch('vmiOui', v); if (v) patch('vmiNon', false); }} label="Oui" />
+                      <Case checked={form.vmiNon} onChange={v => { patch('vmiNon', v); if (v) patch('vmiOui', false); }} label="Non" />
+                      <Case checked={form.tracheotomie} onChange={v => patch('tracheotomie', v)} label="Trachéotomie" />
+                    </div>
+                    <div className="border-t border-black mt-1 pt-1">
+                      <span className="font-bold">Comportement :</span>
+                      <div className="flex gap-2 items-center flex-wrap mt-0.5">
+                        <span className="font-semibold">Cohérent :</span>
+                        <Case checked={form.coherentOui} onChange={v => { patch('coherentOui', v); if (v) patch('coherentNon', false); }} label="Oui" />
+                        <Case checked={form.coherentNon} onChange={v => { patch('coherentNon', v); if (v) patch('coherentOui', false); }} label="Non" />
+                      </div>
+                      <div className="flex gap-2 items-center flex-wrap">
+                        <span className="font-semibold">Communique :</span>
+                        <Case checked={form.communiqueOui} onChange={v => { patch('communiqueOui', v); if (v) patch('communiqueNon', false); }} label="Oui" />
+                        <Case checked={form.communiqueNon} onChange={v => { patch('communiqueNon', v); if (v) patch('communiqueOui', false); }} label="Non" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                {/* Escarres */}
-                <div className="flex items-center gap-3 text-sm flex-wrap">
+              {/* ── LOCOMOTION / AUTRES : 2 colonnes ── */}
+              <div className="grid grid-cols-2 border-b-2 border-black">
+                {/* Gauche : Locomotion */}
+                <div className="border-r border-black">
+                  <SousTitre>Locomotion – Mobilisation</SousTitre>
+                  <div className="px-2 py-1 space-y-0.5">
+                    <Case checked={form.locoAutonome} onChange={v => { patch('locoAutonome', v); if (v) { patch('locoPartielle', false); patch('locoBrancardier', false); } }} label="Autonome" />
+                    <div>
+                      <div className="flex gap-1 items-center flex-wrap">
+                        <Case checked={form.locoPartielle} onChange={v => { patch('locoPartielle', v); if (v) { patch('locoAutonome', false); patch('locoBrancardier', false); } }} label="Aide partielle :" />
+                        <Case checked={form.deambulateur} onChange={v => patch('deambulateur', v)} label="Déambulateur" />
+                        <Case checked={form.canne} onChange={v => patch('canne', v)} label="Canne" />
+                      </div>
+                      <div className="flex gap-2 items-center flex-wrap pl-4">
+                        <Case checked={form.fauteuilRoulant} onChange={v => patch('fauteuilRoulant', v)} label="Fauteuil roulant" />
+                        <span className="font-semibold">Autre :</span>
+                        <ZoneSaisie value={form.locoAutreDetail} onChange={v => patch('locoAutreDetail', v)} className="w-24" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <Case checked={form.locoBrancardier} onChange={v => { patch('locoBrancardier', v); if (v) { patch('locoAutonome', false); patch('locoPartielle', false); } }} label="Aide totale :" />
+                      <Case checked={form.leveMalade} onChange={v => patch('leveMalade', v)} label="Lève malade" />
+                      <Case checked={form.verticalisateur} onChange={v => patch('verticalisateur', v)} label="Verticalisateur" />
+                    </div>
+                  </div>
+                </div>
+                {/* Droite : Autres */}
+                <div>
+                  <SousTitre>Autres</SousTitre>
+                  <div className="px-2 py-1 space-y-1">
+                    <Case checked={form.lunettes} onChange={v => patch('lunettes', v)} label="Lunettes" />
+                    <Case checked={form.appareilAuditif} onChange={v => patch('appareilAuditif', v)} label="Appareils auditifs" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── ÉTAT CUTANÉ ── */}
+              <Titre>État cutané</Titre>
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-semibold">Matelas à air :</span>
+                  <Case checked={form.matelasAirOui} onChange={v => { patch('matelasAirOui', v); if (v) patch('matelasAirNon', false); }} label="Oui" />
+                  <Case checked={form.matelasAirNon} onChange={v => { patch('matelasAirNon', v); if (v) patch('matelasAirOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">– Lequel :</span>
+                  <ZoneSaisie value={form.matelasAirLequel} onChange={v => patch('matelasAirLequel', v)} className="flex-1" />
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-semibold">Matelas anti-escarre :</span>
+                  <Case checked={form.matelasAntiEscarreOui} onChange={v => { patch('matelasAntiEscarreOui', v); if (v) patch('matelasAntiEscarreNon', false); }} label="Oui" />
+                  <Case checked={form.matelasAntiEscarreNon} onChange={v => { patch('matelasAntiEscarreNon', v); if (v) patch('matelasAntiEscarreOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">– Lequel :</span>
+                  <ZoneSaisie value={form.matelasAntiEscarreLequel} onChange={v => patch('matelasAntiEscarreLequel', v)} className="flex-1" />
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
                   <span className="font-semibold">Escarre :</span>
-                  <CheckOption label="Oui" checked={form.escarrePresent === 'oui'} onChange={v => patch('escarrePresent', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.escarrePresent === 'non'} onChange={v => patch('escarrePresent', v ? 'non' : '')} />
+                  <Case checked={form.escarreOui} onChange={v => { patch('escarreOui', v); if (v) patch('escarreNon', false); }} label="Oui" />
+                  <Case checked={form.escarreNon} onChange={v => { patch('escarreNon', v); if (v) patch('escarreOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">– Localisation :</span>
+                  <ZoneSaisie value={form.escarreLocalisation} onChange={v => patch('escarreLocalisation', v)} className="w-36" />
+                  <span className="font-semibold ml-2">Stade</span>
+                  <ZoneSaisie value={form.escarreStade} onChange={v => patch('escarreStade', v)} className="w-20" />
                 </div>
-                {form.escarrePresent === 'oui' && (
-                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
-                    {form.escarres.map((e, i) => (
-                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-slate-600">Escarre #{i + 1}</span>
-                          {form.escarres.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeLesion('escarres', i)}
-                              className="text-xs text-red-600 hover:underline print:hidden"
-                            >
-                              Supprimer
-                            </button>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Localisation :</Label>
-                          <Input
-                            value={e.localisation}
-                            onChange={ev => updateLesion('escarres', i, 'localisation', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Stade :</Label>
-                          <Input
-                            value={e.stade}
-                            onChange={ev => updateLesion('escarres', i, 'stade', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Protocole :</Label>
-                          <Textarea
-                            value={e.protocole}
-                            onChange={ev => updateLesion('escarres', i, 'protocole', ev.target.value)}
-                            rows={2}
-                            className="text-sm print:border print:border-slate-400"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      onClick={() => addLesion('escarres')}
-                      size="sm"
-                      variant="outline"
-                      className="text-xs print:hidden"
-                    >
-                      + Ajouter une escarre
-                    </Button>
-                  </div>
-                )}
-
-                {/* Pansements */}
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Pansement :</span>
-                  <CheckOption label="Oui" checked={form.pansementPresent === 'oui'} onChange={v => patch('pansementPresent', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.pansementPresent === 'non'} onChange={v => patch('pansementPresent', v ? 'non' : '')} />
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-semibold">Pansement protecteur :</span>
+                  <Case checked={form.pansementProtOui} onChange={v => { patch('pansementProtOui', v); if (v) patch('pansementProtNon', false); }} label="Oui" />
+                  <Case checked={form.pansementProtNon} onChange={v => { patch('pansementProtNon', v); if (v) patch('pansementProtOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">– Localisation :</span>
+                  <ZoneSaisie value={form.pansementProtLocalisation} onChange={v => patch('pansementProtLocalisation', v)} className="flex-1" />
                 </div>
-                {form.pansementPresent === 'oui' && (
-                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
-                    {form.pansements.map((p, i) => (
-                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-slate-600">Pansement #{i + 1}</span>
-                          {form.pansements.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeLesion('pansements', i)}
-                              className="text-xs text-red-600 hover:underline print:hidden"
-                            >
-                              Supprimer
-                            </button>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Localisation :</Label>
-                          <Input
-                            value={p.localisation}
-                            onChange={ev => updateLesion('pansements', i, 'localisation', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Stade :</Label>
-                          <Input
-                            value={p.stade}
-                            onChange={ev => updateLesion('pansements', i, 'stade', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Protocole :</Label>
-                          <Textarea
-                            value={p.protocole}
-                            onChange={ev => updateLesion('pansements', i, 'protocole', ev.target.value)}
-                            rows={2}
-                            className="text-sm print:border print:border-slate-400"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      onClick={() => addLesion('pansements')}
-                      size="sm"
-                      variant="outline"
-                      className="text-xs print:hidden"
-                    >
-                      + Ajouter un pansement
-                    </Button>
-                  </div>
-                )}
-
-                {/* Mycoses */}
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Mycose cutanée :</span>
-                  <CheckOption label="Oui" checked={form.mycosePresent === 'oui'} onChange={v => patch('mycosePresent', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.mycosePresent === 'non'} onChange={v => patch('mycosePresent', v ? 'non' : '')} />
+                <div className="flex gap-2 items-center flex-wrap">
+                  <span className="font-semibold">Mycose :</span>
+                  <Case checked={form.mycoseOui} onChange={v => { patch('mycoseOui', v); if (v) patch('mycoseNon', false); }} label="Oui" />
+                  <Case checked={form.mycoseNon} onChange={v => { patch('mycoseNon', v); if (v) patch('mycoseOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">– Localisation :</span>
+                  <ZoneSaisie value={form.mycoseLocalisation} onChange={v => patch('mycoseLocalisation', v)} className="flex-1" />
                 </div>
-                {form.mycosePresent === 'oui' && (
-                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
-                    {form.mycoses.map((m, i) => (
-                      <div key={i} className="space-y-1 pb-2 border-b border-slate-100 last:border-b-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-slate-600">Mycose #{i + 1}</span>
-                          {form.mycoses.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeLesion('mycoses', i)}
-                              className="text-xs text-red-600 hover:underline print:hidden"
-                            >
-                              Supprimer
-                            </button>
-                          )}
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Localisation :</Label>
-                          <Input
-                            value={m.localisation}
-                            onChange={ev => updateLesion('mycoses', i, 'localisation', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Stade :</Label>
-                          <Input
-                            value={m.stade}
-                            onChange={ev => updateLesion('mycoses', i, 'stade', ev.target.value)}
-                            className="h-7 print:border-0 print:border-b print:rounded-none print:px-0"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs font-semibold">Protocole :</Label>
-                          <Textarea
-                            value={m.protocole}
-                            onChange={ev => updateLesion('mycoses', i, 'protocole', ev.target.value)}
-                            rows={2}
-                            className="text-sm print:border print:border-slate-400"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      onClick={() => addLesion('mycoses')}
-                      size="sm"
-                      variant="outline"
-                      className="text-xs print:hidden"
-                    >
-                      + Ajouter une mycose
-                    </Button>
-                  </div>
-                )}
+                <Ligne label="Autre :">
+                  <ZoneSaisie value={form.etatCutaneAutre} onChange={v => patch('etatCutaneAutre', v)} />
+                </Ligne>
               </div>
 
-              {/* ── SOINS IDE DIVERS ── */}
-              <SectionTitle>Soins IDE divers</SectionTitle>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm flex-wrap">
-                  <span className="font-semibold">Perfusion :</span>
-                  <CheckOption label="Oui" checked={form.perfusion === 'oui'} onChange={v => patch('perfusion', v ? 'oui' : '')} />
-                  <CheckOption label="Non" checked={form.perfusion === 'non'} onChange={v => patch('perfusion', v ? 'non' : '')} />
+              {/* ── PANSEMENT ── */}
+              <Titre>Pansement</Titre>
+              <div className="border-b-2 border-black">
+                <div className="text-[9px] text-center py-1 border-b border-black font-semibold">
+                  Type de plaie, localisation + protocole utilisé
                 </div>
-                {form.perfusion === 'oui' && (
-                  <div className="space-y-2 pl-4 border-l-2 border-slate-200">
-                    <div>
-                      <Label className="text-sm font-semibold">Détail perfusion :</Label>
-                      <Textarea
-                        value={form.perfusionDetail}
-                        onChange={e => patch('perfusionDetail', e.target.value)}
-                        rows={2}
-                        className="text-sm print:border print:border-slate-400"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-semibold">Date KT posé :</Label>
-                      <Input
-                        value={form.perfusionKtDate}
-                        onChange={e => patch('perfusionKtDate', e.target.value)}
-                        className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
-                      />
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <Label className="text-sm font-semibold">Dernier bilan sanguin :</Label>
-                  <Input
-                    value={form.dernierBilanSanguin}
-                    onChange={e => patch('dernierBilanSanguin', e.target.value)}
-                    placeholder="Date si connue"
-                    className="h-7 max-w-xs print:border-0 print:border-b print:rounded-none print:px-0"
-                  />
+                <table className="w-full border-collapse text-[10px]">
+                  <thead>
+                    <tr>
+                      {['Plaie 1', 'Plaie 2', 'Plaie 3'].map((p, i) => (
+                        <th key={i} className={cn('border-black text-center font-semibold py-0.5 w-1/3', i < 2 && 'border-r')}>
+                          {p}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-black">
+                      {form.plaies.map((plaie, i) => (
+                        <td key={i} className={cn('align-top p-1', i < 2 && 'border-r border-black')}>
+                          <div className="space-y-0.5">
+                            <ZoneSaisie value={plaie.type} onChange={v => {
+                              const updated = [...form.plaies];
+                              updated[i] = { ...updated[i], type: v };
+                              patch('plaies', updated);
+                            }} placeholder="Type…" />
+                            <ZoneSaisie value={plaie.localisation} onChange={v => {
+                              const updated = [...form.plaies];
+                              updated[i] = { ...updated[i], localisation: v };
+                              patch('plaies', updated);
+                            }} placeholder="Localisation…" />
+                            <ZoneSaisie value={plaie.protocole} onChange={v => {
+                              const updated = [...form.plaies];
+                              updated[i] = { ...updated[i], protocole: v };
+                              patch('plaies', updated);
+                            }} placeholder="Protocole…" multiline rows={2} />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+                <div className="grid grid-cols-2 gap-x-4 px-3 py-1 border-t border-black">
+                  <Ligne label="Ablation fils le :">
+                    <ZoneSaisie value={form.ablationFils} onChange={v => patch('ablationFils', v)} />
+                  </Ligne>
+                  <Ligne label="Ablation agrafes le :">
+                    <ZoneSaisie value={form.ablationAgrafes} onChange={v => patch('ablationAgrafes', v)} />
+                  </Ligne>
                 </div>
-                <div>
-                  <Label className="text-sm font-semibold">Autre :</Label>
-                  <Textarea
-                    value={form.soinsIdeAutre}
-                    onChange={e => patch('soinsIdeAutre', e.target.value)}
-                    rows={2}
-                    className="text-sm print:border print:border-slate-400"
-                  />
+                <div className="flex gap-2 items-center flex-wrap px-3 pb-1">
+                  <span className="font-semibold">Drainage :</span>
+                  <Case checked={form.drainageOui} onChange={v => { patch('drainageOui', v); if (v) patch('drainageNon', false); }} label="Oui" />
+                  <Case checked={form.drainageNon} onChange={v => { patch('drainageNon', v); if (v) patch('drainageOui', false); }} label="Non" />
+                  <span className="font-semibold ml-2">Lequel :</span>
+                  <ZoneSaisie value={form.drainageLequel} onChange={v => patch('drainageLequel', v)} className="flex-1" />
                 </div>
               </div>
-            </article>
+
+              {/* ── TRAITEMENT ── */}
+              <Titre>Traitement : voir prescription médicale de sortie</Titre>
+              <div className="px-3 py-2 border-b-2 border-black space-y-1">
+                <div className="flex gap-1 items-start">
+                  <span className="font-semibold whitespace-nowrap shrink-0">Traitement reçu ce jour :</span>
+                  <div className="flex-1">
+                    <ZoneSaisie value={form.traitementJour} onChange={v => patch('traitementJour', v)} multiline rows={3} />
+                  </div>
+                </div>
+                <Ligne label="Perfusion :">
+                  <ZoneSaisie value={form.perfusion} onChange={v => patch('perfusion', v)} />
+                </Ligne>
+                <Ligne label="KT posé le :">
+                  <ZoneSaisie value={form.ktPoseLe} onChange={v => patch('ktPoseLe', v)} />
+                </Ligne>
+                <Ligne label="Examens prévus :">
+                  <ZoneSaisie value={form.examensPrevus} onChange={v => patch('examensPrevus', v)} />
+                </Ligne>
+              </div>
+
+              {/* ── VÉCU D'HOSPITALISATION ── */}
+              <Titre>Vécu d&apos;hospitalisation</Titre>
+              <div className="px-3 py-2 min-h-[60px]">
+                <ZoneSaisie value={form.vecuHospitalisation} onChange={v => patch('vecuHospitalisation', v)} multiline rows={4} />
+              </div>
+
+            </div>
           </>
         )}
       </div>
 
-      {/* Styles print spécifiques */}
       <style jsx global>{`
         @media print {
-          @page { size: A4; margin: 1cm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { size: A4; margin: 0.8cm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9px; }
+          .print\\:hidden { display: none !important; }
         }
       `}</style>
     </div>
