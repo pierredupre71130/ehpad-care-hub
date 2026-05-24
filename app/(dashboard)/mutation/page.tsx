@@ -597,6 +597,14 @@ export default function MutationPage() {
     return lines.join(' · ');
   }, [ctx]);
 
+  const dentierLabel = useMemo(() => {
+    const dent = asArr(ctx?.pec?.details?.dentier);
+    if (dent.includes('haut') && dent.includes('bas')) return 'Haut/Bas';
+    if (dent.includes('haut')) return 'Haut';
+    if (dent.includes('bas')) return 'Bas';
+    return '';
+  }, [ctx?.pec?.details?.dentier]);
+
   const protectionText = useMemo(() => {
     const d = ctx?.pec?.details;
     const j = d?.protectionJour ?? '';
@@ -1018,6 +1026,9 @@ export default function MutationPage() {
                     <div className="flex gap-2 items-center flex-wrap">
                       <span className="font-semibold">Prothèse dentaire :</span>
                       <Case checked={form.protheseDentaireOui} onChange={v => { patch('protheseDentaireOui', v); if (v) patch('protheseDentaireNon', false); }} label="Oui" />
+                      {form.protheseDentaireOui && dentierLabel && (
+                        <span className="text-[10px]">({dentierLabel})</span>
+                      )}
                       <Case checked={form.protheseDentaireNon} onChange={v => { patch('protheseDentaireNon', v); if (v) patch('protheseDentaireOui', false); }} label="Non" />
                     </div>
                   </div>
