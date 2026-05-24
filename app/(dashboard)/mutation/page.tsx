@@ -529,8 +529,35 @@ export default function MutationPage() {
     if (selected.viande_mixee) flags.push('Viande mixée');
     if (selected.regime_diabetique) flags.push('Diabétique');
     if (selected.epargne_intestinale) flags.push('Épargne intestinale');
+
+    // Observations des fiches menu (midi + soir) — flags cochés + texte libre
+    const obsSet = new Set<string>();
+    const FLAG_MAP: [RegExp, string][] = [
+      [/\[POISSON\]/gi,         'Allergie poisson'],
+      [/\[SANS_POISSON\]/gi,    'Sans poisson'],
+      [/\[SANS_PORC\]/gi,       'Sans porc'],
+      [/\[VIN_SANS_ALCOOL\]/gi, 'Vin sans alcool'],
+      [/\[PAS_ALCOOL\]/gi,      "Pas d'alcool"],
+      [/\[SANS_ALCOOL\]/gi,     "Pas d'alcool"],
+      [/\[SANS_VIANDE\]/gi,     'Sans viande'],
+      [/\[SANS_SALADE\]/gi,     'Sans salade'],
+    ];
+    (ctx?.fichesMenu ?? []).forEach(fm => {
+      if (!fm.observation) return;
+      let text = fm.observation;
+      FLAG_MAP.forEach(([re, label]) => {
+        if (re.test(text)) {
+          obsSet.add(label);
+          text = text.replace(re, '');
+        }
+      });
+      const libre = text.replace(/\s{2,}/g, ' ').trim();
+      if (libre) obsSet.add(libre);
+    });
+    obsSet.forEach(v => flags.push(v));
+
     return flags.join(', ');
-  }, [selected]);
+  }, [selected, ctx?.fichesMenu]);
 
   const personnePrevenir = useMemo(() => {
     const pp = selected?.dsi?.personne_prevenir;
