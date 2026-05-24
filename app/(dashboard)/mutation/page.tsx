@@ -57,6 +57,7 @@ interface Resident {
   photo_url?: string | null;
   archived?: boolean;
   dsi?: DSI | null;
+  situation_familiale?: '' | 'marie' | 'celibataire' | 'divorce' | 'veuf';
 }
 
 interface PoidsMesure { resident_id: string; date: string; poids_kg: number; }
@@ -594,8 +595,15 @@ export default function MutationPage() {
     const aideA = asArr(d?.aideAlim);
     const hyd = asArr(d?.hydratation);
 
+    const sf = selected?.situation_familiale ?? '';
     setForm(s => ({
       ...s,
+      // Situation familiale
+      sitFamiliale: {
+        celibataire: sf === 'celibataire' || sf === 'divorce',
+        marie: sf === 'marie',
+        veuf: sf === 'veuf',
+      },
       // Alimentation
       alimentNormale: !selected?.regime_mixe && !selected?.viande_mixee,
       alimentMixee: !!(selected?.regime_mixe || selected?.viande_mixee),
