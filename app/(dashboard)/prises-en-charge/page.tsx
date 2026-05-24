@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Printer, Loader2, BriefcaseMedical, Eye, Lock, Unlock, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -580,6 +580,35 @@ export default function PrisesEnChargePage() {
     },
   });
 
+  /**
+   * Table de recherche protection normalisée : chambre normalisée → {jour, nuit}.
+   * Gère tous les formats historiques de clé :
+   *  - UUID (ancien format : clé = resident.id) → traduit via la liste residents
+   *  - chambre normalisée complète (ex: '32f')
+   *  - préfixe numérique (ex: '32')
+   * Ainsi aucune re-saisie n'est nécessaire quelle que soit la version du code qui a écrit les données.
+   */
+  const protByNormRoom = useMemo(() => {
+    const isUUID = (k: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(k);
+    const map: Record<string, { jour?: string; nuit?: string }> = {};
+    Object.entries(pecNuitProtections).forEach(([key, val]) => {
+      if (isUUID(key)) {
+        // Ancien format : clé = resident ID → retrouver la chambre
+        const res = residents.find(r => r.id === key);
+        if (res?.room) {
+          const norm = normalizeRoom(res.room);
+          map[norm] = val;
+          const pref = norm.match(/^(\d+)/)?.[1];
+          if (pref && !map[pref]) map[pref] = val;
+        }
+      } else {
+        // Format chambre (normalisée ou préfixe) : indexé directement
+        map[key] = val;
+      }
+    });
+    return map;
+  }, [pecNuitProtections, residents]);
+
   // ── Auto-seed si la table est vide pour ce floor ──────────────────────────
   useEffect(() => {
     if (loadingRows || rows.length > 0 || seedingStarted.current) return;
@@ -776,7 +805,7 @@ export default function PrisesEnChargePage() {
       </td>`;
       const normCh = normalizeRoom(row.chambre ?? '');
       const prefCh = normCh.match(/^(\d+)/)?.[1] ?? '';
-      const prot = pecNuitProtections[normCh] ?? (prefCh ? pecNuitProtections[prefCh] : undefined);
+      const prot = protByNormRoom[normCh] ?? (prefCh ? protByNormRoom[prefCh] : undefined);
       const jourProt = prot?.jour ?? '';
       const nuitProt = prot?.nuit ?? '';
       const protText = [
@@ -1366,8 +1395,8 @@ export default function PrisesEnChargePage() {
                             // numérique seul ('32') au cas où residents.room ne contient que le chiffre.
                             const normCh = normalizeRoom(row.chambre ?? '');
                             const prefCh = normCh.match(/^(\d+)/)?.[1] ?? '';
-                            const prot = pecNuitProtections[normCh]
-                                      ?? (prefCh ? pecNuitProtections[prefCh] : undefined);
+                            const prot = protByNormRoom[normCh]
+                                      ?? (prefCh ? protByNormRoom[prefCh] : undefined);
                             const j = prot?.jour ?? '';
                             const n = prot?.nuit ?? '';
                             // Fallback : si aucune donnée structurée, affiche le champ texte row.protection
