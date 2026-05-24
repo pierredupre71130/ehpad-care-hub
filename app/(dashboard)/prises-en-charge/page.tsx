@@ -613,8 +613,22 @@ export default function PrisesEnChargePage() {
   /** Normalise un numéro de chambre pour la comparaison : supprime espaces, minuscule */
   const normalizeRoom = (s: string) => s.replace(/\s+/g, '').toLowerCase();
 
-  const residentByRoom = (room: string) =>
-    floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(room));
+  /** Extrait le préfixe numérique d'une chambre (ex : '30 SDB' → '30', '29 P' → '29') */
+  const roomNumPrefix = (s: string) => normalizeRoom(s).match(/^(\d+)/)?.[1] ?? normalizeRoom(s);
+
+  const residentByRoom = (room: string) => {
+    const norm = normalizeRoom(room);
+    // 1. Correspondance exacte (après normalisation)
+    const exact = floorResidents.find(r => normalizeRoom(r.room ?? '') === norm);
+    if (exact) return exact;
+    // 2. Correspondance sur le préfixe numérique uniquement
+    // (ex : row.chambre='30 SDB' → préfixe '30' ; resident.room='30' → préfixe '30')
+    const prefix = roomNumPrefix(room);
+    if (!prefix) return undefined;
+    const byPrefix = floorResidents.filter(r => normalizeRoom(r.room ?? '') === prefix);
+    // N'accepte que si un seul résident a ce numéro exact (évite les faux positifs)
+    return byPrefix.length === 1 ? byPrefix[0] : undefined;
+  };
 
   const nomFromRoom = (room: string): string => {
     const r = residentByRoom(room);
@@ -748,7 +762,7 @@ export default function PrisesEnChargePage() {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
 
     const trRows = tableRows.map(row => {
-      const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+      const matched = residentByRoom(row.chambre ?? '');
       const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
       const first = matched?.first_name || '';
       const age = ageFromBirth(matched?.date_naissance);
@@ -766,7 +780,7 @@ export default function PrisesEnChargePage() {
       const protText = [
         jourProt ? `J : ${jourProt}` : '',
         nuitProt ? `N : ${nuitProt}` : '',
-      ].filter(Boolean).join(' / ');
+      ].filter(Boolean).join(' / ') || row.protection || '';
       return `<tr>
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
@@ -1135,7 +1149,7 @@ export default function PrisesEnChargePage() {
                             disabled={!canEditAdminCols}
                             className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                           >
-                            {row.chambre && !floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? '')) && (
+                            {row.chambre && !residentByRoom(row.chambre ?? '') && (
                               <option value={row.chambre}>Ch. {row.chambre}</option>
                             )}
                             {floorResidents.map(r => (
@@ -1151,7 +1165,7 @@ export default function PrisesEnChargePage() {
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           <div className="flex items-center gap-2">
                             {(() => {
-                              const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+                              const matched = residentByRoom(row.chambre ?? '');
                               return matched?.photo_url ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={matched.photo_url} alt={row.nom || ''}
@@ -1159,7 +1173,7 @@ export default function PrisesEnChargePage() {
                               ) : null;
                             })()}
                             {(() => {
-                              const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+                              const matched = residentByRoom(row.chambre ?? '');
                               const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
                               const first = matched?.first_name || '';
                               const age = ageFromBirth(matched?.date_naissance);
@@ -1302,7 +1316,7 @@ export default function PrisesEnChargePage() {
                         {/* Matin */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+                            const matched = residentByRoom(row.chambre ?? '');
                             const auto = buildAutoMatin(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1324,7 +1338,7 @@ export default function PrisesEnChargePage() {
                         {/* Après-midi / Soir */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+                            const matched = residentByRoom(row.chambre ?? '');
                             const auto = buildAutoApresMidi(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1346,10 +1360,21 @@ export default function PrisesEnChargePage() {
                         {/* Protection — lecture seule, modifiable depuis PEC Nuit */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => normalizeRoom(r.room ?? '') === normalizeRoom(row.chambre ?? ''));
+                            const matched = residentByRoom(row.chambre ?? '');
                             const prot = matched ? pecNuitProtections[matched.id] : undefined;
                             const j = prot?.jour ?? '';
                             const n = prot?.nuit ?? '';
+                            // Fallback : si aucune donnée structurée, affiche le champ texte row.protection
+                            if (!j && !n && row.protection) {
+                              return (
+                                <div className="text-[11px] leading-snug text-slate-700">
+                                  {row.protection}
+                                  <p className="text-[9px] text-slate-300 italic pt-0.5">
+                                    Modifiable depuis PEC Nuit
+                                  </p>
+                                </div>
+                              );
+                            }
                             return (
                               <div className="space-y-1 text-[11px] leading-snug">
                                 <div className="flex items-center gap-1">
