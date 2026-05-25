@@ -206,6 +206,7 @@ async function fetchDsiContext(resident: Resident) {
     { data: contentions },
     { data: matCouss },
     { data: fichesMenu },
+    { data: kineRows },
   ] = await Promise.all([
     sb.from('poids_mesure').select('*').eq('resident_id', resident.id).order('date', { ascending: false }).limit(5),
     sb.from('niveau_soin').select('*').eq('resident_id', resident.id).maybeSingle(),
@@ -215,6 +216,7 @@ async function fetchDsiContext(resident: Resident) {
     sb.from('contentions').select('*').eq('type_suivi', 'contention').eq('chambre', resident.room),
     sb.from('mat_couss_items').select('*').eq('resident_id', resident.id).eq('status', 'attribue'),
     sb.from('fiches_menu').select('*').eq('resident_id', resident.id),
+    sb.from('kine_assignations').select('kine_nom, types_kine, notes, actif').eq('resident_id', resident.id).limit(1),
   ]);
 
   const matchingVacc = ((allVacc ?? []) as Vaccination[]).filter(v => matchesResident(v, resident));
@@ -234,6 +236,7 @@ async function fetchDsiContext(resident: Resident) {
     contentions: (contentions ?? []) as Contention[],
     matCouss: (matCouss ?? []) as MatCouss[],
     fichesMenu: (fichesMenu ?? []) as FicheMenu[],
+    kine: (kineRows as { kine_nom: string; types_kine: string[]; notes: string; actif: boolean }[] | null)?.[0] ?? null,
   };
 }
 
@@ -476,7 +479,7 @@ function DsiDossier({
 
         <MotifSection resident={resident} />
 
-        <MedicalSection resident={resident} niveau={ctx?.niveau ?? null} />
+        <MedicalSection resident={resident} niveau={ctx?.niveau ?? null} kine={ctx?.kine ?? null} />
 
         <RegimesSection resident={resident} fichesMenu={ctx?.fichesMenu ?? []} />
 
@@ -630,7 +633,7 @@ function MotifSection({ resident }: { resident: Resident }) {
 
 // ─── Médical ──────────────────────────────────────────────────
 
-function MedicalSection({ resident, niveau }: { resident: Resident; niveau: NiveauSoin | null }) {
+function MedicalSection({ resident, niveau, kine }: { resident: Resident; niveau: NiveauSoin | null; kine?: { kine_nom: string; types_kine: string[]; notes: string; actif: boolean } | null }) {
   return (
     <SectionCard icon={<Stethoscope className="h-4 w-4" />} title="Suivi médical" accent="#d84040" span={2}>
       <div className="space-y-3">
@@ -648,6 +651,32 @@ function MedicalSection({ resident, niveau }: { resident: Resident; niveau: Nive
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 bg-slate-50/60 rounded-lg p-3">
               {resident.antecedents}
             </p>
+          </div>
+        )}
+        {kine && kine.actif && (
+          <div className="pt-2 border-t border-slate-100">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Kinésithérapie</p>
+            <div className="bg-blue-50/60 ring-1 ring-blue-100 rounded-lg p-3 space-y-2">
+              {kine.types_kine && kine.types_kine.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {kine.types_kine.map((t) => (
+                    <Badge key={t} color="sky">{t}</Badge>
+                  ))}
+                </div>
+              )}
+              {kine.kine_nom && (
+                <p className="text-sm text-slate-700">
+                  <span className="font-medium text-slate-500">Kinésithérapeute :</span>{' '}
+                  {kine.kine_nom}
+                </p>
+              )}
+              {kine.notes && (
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                  <span className="font-medium text-slate-500">Notes :</span>{' '}
+                  {kine.notes}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
