@@ -165,6 +165,82 @@ const LOCO_MATERIEL_LABELS: Record<string, string> = {
   'leve-malade': 'Lève-malade',
 };
 
+function buildAutoMatin(details: PecDetails | null | undefined, resident?: Resident | null): string {
+  if (!details) return '';
+  const fem = isFemaleTitle(resident?.title);
+  const parts: string[] = [];
+  if (asArr(details.locomotion).includes('alitement')) parts.push('Alitement');
+  const hyg = asArr(details.hygiene);
+  const tlt = asArr(details.toilette);
+  if (hyg.includes('totale')) {
+    if (tlt.includes('lit')) parts.push('Toilette complète au lit');
+    else if (tlt.includes('sdb')) parts.push('Toilette complète SDB');
+    else parts.push('Toilette complète');
+  } else if (hyg.includes('partielle')) {
+    if (tlt.includes('lit')) parts.push('Aide à la toilette au lit');
+    else if (tlt.includes('sdb')) parts.push('Aide à la toilette SDB');
+    else parts.push('Aide à la toilette');
+  } else if (hyg.includes('autonome')) {
+    parts.push(fem ? 'Effectue sa toilette seule' : 'Effectue sa toilette seul');
+  }
+  const hab = asArr(details.habillage);
+  if (hab.includes('autonome')) parts.push(fem ? "S'habille seule" : "S'habille seul");
+  else if (hab.includes('partielle')) parts.push("Aide à l'habillage");
+  else if (hab.includes('totale')) parts.push("Aide totale à l'habillage");
+  const elim = asArr(details.elimMateriel);
+  if (elim.includes('urinal')) parts.push('Urinal au besoin');
+  if (elim.includes('bassin')) parts.push('Bassin au besoin');
+  if (elim.includes('chaise-percee')) parts.push('Chaise percée au besoin');
+  const mat = asArr(details.locoMateriel);
+  if (mat.includes('verticalisateur')) parts.push('Mobilisation pour soins au verticalisateur');
+  if (mat.includes('leve-malade')) parts.push('Mobilisation pour soins au lève-malade');
+  const seDeplace: string[] = [];
+  if (mat.includes('canne')) seDeplace.push('avec canne');
+  if (mat.includes('deambulateur')) seDeplace.push('en déambulateur');
+  if (mat.includes('fauteuil-roulant')) seDeplace.push('en fauteuil roulant');
+  const loco = asArr(details.locomotion);
+  if (seDeplace.length > 0) {
+    const base = `Se déplace ${seDeplace.join(' ou ')}`;
+    if (loco.includes('autonome')) parts.push(`${base} sans aide`);
+    else if (loco.includes('partielle')) parts.push(`${base} et peut nécessiter aide au déplacement`);
+    else if (loco.includes('totale')) parts.push(`${base} et ne peut se mouvoir seul${fem ? 'e' : ''}`);
+    else parts.push(base);
+  } else {
+    if (loco.includes('autonome')) parts.push('Se déplace sans aide');
+    else if (loco.includes('partielle')) parts.push('peut nécessiter aide au déplacement');
+    else if (loco.includes('totale')) parts.push(fem ? 'ne peut se mouvoir seule' : 'ne peut se mouvoir seul');
+  }
+  const dent = asArr(details.dentier);
+  if (dent.includes('haut') && dent.includes('bas')) parts.push('Dentiers haut et bas');
+  else if (dent.includes('haut')) parts.push('Dentier haut');
+  else if (dent.includes('bas')) parts.push('Dentier bas');
+  if (asArr(details.appareilAuditif).includes('oui')) parts.push('Appareils auditifs');
+  if (asArr(details.lunettes).includes('oui')) parts.push('Lunettes');
+  if (resident?.chaussettes_de_contention) parts.push('Chaussettes de contention à mettre');
+  if (resident?.bas_de_contention) parts.push('Bas de contention à mettre');
+  if (resident?.bande_de_contention) parts.push('Bandes de contention à mettre par IDE');
+  return parts.join(' - ');
+}
+
+function buildAutoApresMidi(details: PecDetails | null | undefined, resident?: Resident | null): string {
+  const parts: string[] = [];
+  const isAlite = asArr(details?.locomotion).includes('alitement');
+  if (!isAlite) {
+    const hab = asArr(details?.habillage);
+    if (hab.includes('totale')) parts.push('Aide au déshabillage');
+    else if (hab.includes('partielle')) parts.push('Peut nécessiter aide au déshabillage');
+  }
+  const dent = asArr(details?.dentier);
+  if (dent.includes('haut') && dent.includes('bas')) parts.push('Enlever dentiers haut et bas');
+  else if (dent.includes('haut')) parts.push('Enlever dentier haut');
+  else if (dent.includes('bas')) parts.push('Enlever dentier bas');
+  if (asArr(details?.appareilAuditif).includes('oui')) parts.push('Enlever appareils auditifs');
+  if (resident?.chaussettes_de_contention) parts.push('Enlever chaussettes de contention');
+  if (resident?.bas_de_contention) parts.push('Enlever bas de contention');
+  if (resident?.bande_de_contention) parts.push('Enlever bandes de contention');
+  return parts.join(' - ');
+}
+
 // ─────────────────────────────────────────────────────────────
 // FETCHERS
 // ─────────────────────────────────────────────────────────────
@@ -485,7 +561,7 @@ function DsiDossier({
 
         <TraitementsSection resident={resident} />
 
-        <PriseEnChargeSection pec={ctx?.pec ?? null} />
+        <PriseEnChargeSection pec={ctx?.pec ?? null} resident={resident} />
 
         <PoidsSection weights={ctx?.weights ?? []} />
 
@@ -756,7 +832,7 @@ function TraitementsSection({ resident }: { resident: Resident }) {
 
 // ─── Prise en charge ──────────────────────────────────────────
 
-function PriseEnChargeSection({ pec }: { pec: PecRow | null }) {
+function PriseEnChargeSection({ pec, resident }: { pec: PecRow | null; resident: Resident }) {
   if (!pec) {
     return (
       <SectionCard icon={<ClipboardList className="h-4 w-4" />} title="Prise en charge" accent="#3b72d8" span={2}>
@@ -768,24 +844,23 @@ function PriseEnChargeSection({ pec }: { pec: PecRow | null }) {
   const protJ = d.protectionJour ?? '';
   const protN = d.protectionNuit ?? '';
 
+  const autoMatin = buildAutoMatin(pec.details, resident);
+  const autoAprem = buildAutoApresMidi(pec.details, resident);
+  const manualMatin = pec.matin ?? '';
+  const manualAprem = pec.apres_midi ?? '';
+
+  const fullMatin = autoMatin ? (manualMatin ? `${autoMatin} - ${manualMatin}` : autoMatin) : manualMatin;
+  const fullAprem = autoAprem ? (manualAprem ? `${autoAprem} - ${manualAprem}` : autoAprem) : manualAprem;
+
   const items: { label: string; value: string }[] = [];
   const push = (label: string, vals: string[]) => {
     if (vals.length) items.push({ label, value: vals.join(', ') });
   };
 
-  push('Hygiène', asArr(d.hygiene));
-  push('Toilette', asArr(d.toilette));
-  push('Habillage', asArr(d.habillage));
-  push('Locomotion', asArr(d.locomotion));
-  push('Matériel loco', asArr(d.locoMateriel).map(v => LOCO_MATERIEL_LABELS[v] || v));
   push('Aide alim.', asArr(d.aideAlim));
   push('Hydratation', asArr(d.hydratation));
-  push('Dentier', asArr(d.dentier));
-  push('App. auditifs', asArr(d.appareilAuditif));
-  push('Lunettes', asArr(d.lunettes));
   push('Élim. urinaire', asArr(d.urinaire));
   push('Élim. fécale', asArr(d.fecale));
-  push('Matériel élim.', asArr(d.elimMateriel));
 
   return (
     <SectionCard icon={<ClipboardList className="h-4 w-4" />} title="Prise en charge" accent="#3b72d8" span={2}>
@@ -796,21 +871,21 @@ function PriseEnChargeSection({ pec }: { pec: PecRow | null }) {
             {protN && <Badge color="violet">Protection N : {protN}</Badge>}
           </div>
         )}
-        {pec.matin && (
+        {fullMatin && (
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-amber-600 mb-1">☀ Matin</p>
-            <p className="whitespace-pre-wrap text-sm bg-amber-50/50 ring-1 ring-amber-100 rounded-lg p-3">{pec.matin}</p>
+            <p className="whitespace-pre-wrap text-sm bg-amber-50/50 ring-1 ring-amber-100 rounded-lg p-3">{fullMatin}</p>
           </div>
         )}
-        {pec.apres_midi && (
+        {fullAprem && (
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 mb-1">🌙 Après-midi / Soir</p>
-            <p className="whitespace-pre-wrap text-sm bg-indigo-50/50 ring-1 ring-indigo-100 rounded-lg p-3">{pec.apres_midi}</p>
+            <p className="whitespace-pre-wrap text-sm bg-indigo-50/50 ring-1 ring-indigo-100 rounded-lg p-3">{fullAprem}</p>
           </div>
         )}
         {items.length > 0 && (
           <div className="pt-2 border-t border-slate-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Détail prise en charge</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Détail</p>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
               {items.map(it => (
                 <div key={it.label} className="flex items-baseline gap-2">
