@@ -1268,6 +1268,17 @@ function EditForm({
           );
         })()}
 
+        {/* ══ RAPPEL SAUVEGARDE ════════════════════════════════ */}
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+          <span className="text-amber-500 text-base leading-none mt-0.5">💾</span>
+          <p className="text-xs text-amber-700 leading-snug">
+            <span className="font-semibold">N&apos;oubliez pas d&apos;enregistrer !</span>
+            {' '}Cliquez sur le bouton{' '}
+            <span className="font-semibold">« {isNew ? 'Créer le résident' : 'Sauvegarder les modifications'} »</span>
+            {' '}ci-dessous pour sauvegarder toutes vos modifications.
+          </p>
+        </div>
+
         {/* ══ ACTIONS ══════════════════════════════════════════ */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
           <Button
