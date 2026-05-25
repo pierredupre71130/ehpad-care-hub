@@ -96,12 +96,28 @@ const DEFAULT_TUTEURS: TuteurEntry[] = [
   { id: 'default-4', nom: 'Mme Rodrigues',    tel: '0385883265' },
 ];
 
-function parseTutelle(tutelle: string): { type: 'tutelle' | 'curatelle' | ''; nom: string; tel: string } {
+type MesureType = 'tutelle' | 'curatelle' | 'sauvegarde' | 'habilitation' | '';
+
+const MESURE_LABELS: Record<string, string> = {
+  tutelle:      'Tutelle',
+  curatelle:    'Curatelle',
+  sauvegarde:   'Sauvegarde de justice',
+  habilitation: 'Habilitation familiale',
+};
+
+const LABEL_TO_KEY: Record<string, MesureType> = {
+  'tutelle':                 'tutelle',
+  'curatelle':               'curatelle',
+  'sauvegarde de justice':   'sauvegarde',
+  'habilitation familiale':  'habilitation',
+};
+
+function parseTutelle(tutelle: string): { type: MesureType; nom: string; tel: string } {
   if (!tutelle) return { type: '', nom: '', tel: '' };
-  const m = tutelle.match(/^(Tutelle|Curatelle)\s*[—\-–]\s*(.*?)(?:\s*[—\-–]\s*(.*))?$/i);
+  const m = tutelle.match(/^(Tutelle|Curatelle|Sauvegarde de justice|Habilitation familiale)\s*[—\-–]\s*(.*?)(?:\s*[—\-–]\s*(.*))?$/i);
   if (m) {
     return {
-      type: m[1].toLowerCase() as 'tutelle' | 'curatelle',
+      type: LABEL_TO_KEY[m[1].toLowerCase()] ?? '',
       nom: m[2]?.trim() ?? '',
       tel: m[3]?.trim() ?? '',
     };
@@ -111,7 +127,7 @@ function parseTutelle(tutelle: string): { type: 'tutelle' | 'curatelle' | ''; no
 
 function formatTutelle(type: string, nom: string, tel: string): string {
   const parts: string[] = [];
-  if (type) parts.push(type === 'tutelle' ? 'Tutelle' : 'Curatelle');
+  if (type) parts.push(MESURE_LABELS[type] ?? type);
   if (nom) parts.push(nom);
   if (tel) parts.push(tel);
   return parts.join(' — ');
@@ -508,7 +524,7 @@ function TutelleCell({
   onSave: (combined: string) => void;
 }) {
   const parsed = parseTutelle(tutelle);
-  const [type, setType] = useState<'tutelle' | 'curatelle' | ''>(parsed.type);
+  const [type, setType] = useState<MesureType>(parsed.type);
   const [nom, setNom] = useState(parsed.nom);
   const [tel, setTel] = useState(parsed.tel);
 
@@ -524,37 +540,32 @@ function TutelleCell({
     onSave(formatTutelle(t, n, te));
   };
 
+  const MESURES: { key: MesureType; label: string }[] = [
+    { key: 'tutelle',      label: 'Tutelle' },
+    { key: 'curatelle',    label: 'Curatelle' },
+    { key: 'sauvegarde',   label: 'Sauv. justice' },
+    { key: 'habilitation', label: 'Habilit. fam.' },
+  ];
+
   return (
     <div className="space-y-1.5 min-w-[170px]">
-      <div className="flex gap-2">
-        <label className={cn('flex items-center gap-1 text-xs', canEdit ? 'cursor-pointer' : 'cursor-default opacity-70')}>
-          <input
-            type="checkbox"
-            checked={type === 'tutelle'}
-            disabled={!canEdit}
-            onChange={e => {
-              const t: 'tutelle' | 'curatelle' | '' = e.target.checked ? 'tutelle' : '';
-              setType(t);
-              commit(t, nom, tel);
-            }}
-            className="accent-purple-600"
-          />
-          Tutelle
-        </label>
-        <label className={cn('flex items-center gap-1 text-xs', canEdit ? 'cursor-pointer' : 'cursor-default opacity-70')}>
-          <input
-            type="checkbox"
-            checked={type === 'curatelle'}
-            disabled={!canEdit}
-            onChange={e => {
-              const t: 'tutelle' | 'curatelle' | '' = e.target.checked ? 'curatelle' : '';
-              setType(t);
-              commit(t, nom, tel);
-            }}
-            className="accent-purple-600"
-          />
-          Curatelle
-        </label>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+        {MESURES.map(({ key, label }) => (
+          <label key={key} className={cn('flex items-center gap-1 text-xs', canEdit ? 'cursor-pointer' : 'cursor-default opacity-70')}>
+            <input
+              type="checkbox"
+              checked={type === key}
+              disabled={!canEdit}
+              onChange={e => {
+                const t: MesureType = e.target.checked ? key : '';
+                setType(t);
+                commit(t, nom, tel);
+              }}
+              className="accent-purple-600"
+            />
+            {label}
+          </label>
+        ))}
       </div>
       <input
         value={nom}

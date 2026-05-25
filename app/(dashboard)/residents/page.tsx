@@ -105,7 +105,7 @@ interface AutrePersonne {
 }
 
 interface TutelleCuratelle {
-  type?: 'tutelle' | 'curatelle';
+  type?: 'tutelle' | 'curatelle' | 'sauvegarde' | 'habilitation';
   nom?: string;
   tel?: string;
 }
@@ -1064,12 +1064,12 @@ function EditForm({
                 </div>
               </div>
 
-              {/* Tutelle / Curatelle */}
+              {/* Mesure de protection judiciaire */}
               <div className="mb-5">
                 <Label className="text-xs font-semibold text-slate-700 mb-2 block">
-                  Tutelle / Curatelle
+                  Mesure de protection judiciaire
                 </Label>
-                <div className="flex gap-4 mb-3">
+                <div className="flex flex-wrap gap-3 mb-3">
                   <CheckField
                     id="f_dsi_tutelle"
                     label="Tutelle"
@@ -1082,10 +1082,22 @@ function EditForm({
                     checked={tc.type === 'curatelle'}
                     onChange={v => setTC({ type: v ? 'curatelle' : undefined })}
                   />
+                  <CheckField
+                    id="f_dsi_sauvegarde"
+                    label="Sauvegarde de justice"
+                    checked={tc.type === 'sauvegarde'}
+                    onChange={v => setTC({ type: v ? 'sauvegarde' : undefined })}
+                  />
+                  <CheckField
+                    id="f_dsi_habilitation"
+                    label="Habilitation familiale"
+                    checked={tc.type === 'habilitation'}
+                    onChange={v => setTC({ type: v ? 'habilitation' : undefined })}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-[10px] text-slate-500">Nom du tuteur / curateur</Label>
+                    <Label className="text-[10px] text-slate-500">Nom du responsable</Label>
                     <Input
                       value={tc.nom ?? ''}
                       onChange={e => setTC({ nom: e.target.value })}
