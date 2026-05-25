@@ -114,7 +114,12 @@ const LABEL_TO_KEY: Record<string, MesureType> = {
 
 function parseTutelle(tutelle: string): { type: MesureType; nom: string; tel: string } {
   if (!tutelle) return { type: '', nom: '', tel: '' };
-  const m = tutelle.match(/^(Tutelle|Curatelle|Sauvegarde de justice|Habilitation familiale)\s*[—\-–]\s*(.*?)(?:\s*[—\-–]\s*(.*))?$/i);
+  const trimmed = tutelle.trim();
+  // Cas : juste le label de la mesure sans séparateur (ex: "Tutelle", "Curatelle")
+  const simpleKey = LABEL_TO_KEY[trimmed.toLowerCase()];
+  if (simpleKey) return { type: simpleKey, nom: '', tel: '' };
+  // Cas complet : "Type — Nom" ou "Type — Nom — Tél"
+  const m = trimmed.match(/^(Tutelle|Curatelle|Sauvegarde de justice|Habilitation familiale)\s*[—\-–]\s*(.*?)(?:\s*[—\-–]\s*(.*))?$/i);
   if (m) {
     return {
       type: LABEL_TO_KEY[m[1].toLowerCase()] ?? '',
