@@ -745,6 +745,27 @@ export default function MutationPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx?.pec, selected, matelasAirText]);
 
+  // Pré-remplir le champ kinésithérapeute depuis le module kiné (types uniquement)
+  useEffect(() => {
+    if (!selected?.id) {
+      setForm(s => ({ ...s, kinesitherapeute: '' }));
+      return;
+    }
+    const sb = createClient();
+    sb.from('kine_assignations')
+      .select('types_kine, actif')
+      .eq('resident_id', selected.id)
+      .eq('actif', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.types_kine && data.types_kine.length > 0) {
+          setForm(s => ({ ...s, kinesitherapeute: data.types_kine.join(', ') }));
+        } else {
+          setForm(s => ({ ...s, kinesitherapeute: '' }));
+        }
+      });
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fem = isFemaleTitle(selected?.title);
 
   return (
