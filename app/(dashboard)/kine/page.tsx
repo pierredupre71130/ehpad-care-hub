@@ -52,7 +52,6 @@ interface KineAssignation {
 interface Resident {
   id: string;
   room: string;
-  floor: string;
   title: string;
   first_name: string;
   last_name: string;
@@ -150,11 +149,9 @@ async function fetchAssignations(): Promise<KineAssignation[]> {
 
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
-  // archived peut valoir false, null ou être absent — on exclut uniquement true
   const { data, error } = await sb
     .from('residents')
-    .select('id, room, floor, title, first_name, last_name')
-    .or('archived.eq.false,archived.is.null')
+    .select('id, room, title, first_name, last_name')
     .order('last_name', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Resident[];
@@ -511,8 +508,8 @@ function AssignationModal({
   };
 
   const handleSubmit = async () => {
-    if (!form.resident_id) { setError('Veuillez sélectionner un résident.'); return; }
-    if (!form.kine_id) { setError('Veuillez sélectionner un kinésithérapeute.'); return; }
+    if (!form.resident_id) { alert('Veuillez sélectionner un résident.'); return; }
+    if (!form.kine_id) { alert('Veuillez sélectionner un kinésithérapeute.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -520,7 +517,9 @@ function AssignationModal({
       onSaved();
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg);
+      alert(`Erreur lors de l'enregistrement :\n${msg}`);
     } finally {
       setSaving(false);
     }
@@ -705,8 +704,10 @@ export default function KinePage() {
       const data = await fetchAssignations();
       setAssignations(data);
     } catch (e) {
+      const msg = (e as Error).message;
       setIsAssignationsError(true);
-      setAssignationsError((e as Error).message);
+      setAssignationsError(msg);
+      alert(`Erreur chargement assignations :\n${msg}`);
     } finally {
       setLoadingAssignations(false);
     }
@@ -866,9 +867,10 @@ export default function KinePage() {
               <option key={j} value={j}>{j}</option>
             ))}
           </select>
-          {/* Compteur */}
+          {/* Compteur + diagnostic */}
           <span className="text-xs text-slate-500 ml-auto whitespace-nowrap">
-            {filtered.length} assignation{filtered.length !== 1 ? 's' : ''}
+            {filtered.length} / {assignations.length} assignation{assignations.length !== 1 ? 's' : ''}
+            {' · '}{residents.length} résidents{' · '}{kineConfig.length} kinés
           </span>
         </div>
       </div>
