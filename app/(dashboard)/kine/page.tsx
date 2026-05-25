@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, X, Pencil, Trash2, Plus, Settings, Eye, Activity,
@@ -150,10 +150,11 @@ async function fetchAssignations(): Promise<KineAssignation[]> {
 
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
+  // archived peut valoir false, null ou être absent — on exclut uniquement true
   const { data, error } = await sb
     .from('residents')
     .select('id, room, floor, title, first_name, last_name')
-    .eq('archived', false)
+    .or('archived.eq.false,archived.is.null')
     .order('last_name', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Resident[];
@@ -689,7 +690,6 @@ export default function KinePage() {
     isLoading: loadingAssignations,
     isError: isAssignationsError,
     error: assignationsError,
-    refetch: refetchAssignations,
   } = useQuery({
     queryKey: ['kine_assignations'],
     queryFn: fetchAssignations,
@@ -754,10 +754,17 @@ export default function KinePage() {
   }, []);
 
   const handleModalSaved = useCallback(() => {
-    // Force an immediate re-fetch (not just marking stale)
-    refetchAssignations();
-    queryClient.invalidateQueries({ queryKey: ['settings', 'kine_config'] });
-  }, [queryClient, refetchAssignations]);
+    // Forcer un re-fetch immédiat (refetchQueries est plus fiable qu'invalidateQueries)
+    queryClient.refetchQueries({ queryKey: ['kine_assignations'] });
+    queryClient.refetchQueries({ queryKey: ['settings', 'kine_config'] });
+  }, [queryClient]);
+
+  // Filet de sécurité : re-fetch à chaque fermeture de la modale
+  useEffect(() => {
+    if (!showAssignation) {
+      queryClient.refetchQueries({ queryKey: ['kine_assignations'] });
+    }
+  }, [showAssignation, queryClient]);
 
   const isLoading = loadingConfig || loadingAssignations || loadingResidents;
 
@@ -866,7 +873,7 @@ export default function KinePage() {
             <span className="font-bold shrink-0">⚠️ Erreur base de données :</span>
             <span>{(assignationsError as Error)?.message ?? 'Impossible de charger les assignations.'}</span>
             <button
-              onClick={() => refetchAssignations()}
+              onClick={() => queryClient.refetchQueries({ queryKey: ['kine_assignations'] })}
               className="ml-auto shrink-0 underline text-red-600 hover:text-red-800"
             >
               Réessayer
