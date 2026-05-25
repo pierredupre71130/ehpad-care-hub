@@ -679,26 +679,41 @@ export default function KinePage() {
   const [filterKineId, setFilterKineId] = useState('');
   const [filterJour, setFilterJour] = useState('');
 
-  // Data fetching
+  // ── KineConfig (React Query) ──────────────────────────────
   const { data: kineConfig = [], isLoading: loadingConfig } = useQuery({
     queryKey: ['settings', 'kine_config'],
     queryFn: fetchKineConfig,
   });
 
-  const {
-    data: assignations = [],
-    isLoading: loadingAssignations,
-    isError: isAssignationsError,
-    error: assignationsError,
-  } = useQuery({
-    queryKey: ['kine_assignations'],
-    queryFn: fetchAssignations,
-  });
-
+  // ── Résidents (React Query) ───────────────────────────────
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
     queryKey: ['kine_residents'],
     queryFn: fetchResidents,
   });
+
+  // ── Assignations : useState + fetch direct (pas de React Query) ──
+  const [assignations, setAssignations] = useState<KineAssignation[]>([]);
+  const [loadingAssignations, setLoadingAssignations] = useState(true);
+  const [isAssignationsError, setIsAssignationsError] = useState(false);
+  const [assignationsError, setAssignationsError] = useState<string | null>(null);
+
+  const loadAssignations = useCallback(async () => {
+    setLoadingAssignations(true);
+    setIsAssignationsError(false);
+    setAssignationsError(null);
+    try {
+      const data = await fetchAssignations();
+      setAssignations(data);
+    } catch (e) {
+      setIsAssignationsError(true);
+      setAssignationsError((e as Error).message);
+    } finally {
+      setLoadingAssignations(false);
+    }
+  }, []);
+
+  // Chargement initial
+  useEffect(() => { loadAssignations(); }, [loadAssignations]);
 
   // Map resident id → resident object
   const residentMap = useMemo(() => {
@@ -740,31 +755,23 @@ export default function KinePage() {
     setDeletingId(id);
     try {
       await deleteAssignation(id);
-      queryClient.invalidateQueries({ queryKey: ['kine_assignations'] });
+      await loadAssignations();
     } catch (e) {
       alert(`Erreur : ${(e as Error).message}`);
     } finally {
       setDeletingId(null);
     }
-  }, [queryClient]);
+  }, [loadAssignations]);
 
   const handleEdit = useCallback((a: KineAssignation) => {
     setEditTarget(a);
     setShowAssignation(true);
   }, []);
 
-  const handleModalSaved = useCallback(() => {
-    // Forcer un re-fetch immédiat (refetchQueries est plus fiable qu'invalidateQueries)
-    queryClient.refetchQueries({ queryKey: ['kine_assignations'] });
-    queryClient.refetchQueries({ queryKey: ['settings', 'kine_config'] });
-  }, [queryClient]);
-
-  // Filet de sécurité : re-fetch à chaque fermeture de la modale
-  useEffect(() => {
-    if (!showAssignation) {
-      queryClient.refetchQueries({ queryKey: ['kine_assignations'] });
-    }
-  }, [showAssignation, queryClient]);
+  const handleModalSaved = useCallback(async () => {
+    await loadAssignations();
+    queryClient.invalidateQueries({ queryKey: ['settings', 'kine_config'] });
+  }, [loadAssignations, queryClient]);
 
   const isLoading = loadingConfig || loadingAssignations || loadingResidents;
 
@@ -871,9 +878,9 @@ export default function KinePage() {
         <div className="max-w-6xl mx-auto px-4 pt-3">
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-red-700">
             <span className="font-bold shrink-0">⚠️ Erreur base de données :</span>
-            <span>{(assignationsError as Error)?.message ?? 'Impossible de charger les assignations.'}</span>
+            <span>{assignationsError ?? 'Impossible de charger les assignations.'}</span>
             <button
-              onClick={() => queryClient.refetchQueries({ queryKey: ['kine_assignations'] })}
+              onClick={loadAssignations}
               className="ml-auto shrink-0 underline text-red-600 hover:text-red-800"
             >
               Réessayer
