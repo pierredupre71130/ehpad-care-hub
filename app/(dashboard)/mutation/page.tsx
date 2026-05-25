@@ -354,6 +354,7 @@ function ZoneSaisie({ value, onChange, placeholder, className, multiline = false
 export default function MutationPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [floorFilter, setFloorFilter] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
 
   const [form, setForm] = useState({
     // En-tête
@@ -509,9 +510,12 @@ export default function MutationPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return residents;
-    return residents.filter(r => `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q));
-  }, [residents, search]);
+    return residents.filter(r => {
+      if (floorFilter !== 'ALL' && r.floor !== floorFilter) return false;
+      if (!q) return true;
+      return `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q);
+    });
+  }, [residents, search, floorFilter]);
 
   const selected = useMemo(() => residents.find(r => r.id === selectedId) ?? null, [residents, selectedId]);
 
@@ -771,6 +775,23 @@ export default function MutationPage() {
                 placeholder="Rechercher un résident (nom, prénom, chambre)…"
                 className="pl-9"
               />
+            </div>
+            {/* Filtre étage */}
+            <div className="flex gap-1 mb-3">
+              {(['ALL', 'RDC', '1ER'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFloorFilter(f)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+                    floorFilter === f
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-700'
+                  )}
+                >
+                  {f === 'ALL' ? 'Tous' : f === '1ER' ? '1er étage' : 'RDC'}
+                </button>
+              ))}
             </div>
             {loadingResidents ? (
               <p className="text-sm text-slate-500">Chargement…</p>
