@@ -819,7 +819,7 @@ function RowCard({
   const existingPP = row.matched?.dsi
     ? (row.matched.dsi as Record<string, unknown>).personne_prevenir as Record<string, unknown> | undefined
     : undefined;
-  const hasExisting = existingPP && Object.keys(existingPP).length > 0 && (existingPP.nom || existingPP.tel);
+  const hasExisting = !!(existingPP && Object.keys(existingPP).length > 0 && (existingPP.nom || existingPP.tel));
 
   return (
     <div className={cn('bg-white rounded-xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden border-l-4', statusColor)}>
