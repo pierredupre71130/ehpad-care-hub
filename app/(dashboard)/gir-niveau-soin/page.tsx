@@ -275,6 +275,18 @@ async function syncAppelNuit(residentId: string, value: boolean | null) {
   await sb.from('residents').update({ appel_nuit: value }).eq('id', residentId);
 }
 
+// Sync tutelle (niveau_soin) → residents.dsi.tutelle_curatelle
+async function syncTutelleToResident(residentId: string, combined: string): Promise<void> {
+  const sb = createClient();
+  const p = parseTutelle(combined);
+  const tc = (p.type || p.nom || p.tel)
+    ? { type: p.type || undefined, nom: p.nom || undefined, tel: p.tel || undefined }
+    : null;
+  const { data } = await sb.from('residents').select('dsi').eq('id', residentId).maybeSingle();
+  const currentDsi = (data?.dsi as Record<string, unknown> | null) ?? {};
+  await sb.from('residents').update({ dsi: { ...currentDsi, tutelle_curatelle: tc } }).eq('id', residentId);
+}
+
 async function fetchTuteurs(): Promise<TuteurEntry[]> {
   const sb = createClient();
   const { data } = await sb.from('settings').select('value').eq('key', 'tuteurs_curators').maybeSingle();
@@ -866,6 +878,12 @@ export default function GIRNiveauSoinPage() {
       setLocalUpdates(prev => ({ ...prev, [resident.id]: { ...(prev[resident.id] ?? {}), id: updated.id } }));
       if (field === 'appel_nuit') {
         await syncAppelNuit(resident.id, value as boolean | null);
+        queryClient.invalidateQueries({ queryKey: ['residents'] });
+      }
+      if (field === 'tutelle') {
+        syncTutelleToResident(resident.id, value as string).catch(e =>
+          console.error('[sync tutelle → residents.dsi]', e)
+        );
         queryClient.invalidateQueries({ queryKey: ['residents'] });
       }
       queryClient.invalidateQueries({ queryKey: ['niveau_soin'] });

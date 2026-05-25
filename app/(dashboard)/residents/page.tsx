@@ -310,6 +310,22 @@ async function fetchResidents(): Promise<Resident[]> {
   return (data ?? []) as Resident[];
 }
 
+const MESURE_LABELS_SYNC: Record<string, string> = {
+  tutelle:      'Tutelle',
+  curatelle:    'Curatelle',
+  sauvegarde:   'Sauvegarde de justice',
+  habilitation: 'Habilitation familiale',
+};
+
+/** Formate tutelle_curatelle en chaîne pour niveau_soin.tutelle */
+function formatTutelleSync(tc: TutelleCuratelle | undefined | null): string {
+  const parts: string[] = [];
+  if (tc?.type) parts.push(MESURE_LABELS_SYNC[tc.type] ?? tc.type);
+  if (tc?.nom)  parts.push(tc.nom);
+  if (tc?.tel)  parts.push(tc.tel);
+  return parts.join(' — ');
+}
+
 async function saveResident(
   payload: Partial<Resident> & { id?: string }
 ): Promise<void> {
@@ -318,6 +334,15 @@ async function saveResident(
     const { id, ...updates } = payload;
     const { error } = await sb.from('residents').update(updates).eq('id', id);
     if (error) throw new Error(error.message);
+    // Sync mesure de protection → niveau_soin.tutelle
+    if ('dsi' in updates) {
+      const tc = (updates.dsi as DSI | null)?.tutelle_curatelle;
+      const combined = formatTutelleSync(tc);
+      sb.from('niveau_soin')
+        .update({ tutelle: combined })
+        .eq('resident_id', id)
+        .then((res: { error: unknown }) => { if (res.error) console.error('[sync dsi.tutelle → niveau_soin]', res.error); });
+    }
   } else {
     const { error } = await sb.from('residents').insert(payload);
     if (error) throw new Error(error.message);
