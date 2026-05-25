@@ -1522,8 +1522,11 @@ export default function ResidentsPage() {
     sb.from('kine_assignations')
       .select('kine_nom, types_kine, notes, actif')
       .eq('resident_id', editingId)
-      .maybeSingle()
-      .then(({ data }) => setEditingKine(data ?? null));
+      .limit(1)
+      .then(({ data, error }) => {
+        if (error) console.error('[kine DSI]', error.message);
+        setEditingKine(data?.[0] ?? null);
+      });
   }, [editingId]);
   const [showAdminDlg, setShowAdminDlg] = useState(false);
 
