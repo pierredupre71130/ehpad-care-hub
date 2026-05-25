@@ -589,7 +589,7 @@ function TutelleCell({
             <button
               key={t.id}
               type="button"
-              onClick={() => { setNom(t.nom); setTel(t.tel); commit(type || 'tutelle', t.nom, t.tel); }}
+              onClick={() => { setNom(t.nom); setTel(t.tel); commit(type, t.nom, t.tel); }}
               className={cn(
                 'px-1.5 py-0.5 rounded text-[10px] border transition-colors',
                 nom === t.nom && tel === t.tel
