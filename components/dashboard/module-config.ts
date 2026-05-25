@@ -21,6 +21,7 @@ import {
   Smile,
   PillBottle,
   ChefHat,
+  Activity,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -336,16 +337,29 @@ export const MODULES: ModuleConfig[] = [
     visibleRoles: null,
     categoryId: 'accompagnement',
   },
+  {
+    id: 'kine',
+    label: 'Kinésithérapie',
+    description: 'Suivi des séances et intervenants kiné',
+    href: '/kine',
+    icon: Activity,
+    cardFrom: '#0d9488',
+    cardTo: '#0f766e',
+    colorClass: 'border-teal-100 hover:border-teal-300 hover:bg-teal-50/60',
+    iconBg: 'bg-teal-100 text-teal-600',
+    visibleRoles: null,
+    categoryId: 'medical',
+  },
 ];
 
 export const ROLE_MODULES: Record<string, string[] | null> = {
   admin: null,
   psychologue: ['pap'],
   dieteticienne: ['surveillancePoids'],
-  cadre: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins', 'dentiste'],
+  cadre: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins', 'dentiste', 'kine'],
   'aide-soignante': ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes'],
   as: ['consignes', 'consignesNuit', 'fichesDePoste', 'etiquettesRepas', 'pap', 'basDeContention', 'declarationChutes'],
-  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'peremptions', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins', 'dentiste'],
+  ide: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'peremptions', 'basDeContention', 'declarationChutes', 'questionnairesEtudiants', 'matelasCoussins', 'dentiste', 'kine'],
   secretaire: ['residents'],
   medecin: ['consignes', 'consignesNuit', 'bilansSanguins', 'vaccination', 'contentions', 'pap', 'surveillancePoids', 'basDeContention', 'declarationChutes'],
 };

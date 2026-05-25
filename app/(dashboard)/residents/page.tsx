@@ -104,10 +104,48 @@ interface AutrePersonne {
   tel?: string;
 }
 
+interface TutelleCuratelle {
+  type?: 'tutelle' | 'curatelle' | 'sauvegarde' | 'habilitation';
+  nom?: string;
+  tel?: string;
+}
+
+interface TuteurEntry {
+  id: string;
+  nom: string;
+  tel: string;
+}
+
+const DEFAULT_TUTEURS: TuteurEntry[] = [
+  { id: 'default-1', nom: 'Hastings Antoine', tel: '0385882011' },
+  { id: 'default-2', nom: 'Mme Organo',       tel: '0385883265' },
+  { id: 'default-3', nom: 'Mme Ribeiro',      tel: '0385690404' },
+  { id: 'default-4', nom: 'Mme Rodrigues',    tel: '0385883265' },
+];
+
+interface Respiration {
+  normale?: boolean;
+  dyspnee?: boolean;
+  o2?: boolean;
+  o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
+interface Comportement {
+  coherent?: boolean;
+  communique?: boolean;
+}
+
 interface DSI {
   personne_prevenir?: PersonneAPrevenir;
   autres_personnes?: AutrePersonne[];
   motif_entree?: string;
+  tutelle_curatelle?: TutelleCuratelle;
+  respiration?: Respiration;
+  comportement?: Comportement;
 }
 
 interface Resident {
@@ -176,6 +214,13 @@ async function fetchSetting<T>(key: string, fallback: T): Promise<T> {
   const sb = createClient();
   const { data } = await sb.from('settings').select('value').eq('key', key).maybeSingle();
   return data ? (data.value as T) : fallback;
+}
+
+async function fetchTuteurs(): Promise<TuteurEntry[]> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'tuteurs_curators').maybeSingle();
+  if (data?.value && Array.isArray(data.value)) return data.value as TuteurEntry[];
+  return DEFAULT_TUTEURS;
 }
 
 async function saveSetting(key: string, value: unknown): Promise<void> {
@@ -265,6 +310,22 @@ async function fetchResidents(): Promise<Resident[]> {
   return (data ?? []) as Resident[];
 }
 
+const MESURE_LABELS_SYNC: Record<string, string> = {
+  tutelle:      'Tutelle',
+  curatelle:    'Curatelle',
+  sauvegarde:   'Sauvegarde de justice',
+  habilitation: 'Habilitation familiale',
+};
+
+/** Formate tutelle_curatelle en chaîne pour niveau_soin.tutelle */
+function formatTutelleSync(tc: TutelleCuratelle | undefined | null): string {
+  const parts: string[] = [];
+  if (tc?.type) parts.push(MESURE_LABELS_SYNC[tc.type] ?? tc.type);
+  if (tc?.nom)  parts.push(tc.nom);
+  if (tc?.tel)  parts.push(tc.tel);
+  return parts.join(' — ');
+}
+
 async function saveResident(
   payload: Partial<Resident> & { id?: string }
 ): Promise<void> {
@@ -273,6 +334,15 @@ async function saveResident(
     const { id, ...updates } = payload;
     const { error } = await sb.from('residents').update(updates).eq('id', id);
     if (error) throw new Error(error.message);
+    // Sync mesure de protection → niveau_soin.tutelle
+    if ('dsi' in updates) {
+      const tc = (updates.dsi as DSI | null)?.tutelle_curatelle;
+      const combined = formatTutelleSync(tc);
+      sb.from('niveau_soin')
+        .update({ tutelle: combined })
+        .eq('resident_id', id)
+        .then((res: { error: unknown }) => { if (res.error) console.error('[sync dsi.tutelle → niveau_soin]', res.error); });
+    }
   } else {
     const { error } = await sb.from('residents').insert(payload);
     if (error) throw new Error(error.message);
@@ -557,6 +627,11 @@ function EditForm({
   onDelete?: () => void;
   isAdmin?: boolean;
 }) {
+  const { data: tuteurs = DEFAULT_TUTEURS } = useQuery({
+    queryKey: ['settings', 'tuteurs_curators'],
+    queryFn: fetchTuteurs,
+  });
+
   const headerTitle = isNew
     ? 'Nouveau résident'
     : `Édition — ${form.title ?? ''} ${(form.last_name ?? '').toUpperCase()} ${form.first_name ?? ''}`.trim();
@@ -883,7 +958,71 @@ function EditForm({
               </span>
             </div>
           </div>
+
+          {/* ── Respiration ── */}
+          {(() => {
+            const dsiLocal = form.dsi ?? {};
+            const resp = dsiLocal.respiration ?? {};
+            const setResp = (next: Partial<Respiration>) =>
+              patch({ dsi: { ...dsiLocal, respiration: { ...resp, ...next } } });
+            return (
+              <div className="mt-4 border-t border-slate-100 pt-3 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Respiration</p>
+                <div className="flex flex-wrap gap-4">
+                  <CheckField id="f_resp_normale" label="Normale" checked={resp.normale ?? false} onChange={v => setResp({ normale: v, dyspnee: v ? false : resp.dyspnee })} />
+                  <CheckField id="f_resp_dyspnee" label="Dyspnée" checked={resp.dyspnee ?? false} onChange={v => setResp({ dyspnee: v, normale: v ? false : resp.normale })} />
+                </div>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <span className="text-sm font-semibold text-slate-700">O2 :</span>
+                  <CheckField id="f_o2_oui" label="Oui" checked={resp.o2 === true} onChange={v => setResp({ o2: v ? true : undefined })} />
+                  <CheckField id="f_o2_non" label="Non" checked={resp.o2 === false} onChange={v => setResp({ o2: v ? false : undefined })} />
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-slate-600">Débit :</Label>
+                    <Input value={resp.o2Debit ?? ''} onChange={e => setResp({ o2Debit: e.target.value })} placeholder="ex : 2L/min" className="h-8 w-28 text-sm" />
+                  </div>
+                  <CheckField id="f_o2_jour" label="Jour" checked={resp.o2Jour ?? false} onChange={v => setResp({ o2Jour: v })} />
+                  <CheckField id="f_o2_nuit" label="Nuit" checked={resp.o2Nuit ?? false} onChange={v => setResp({ o2Nuit: v })} />
+                </div>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <span className="text-sm font-semibold text-slate-700">VNI :</span>
+                  <CheckField id="f_vni_oui" label="Oui" checked={resp.vni === true} onChange={v => setResp({ vni: v ? true : undefined })} />
+                  <CheckField id="f_vni_non" label="Non" checked={resp.vni === false} onChange={v => setResp({ vni: v ? false : undefined })} />
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-slate-600">Débit :</Label>
+                    <Input value={resp.vniDebit ?? ''} onChange={e => setResp({ vniDebit: e.target.value })} placeholder="ex : réglages…" className="h-8 w-36 text-sm" />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </section>
+
+        {/* ══ 4b. COMPORTEMENT ══════════════════════════════════ */}
+        {(() => {
+          const dsiLocal = form.dsi ?? {};
+          const comp = dsiLocal.comportement ?? {};
+          const setComp = (next: Partial<Comportement>) =>
+            patch({ dsi: { ...dsiLocal, comportement: { ...comp, ...next } } });
+          return (
+            <section>
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
+                Comportement
+              </h3>
+              <div className="flex flex-wrap gap-x-8 gap-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-slate-700">Cohérent :</span>
+                  <CheckField id="f_coherent_oui" label="Oui" checked={comp.coherent === true} onChange={v => setComp({ coherent: v ? true : undefined })} />
+                  <CheckField id="f_coherent_non" label="Non" checked={comp.coherent === false} onChange={v => setComp({ coherent: v ? false : undefined })} />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-slate-700">Communique :</span>
+                  <CheckField id="f_communique_oui" label="Oui" checked={comp.communique === true} onChange={v => setComp({ communique: v ? true : undefined })} />
+                  <CheckField id="f_communique_non" label="Non" checked={comp.communique === false} onChange={v => setComp({ communique: v ? false : undefined })} />
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ══ 5. ANNOTATIONS ═══════════════════════════════════ */}
         <section>
@@ -917,11 +1056,113 @@ function EditForm({
           const removeAutre = (i: number) =>
             setDsi({ autres_personnes: autres.filter((_, j) => j !== i) });
 
+          const tc = dsi.tutelle_curatelle ?? {};
+          const setTC = (next: Partial<TutelleCuratelle>) =>
+            setDsi({ tutelle_curatelle: { ...tc, ...next } });
+
           return (
             <section>
               <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pb-1.5 border-b border-slate-100">
                 DSI — Dossier de Soins Infirmiers
               </h3>
+
+              {/* Motif et date d'entrée — en tête de section */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700">Motif d&apos;entrée</Label>
+                  <Textarea
+                    value={dsi.motif_entree ?? ''}
+                    onChange={e => setDsi({ motif_entree: e.target.value })}
+                    rows={2}
+                    className="text-sm resize-y"
+                    placeholder="Raison de l'admission en EHPAD…"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700">Date d&apos;entrée</Label>
+                  <Input
+                    type="date"
+                    value={form.date_entree ?? ''}
+                    onChange={e => patch({ date_entree: e.target.value })}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Mesure de protection judiciaire */}
+              <div className="mb-5">
+                <Label className="text-xs font-semibold text-slate-700 mb-2 block">
+                  Mesure de protection judiciaire
+                </Label>
+                <div className="flex flex-wrap gap-3 mb-3">
+                  <CheckField
+                    id="f_dsi_tutelle"
+                    label="Tutelle"
+                    checked={tc.type === 'tutelle'}
+                    onChange={v => setTC({ type: v ? 'tutelle' : undefined })}
+                  />
+                  <CheckField
+                    id="f_dsi_curatelle"
+                    label="Curatelle"
+                    checked={tc.type === 'curatelle'}
+                    onChange={v => setTC({ type: v ? 'curatelle' : undefined })}
+                  />
+                  <CheckField
+                    id="f_dsi_sauvegarde"
+                    label="Sauvegarde de justice"
+                    checked={tc.type === 'sauvegarde'}
+                    onChange={v => setTC({ type: v ? 'sauvegarde' : undefined })}
+                  />
+                  <CheckField
+                    id="f_dsi_habilitation"
+                    label="Habilitation familiale"
+                    checked={tc.type === 'habilitation'}
+                    onChange={v => setTC({ type: v ? 'habilitation' : undefined })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Nom du responsable</Label>
+                    <Input
+                      value={tc.nom ?? ''}
+                      onChange={e => setTC({ nom: e.target.value })}
+                      placeholder="Ex : Me Dupont…"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-500">Téléphone</Label>
+                    <Input
+                      value={tc.tel ?? ''}
+                      onChange={e => setTC({ tel: e.target.value })}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                {/* Sélection rapide tuteurs pré-enregistrés */}
+                {tuteurs.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-slate-400 mb-1.5">Sélection rapide :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tuteurs.map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setTC({ nom: t.nom, tel: t.tel })}
+                          className={cn(
+                            'px-2 py-1 rounded-full text-xs border transition-colors',
+                            tc.nom === t.nom && tc.tel === t.tel
+                              ? 'bg-purple-100 border-purple-400 text-purple-800 font-semibold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300 hover:text-purple-700'
+                          )}
+                        >
+                          {t.nom}{t.tel ? ` · ${t.tel}` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Personne à prévenir */}
               <div className="mb-5">
@@ -1023,31 +1264,20 @@ function EditForm({
                 </div>
               </div>
 
-              {/* Motif et date d'entrée */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="text-xs font-semibold text-slate-700">Motif d'entrée</Label>
-                  <Textarea
-                    value={dsi.motif_entree ?? ''}
-                    onChange={e => setDsi({ motif_entree: e.target.value })}
-                    rows={2}
-                    className="text-sm resize-y"
-                    placeholder="Raison de l'admission en EHPAD…"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700">Date d'entrée</Label>
-                  <Input
-                    type="date"
-                    value={form.date_entree ?? ''}
-                    onChange={e => patch({ date_entree: e.target.value })}
-                    className="h-9 text-sm"
-                  />
-                </div>
-              </div>
             </section>
           );
         })()}
+
+        {/* ══ RAPPEL SAUVEGARDE ════════════════════════════════ */}
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+          <span className="text-amber-500 text-base leading-none mt-0.5">💾</span>
+          <p className="text-xs text-amber-700 leading-snug">
+            <span className="font-semibold">N&apos;oubliez pas d&apos;enregistrer !</span>
+            {' '}Cliquez sur le bouton{' '}
+            <span className="font-semibold">« {isNew ? 'Créer le résident' : 'Sauvegarder les modifications'} »</span>
+            {' '}ci-dessous pour sauvegarder toutes vos modifications.
+          </p>
+        </div>
 
         {/* ══ ACTIONS ══════════════════════════════════════════ */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">

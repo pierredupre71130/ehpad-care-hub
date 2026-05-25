@@ -29,6 +29,15 @@ interface AstreinteSettings {
   cadreEmail: string;
 }
 
+interface RespirationDSI {
+  o2?: boolean;
+  o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
 interface Resident {
   id: string;
   first_name?: string;
@@ -46,6 +55,7 @@ interface Resident {
   bande_de_contention?: boolean;
   date_naissance?: string;
   medecin?: string;
+  dsi?: { respiration?: RespirationDSI } | null;
 }
 
 interface NiveauSoin {
@@ -125,6 +135,37 @@ const CONTENTION_ICONS: Record<string, React.ReactNode> = {
   'barrière droite': <ContentionIconSmall label="BD" bg="#fef3c7" border="#d97706" />,
   'barrière x2': <ContentionIconSmall label="B2" bg="#fef3c7" border="#d97706" />,
 };
+
+/** Construit les libellés O2 / VNI depuis les données DSI d'un résident. */
+function buildRespiText(resp: RespirationDSI | undefined | null): { o2: string; vni: string } {
+  let o2 = '';
+  let vni = '';
+  // Accepte true ou toute valeur truthy (robustesse si le JSONB renvoie 1 ou "true")
+  if (resp?.o2) {
+    const parts: string[] = ['O2'];
+    if (resp.o2Debit) parts.push(`${resp.o2Debit} L/min`);
+    if (resp.o2Jour && resp.o2Nuit) parts.push('/24h');
+    else if (resp.o2Jour) parts.push('(Jour)');
+    else if (resp.o2Nuit) parts.push('(Nuit)');
+    o2 = parts.join(' ');
+  }
+  if (resp?.vni) {
+    const parts: string[] = ['VNI'];
+    if (resp.vniDebit) parts.push(`${resp.vniDebit} L/min`);
+    vni = parts.join(' ');
+  }
+  return { o2, vni };
+}
+
+/** Échappe les caractères HTML spéciaux dans du texte brut destiné à être inséré dans du HTML. */
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 // ── Network background (style page d'accueil) ────────────────────────────────
 
@@ -419,6 +460,17 @@ function NuitRow({ resident, note, onChangeNote, locked, girData, contentionItem
       </td>
       {/* Consigne de nuit (éditable) */}
       <td style={{ border: '1px solid #475569', padding: '2px 4px' }} className="text-[9px]">
+        {/* O2 / VNI depuis DSI — toujours visible, non éditable */}
+        {(() => {
+          const { o2, vni } = buildRespiText(resident.dsi?.respiration);
+          if (!o2 && !vni) return null;
+          return (
+            <div className="mb-1 space-y-0.5 border-b border-blue-200 pb-0.5">
+              {o2  && <div className="font-bold text-blue-700 whitespace-nowrap">💨 {o2}</div>}
+              {vni && <div className="font-bold text-purple-700 whitespace-nowrap">🫁 {vni}</div>}
+            </div>
+          );
+        })()}
         {isEditing ? (
           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
             <textarea
@@ -795,6 +847,14 @@ export default function ConsignesNuitPage() {
       if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
       return (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
     });
+    // Debug : log les résidents avec O2/VNI pour diagnostiquer les problèmes d'affichage
+    const withO2 = sorted.filter(r => !!(r.dsi as { respiration?: RespirationDSI } | null)?.respiration?.o2 || !!(r.dsi as { respiration?: RespirationDSI } | null)?.respiration?.vni);
+    if (withO2.length > 0) {
+      console.log('[consignes-nuit print] Résidents avec O2/VNI :', withO2.map(r => ({ nom: r.last_name, dsi: r.dsi })));
+    } else {
+      console.log('[consignes-nuit print] Aucun résident avec O2/VNI dans ce groupe. Total résidents :', sorted.length);
+    }
+
     const rows = sorted.map(r => {
       const note = notes[r.id] ?? '';
       const age = r.date_naissance ? calcAge(r.date_naissance) : null;
@@ -843,20 +903,44 @@ export default function ConsignesNuitPage() {
         r.bande_de_contention       ? emojiImg(EMOJI_ROLL, 'Bande de contention')       : '',
       ].filter(Boolean).join(' ');
 
-      const annotationsText = (r.annotations ?? '').split('\n').filter((l: string) => !l.startsWith('---SUPPL:')).join('<br/>');
+      // Annotations : chaque ligne échappée puis rejointe avec <br/>
+      const annotationsText = (r.annotations ?? '')
+        .split('\n')
+        .filter((l: string) => !l.startsWith('---SUPPL:'))
+        .map((l: string) => escHtml(l))
+        .join('<br/>');
+
+      // O2 / VNI depuis DSI → affiché dans la colonne Consignes de nuit
+      const { o2: o2Text, vni: vniText } = buildRespiText((r.dsi as { respiration?: RespirationDSI } | null)?.respiration);
+      const noteEscaped = escHtml(note);
+
+      // Construction de la cellule Consignes :
+      // On utilise une <div> flex-column pour éviter le mélange block/texte dans un TD
+      // avec white-space:pre-wrap (qui se comporte différemment dans Chrome print).
+      let consigneCellContent = '';
+      if (o2Text || vniText) {
+        const o2Part  = o2Text  ? `<span style='color:#1d4ed8;font-weight:bold'>💨 ${escHtml(o2Text)}</span>`  : '';
+        const vniPart = vniText ? `<span style='color:#7c3aed;font-weight:bold'>🫁 ${escHtml(vniText)}</span>` : '';
+        const respiBlock = [o2Part, vniPart].filter(Boolean).join('<br/>');
+        consigneCellContent =
+          `<div style='border-bottom:1px solid #bfdbfe;padding-bottom:2px;margin-bottom:3px;font-size:9px;line-height:1.4'>${respiBlock}</div>` +
+          `<div style='font-size:11px;white-space:pre-wrap;word-break:break-word;line-height:1.3'>${noteEscaped}</div>`;
+      } else {
+        consigneCellContent = `<div style='font-size:11px;white-space:pre-wrap;word-break:break-word;line-height:1.3'>${noteEscaped}</div>`;
+      }
 
       return `<tr>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;font-weight:500;color:#334155">
           <div style='display:flex;align-items:center;justify-content:space-between;gap:2px'>
-            <span>${r.room ?? ''}</span>${girSoinHtml}
+            <span>${escHtml(r.room ?? '')}</span>${girSoinHtml}
           </div>${iconsHtml}
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:10px">
-          <strong>${r.last_name}</strong><br/>
-          <span style='color:#64748b'>${r.first_name ?? ''}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
+          <strong>${escHtml(r.last_name)}</strong><br/>
+          <span style='color:#64748b'>${escHtml(r.first_name ?? '')}${age !== null ? ` <span style='font-size:8px;color:#94a3b8'>(${age})</span>` : ''}</span>
         </td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:9px;width:90px;max-width:90px;word-break:break-word">${annotationsText}</td>
-        <td style="border:1px solid #475569;padding:2px 4px;font-size:11px;white-space:pre-wrap;word-break:break-word">${note}</td>
+        <td style="border:1px solid #475569;padding:2px 4px">${consigneCellContent}</td>
         <td style="border:1px solid #475569;padding:2px 4px;font-size:8px;text-align:center"><div style="display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:center">${contentionBadges}${contentionEmojis ? ' ' + contentionEmojis : ''}</div></td>
       </tr>`;
     }).join('');
@@ -1055,19 +1139,30 @@ export default function ConsignesNuitPage() {
 
       const pageContentH = 1083;
 
+      // ── Fetch résidents frais (select('*') avec dsi) pour contourner le cache
+      // React Query partagé qui peut être pollué par d'autres pages (morphiniques,
+      // fiches-menu, bas-de-contention) qui utilisent un select partiel sans dsi.
+      const sbPrint = createClient();
+      const { data: freshData } = await sbPrint
+        .from('residents')
+        .select('*')
+        .eq('archived', false)
+        .order('last_name');
+      const printResidents = (freshData ?? residents) as Resident[];
+
       // ── RDC ──────────────────────────────────────────────────
       const rdcNotes = notesByFloor['RDC'] ?? {};
       const rdcInfos = infosByFloor['RDC'] ?? '';
-      const rdcMapad = residents.filter(r => r.floor === 'RDC' && r.section === 'Mapad');
-      const rdcLS    = residents.filter(r => r.floor === 'RDC' && r.section === 'Long Séjour');
+      const rdcMapad = printResidents.filter(r => r.floor === 'RDC' && r.section === 'Mapad');
+      const rdcLS    = printResidents.filter(r => r.floor === 'RDC' && r.section === 'Long Séjour');
       const rdcMapadZoom = (() => { const h = measureNaturalHeight('Mapad', rdcMapad, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
       const rdcLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', rdcLS, rdcNotes); return h > pageContentH ? pageContentH / h : 1; })();
 
       // ── 1ER ──────────────────────────────────────────────────
       const erNotes = notesByFloor['1ER'] ?? {};
       const erInfos = infosByFloor['1ER'] ?? '';
-      const erMapad = residents.filter(r => r.floor === '1ER' && r.section === 'Mapad');
-      const erLS    = residents.filter(r => r.floor === '1ER' && r.section === 'Long Séjour');
+      const erMapad = printResidents.filter(r => r.floor === '1ER' && r.section === 'Mapad');
+      const erLS    = printResidents.filter(r => r.floor === '1ER' && r.section === 'Long Séjour');
       const erMapadZoom = (() => { const h = measureNaturalHeight('Mapad', erMapad, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
       const erLSZoom    = (() => { const h = measureNaturalHeight('Long Séjour', erLS, erNotes); return h > pageContentH ? pageContentH / h : 1; })();
 

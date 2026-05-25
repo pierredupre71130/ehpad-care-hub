@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X, Printer, Eye, History, RotateCcw } from 'lucide-react';
+import { Loader2, X, Printer, Eye, History, RotateCcw, Pencil, Trash2, Plus, Users } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
 import { useEffectiveRole } from '@/lib/use-effective-role';
@@ -83,7 +83,57 @@ interface NiveauSoinRecord {
   pompes_funebres: string;
 }
 
-type ModalType = 'gir' | 'niveau' | 'appel' | null;
+interface TuteurEntry {
+  id: string;
+  nom: string;
+  tel: string;
+}
+
+const DEFAULT_TUTEURS: TuteurEntry[] = [
+  { id: 'default-1', nom: 'Hastings Antoine', tel: '0385882011' },
+  { id: 'default-2', nom: 'Mme Organo',       tel: '0385883265' },
+  { id: 'default-3', nom: 'Mme Ribeiro',      tel: '0385690404' },
+  { id: 'default-4', nom: 'Mme Rodrigues',    tel: '0385883265' },
+];
+
+type MesureType = 'tutelle' | 'curatelle' | 'sauvegarde' | 'habilitation' | '';
+
+const MESURE_LABELS: Record<string, string> = {
+  tutelle:      'Tutelle',
+  curatelle:    'Curatelle',
+  sauvegarde:   'Sauvegarde de justice',
+  habilitation: 'Habilitation familiale',
+};
+
+const LABEL_TO_KEY: Record<string, MesureType> = {
+  'tutelle':                 'tutelle',
+  'curatelle':               'curatelle',
+  'sauvegarde de justice':   'sauvegarde',
+  'habilitation familiale':  'habilitation',
+};
+
+function parseTutelle(tutelle: string): { type: MesureType; nom: string; tel: string } {
+  if (!tutelle) return { type: '', nom: '', tel: '' };
+  const m = tutelle.match(/^(Tutelle|Curatelle|Sauvegarde de justice|Habilitation familiale)\s*[—\-–]\s*(.*?)(?:\s*[—\-–]\s*(.*))?$/i);
+  if (m) {
+    return {
+      type: LABEL_TO_KEY[m[1].toLowerCase()] ?? '',
+      nom: m[2]?.trim() ?? '',
+      tel: m[3]?.trim() ?? '',
+    };
+  }
+  return { type: '', nom: tutelle, tel: '' };
+}
+
+function formatTutelle(type: string, nom: string, tel: string): string {
+  const parts: string[] = [];
+  if (type) parts.push(MESURE_LABELS[type] ?? type);
+  if (nom) parts.push(nom);
+  if (tel) parts.push(tel);
+  return parts.join(' — ');
+}
+
+type ModalType = 'gir' | 'niveau' | 'appel' | 'tuteurs' | null;
 
 interface PendingChange {
   resident: Resident;
@@ -223,6 +273,33 @@ async function upsertNiveau(
 async function syncAppelNuit(residentId: string, value: boolean | null) {
   const sb = createClient();
   await sb.from('residents').update({ appel_nuit: value }).eq('id', residentId);
+}
+
+// Sync tutelle (niveau_soin) → residents.dsi.tutelle_curatelle
+async function syncTutelleToResident(residentId: string, combined: string): Promise<void> {
+  const sb = createClient();
+  const p = parseTutelle(combined);
+  const tc = (p.type || p.nom || p.tel)
+    ? { type: p.type || undefined, nom: p.nom || undefined, tel: p.tel || undefined }
+    : null;
+  const { data } = await sb.from('residents').select('dsi').eq('id', residentId).maybeSingle();
+  const currentDsi = (data?.dsi as Record<string, unknown> | null) ?? {};
+  await sb.from('residents').update({ dsi: { ...currentDsi, tutelle_curatelle: tc } }).eq('id', residentId);
+}
+
+async function fetchTuteurs(): Promise<TuteurEntry[]> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'tuteurs_curators').maybeSingle();
+  if (data?.value && Array.isArray(data.value)) return data.value as TuteurEntry[];
+  return DEFAULT_TUTEURS;
+}
+
+async function saveTuteurs(list: TuteurEntry[]): Promise<void> {
+  const sb = createClient();
+  await sb.from('settings').upsert(
+    { key: 'tuteurs_curators', value: list, updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -447,6 +524,251 @@ function HistoryModal({
 }
 
 // ─────────────────────────────────────────────────────────────
+// COMPOSANT : CELLULE TUTELLE
+// ─────────────────────────────────────────────────────────────
+
+function TutelleCell({
+  tutelle, tuteurs, canEdit, onSave,
+}: {
+  tutelle: string;
+  tuteurs: TuteurEntry[];
+  canEdit: boolean;
+  onSave: (combined: string) => void;
+}) {
+  const parsed = parseTutelle(tutelle);
+  const [type, setType] = useState<MesureType>(parsed.type);
+  const [nom, setNom] = useState(parsed.nom);
+  const [tel, setTel] = useState(parsed.tel);
+
+  // Sync when external value changes (after save)
+  useEffect(() => {
+    const p = parseTutelle(tutelle);
+    setType(p.type);
+    setNom(p.nom);
+    setTel(p.tel);
+  }, [tutelle]);
+
+  const commit = (t: string, n: string, te: string) => {
+    onSave(formatTutelle(t, n, te));
+  };
+
+  const MESURES: { key: MesureType; label: string }[] = [
+    { key: 'tutelle',      label: 'Tutelle' },
+    { key: 'curatelle',    label: 'Curatelle' },
+    { key: 'sauvegarde',   label: 'Sauv. justice' },
+    { key: 'habilitation', label: 'Habilit. fam.' },
+  ];
+
+  return (
+    <div className="space-y-1.5 min-w-[170px]">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+        {MESURES.map(({ key, label }) => (
+          <label key={key} className={cn('flex items-center gap-1 text-xs', canEdit ? 'cursor-pointer' : 'cursor-default opacity-70')}>
+            <input
+              type="checkbox"
+              checked={type === key}
+              disabled={!canEdit}
+              onChange={e => {
+                const t: MesureType = e.target.checked ? key : '';
+                setType(t);
+                commit(t, nom, tel);
+              }}
+              className="accent-purple-600"
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      <input
+        value={nom}
+        placeholder="Nom…"
+        readOnly={!canEdit}
+        onChange={e => setNom(e.target.value)}
+        onBlur={e => commit(type, e.target.value, tel)}
+        className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
+      />
+      <input
+        value={tel}
+        placeholder="Tél…"
+        readOnly={!canEdit}
+        onChange={e => setTel(e.target.value)}
+        onBlur={e => commit(type, nom, e.target.value)}
+        className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
+      />
+      {canEdit && tuteurs.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {tuteurs.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { setNom(t.nom); setTel(t.tel); commit(type, t.nom, t.tel); }}
+              className={cn(
+                'px-1.5 py-0.5 rounded text-[10px] border transition-colors',
+                nom === t.nom && tel === t.tel
+                  ? 'bg-purple-100 border-purple-400 text-purple-800'
+                  : 'bg-white border-slate-200 text-slate-500 hover:border-purple-300 hover:text-purple-600'
+              )}
+            >
+              {t.nom}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPOSANT : GESTION TUTEURS/CURATEURS
+// ─────────────────────────────────────────────────────────────
+
+function TuteursManagerModal({
+  tuteurs,
+  onSave,
+  onClose,
+}: {
+  tuteurs: TuteurEntry[];
+  onSave: (list: TuteurEntry[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [list, setList] = useState<TuteurEntry[]>(tuteurs);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ nom: string; tel: string }>({ nom: '', tel: '' });
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (t: TuteurEntry) => {
+    setEditingId(t.id);
+    setDraft({ nom: t.nom, tel: t.tel });
+  };
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    setList(l => l.map(t => t.id === editingId ? { ...t, ...draft } : t));
+    setEditingId(null);
+  };
+
+  const addNew = () => {
+    const newEntry: TuteurEntry = { id: `t-${Date.now()}`, nom: '', tel: '' };
+    setList(l => [...l, newEntry]);
+    setEditingId(newEntry.id);
+    setDraft({ nom: '', tel: '' });
+  };
+
+  const remove = (id: string) => {
+    setList(l => l.filter(t => t.id !== id));
+    if (editingId === id) setEditingId(null);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(list.filter(t => t.nom.trim()));
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[80vh]"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h2 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <Users className="h-4 w-4 text-purple-600" />
+              Tuteurs / Curateurs
+            </h2>
+            <p className="text-xs text-slate-500">Contacts pré-enregistrés (partagés avec Gestion Résident)</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-2">
+          {list.map(t => (
+            <div key={t.id} className="border border-slate-200 rounded-xl p-3">
+              {editingId === t.id ? (
+                <div className="space-y-2">
+                  <input
+                    autoFocus
+                    value={draft.nom}
+                    onChange={e => setDraft(d => ({ ...d, nom: e.target.value }))}
+                    placeholder="Nom du tuteur…"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-400"
+                  />
+                  <input
+                    value={draft.tel}
+                    onChange={e => setDraft(d => ({ ...d, tel: e.target.value }))}
+                    placeholder="Téléphone…"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveEdit}
+                      className="flex-1 bg-purple-700 text-white rounded-lg py-1.5 text-sm font-semibold hover:bg-purple-800 transition-colors"
+                    >
+                      Valider
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-sm text-slate-800">{t.nom || <span className="text-slate-400 italic">sans nom</span>}</div>
+                    {t.tel && <div className="text-xs text-slate-500">{t.tel}</div>}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => startEdit(t)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => remove(t.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {list.length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-4 italic">Aucun tuteur enregistré.</p>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex gap-2">
+          <button
+            onClick={addNew}
+            className="flex-1 flex items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-xl py-2 text-sm text-slate-600 hover:border-purple-400 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+          >
+            <Plus className="h-4 w-4" /> Ajouter
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-purple-700 text-white rounded-xl py-2 text-sm font-semibold hover:bg-purple-800 disabled:opacity-60 transition-colors"
+          >
+            {saving ? 'Enregistrement…' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // PAGE PRINCIPALE
 // ─────────────────────────────────────────────────────────────
 
@@ -478,6 +800,12 @@ export default function GIRNiveauSoinPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [localUpdates, setLocalUpdates] = useState<Record<string, Partial<NiveauSoinRecord>>>({});
   const [historyResident, setHistoryResident] = useState<Resident | null>(null);
+
+  // ── Tuteurs/Curateurs pré-enregistrés ──
+  const { data: tuteurs = DEFAULT_TUTEURS, refetch: refetchTuteurs } = useQuery({
+    queryKey: ['settings', 'tuteurs_curators'],
+    queryFn: fetchTuteurs,
+  });
 
   // ── Data ──
   const { data: residents = [], isLoading: loadingResidents } = useQuery({
@@ -550,6 +878,12 @@ export default function GIRNiveauSoinPage() {
       setLocalUpdates(prev => ({ ...prev, [resident.id]: { ...(prev[resident.id] ?? {}), id: updated.id } }));
       if (field === 'appel_nuit') {
         await syncAppelNuit(resident.id, value as boolean | null);
+        queryClient.invalidateQueries({ queryKey: ['residents'] });
+      }
+      if (field === 'tutelle') {
+        syncTutelleToResident(resident.id, value as string).catch(e =>
+          console.error('[sync tutelle → residents.dsi]', e)
+        );
         queryClient.invalidateQueries({ queryKey: ['residents'] });
       }
       queryClient.invalidateQueries({ queryKey: ['niveau_soin'] });
@@ -880,6 +1214,17 @@ export default function GIRNiveauSoinPage() {
         </SummaryModal>
       )}
 
+      {modal === 'tuteurs' && (
+        <TuteursManagerModal
+          tuteurs={tuteurs}
+          onSave={async (list) => {
+            await saveTuteurs(list);
+            await refetchTuteurs();
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+
       {/* ══ LECTURE SEULE ═══════════════════════════════════════ */}
       {readOnly && (
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mx-4 mb-2 mt-4 text-sm text-blue-700 font-medium print:hidden">
@@ -919,6 +1264,13 @@ export default function GIRNiveauSoinPage() {
         >
           <span className="text-3xl font-bold text-amber-600">{sansAppel.length}</span>
           <span className="text-xs text-amber-500 font-semibold mt-1">Sans appel nuit défini</span>
+        </button>
+        <button
+          onClick={() => setModal('tuteurs')}
+          className="flex items-center gap-2 bg-purple-50 border-2 border-purple-300 hover:bg-purple-100 rounded-xl px-5 py-3 transition-colors"
+        >
+          <Users className="h-5 w-5 text-purple-600" />
+          <span className="text-sm font-semibold text-purple-700">Gérer tuteurs / curateurs</span>
         </button>
         <div className="border border-slate-300 rounded-xl px-4 py-3 bg-white text-xs text-slate-700 leading-5 max-w-sm">
           <p className="font-bold text-slate-800 mb-1">Légende — GIR</p>
@@ -1052,17 +1404,11 @@ export default function GIRNiveauSoinPage() {
 
                   {/* Tutelle */}
                   <td className="border border-slate-300 px-2 py-1.5 text-sm">
-                    <textarea
-                      value={rec.tutelle ?? ''}
-                      onChange={e => canEdit('tutelle') && setLocalUpdates(prev => ({
-                        ...prev,
-                        [r.id]: { ...(prev[r.id] ?? {}), tutelle: e.target.value },
-                      }))}
-                      onBlur={e => canEdit('tutelle') && doUpdate(r, 'tutelle', e.target.value)}
-                      placeholder="Nom du tuteur..."
-                      rows={2}
-                      readOnly={!canEdit('tutelle')}
-                      className="w-full border border-slate-200 rounded px-2 py-1 text-xs resize-none focus:outline-none focus:border-purple-400 read-only:bg-slate-50 read-only:cursor-default"
+                    <TutelleCell
+                      tutelle={rec.tutelle ?? ''}
+                      tuteurs={tuteurs}
+                      canEdit={canEdit('tutelle')}
+                      onSave={combined => doUpdate(r, 'tutelle', combined)}
                     />
                   </td>
 

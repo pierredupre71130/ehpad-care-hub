@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Printer, Loader2, BriefcaseMedical, Eye, Lock, Unlock, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ type Floor = 'RDC' | '1ER';
 interface PecDetails {
   aideAlim?: string[];
   hydratation?: string[];
+  fausseRoute?: string[];
   dentier?: string[];
   urinaire?: string[];
   fecale?: string[];
@@ -463,6 +464,74 @@ function buildAutoApresMidi(details: PecDetails | null | undefined, resident?: R
   return parts.join(' - ');
 }
 
+// ── Constantes PEC Nuit (partagées pour calcul auto-protection) ───────────────
+
+/** Mêmes choix que dans pec-nuit/page.tsx */
+const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 'Pants M', 'Perso.', 'Serviette H'];
+
+const DEFAULT_PEC_NUIT_COLS: { key: string; label: string; type: 'number' | 'check' }[] = [
+  { key: 'xl',       label: 'XL',             type: 'number' },
+  { key: 'l',        label: 'L',              type: 'number' },
+  { key: 'm',        label: 'M',              type: 'number' },
+  { key: 'molif',    label: 'Molif',          type: 'number' },
+  { key: 'pants_xl', label: 'Pants XL',       type: 'number' },
+  { key: 'pants_l',  label: 'Pants L',        type: 'number' },
+  { key: 'pants_m',  label: 'Pants M',        type: 'number' },
+  { key: 'perso',    label: 'Perso.',         type: 'check'  },
+  { key: 'abso',     label: 'Abso',           type: 'number' },
+  { key: 'chemise',  label: 'Chemise fendue', type: 'number' },
+];
+
+/**
+ * Calcule l'auto-protection d'un résident d'après ses valeurs de comptage.
+ * Si exactement UNE colonne de type protection a une valeur > 0, renvoie son libellé.
+ */
+function computeAutoProtection(
+  rv: Record<string, number | boolean>,
+  columns: { key: string; label: string; type: 'number' | 'check' }[],
+): string {
+  const active = columns.filter(col => {
+    if (!PROTECTION_CHOICES.includes(col.label)) return false;
+    const v = rv[col.key];
+    return col.type === 'check' ? v === true : typeof v === 'number' && v > 0;
+  });
+  return active.length === 1 ? active[0].label : '';
+}
+
+/**
+ * Charge les valeurs PEC Nuit (comptages par résident) depuis la table settings.
+ * Clés : pec_nuit_values_{floor}_{section}
+ */
+async function fetchPecNuitValues(): Promise<Record<string, Record<string, Record<string, Record<string, number | boolean>>>>> {
+  const sb = createClient();
+  const keys = [
+    'pec_nuit_values_RDC_mapad', 'pec_nuit_values_RDC_long',
+    'pec_nuit_values_1ER_mapad', 'pec_nuit_values_1ER_long',
+  ];
+  const { data } = await sb.from('settings').select('key,value').in('key', keys);
+  const out: Record<string, Record<string, Record<string, Record<string, number | boolean>>>> = {
+    RDC: { mapad: {}, long: {} },
+    '1ER': { mapad: {}, long: {} },
+  };
+  (data ?? []).forEach(row => {
+    const m = (row.key as string).match(/^pec_nuit_values_([^_]+)_(.+)$/);
+    if (m) {
+      const [, f, s] = m;
+      if (out[f]?.[s] !== undefined) {
+        out[f][s] = (row.value as Record<string, Record<string, number | boolean>>) ?? {};
+      }
+    }
+  });
+  return out;
+}
+
+async function fetchPecNuitColumns(): Promise<{ key: string; label: string; type: 'number' | 'check' }[]> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'pec_nuit_columns').maybeSingle();
+  const cols = data?.value as { key: string; label: string; type: 'number' | 'check' }[] | null;
+  return Array.isArray(cols) && cols.length ? cols : DEFAULT_PEC_NUIT_COLS;
+}
+
 async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
@@ -487,6 +556,11 @@ async function fetchResidents(): Promise<Resident[]> {
     );
   }
   return residents;
+}
+
+/** Normalise un numéro de chambre pour la comparaison : supprime espaces, minuscule */
+function normalizeRoom(s: string): string {
+  return s.replace(/\s+/g, '').toLowerCase();
 }
 
 // ── Page principale ────────────────────────────────────────────────────────────
@@ -570,12 +644,87 @@ export default function PrisesEnChargePage() {
   // Protections (Jour / Nuit) gérées depuis la page PEC Nuit, clé settings partagée.
   const { data: pecNuitProtections = {} } = useQuery<Record<string, { jour?: string; nuit?: string }>>({
     queryKey: ['pec_nuit_protections'],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const sb = createClient();
       const { data } = await sb.from('settings').select('value').eq('key', 'pec_nuit_protections').maybeSingle();
-      return (data?.value as Record<string, { jour?: string; nuit?: string }>) ?? {};
+      const result = (data?.value as Record<string, { jour?: string; nuit?: string }>) ?? {};
+      console.log('[PriseEnCharge] pec_nuit_protections chargé depuis Supabase :', JSON.stringify(result).slice(0, 300));
+      return result;
     },
   });
+
+  // Comptages PEC Nuit (XL/L/M/…) — pour calculer l'auto-protection sans dépendre
+  // du fait que l'utilisateur ait explicitement sélectionné dans le menu ProtecSelect.
+  const { data: pecNuitValues } = useQuery({
+    queryKey: ['pec_nuit_values'],
+    queryFn: fetchPecNuitValues,
+    staleTime: 60_000,
+  });
+  const { data: pecNuitColumns = DEFAULT_PEC_NUIT_COLS } = useQuery({
+    queryKey: ['pec_nuit_columns'],
+    queryFn: fetchPecNuitColumns,
+    staleTime: 60_000,
+  });
+
+  /**
+   * Table de recherche protection normalisée : chambre normalisée → {jour, nuit}.
+   * Gère tous les formats historiques de clé :
+   *  - UUID (ancien format : clé = resident.id) → traduit via la liste residents
+   *  - chambre normalisée complète (ex: '32f')
+   *  - préfixe numérique (ex: '32')
+   * Ainsi aucune re-saisie n'est nécessaire quelle que soit la version du code qui a écrit les données.
+   */
+  const protByNormRoom = useMemo(() => {
+    const isUUID = (k: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(k);
+    const map: Record<string, { jour?: string; nuit?: string }> = {};
+    Object.entries(pecNuitProtections).forEach(([key, val]) => {
+      if (isUUID(key)) {
+        // Ancien format : clé = resident ID → retrouver la chambre
+        const res = residents.find(r => r.id === key);
+        if (res?.room) {
+          const norm = normalizeRoom(res.room);
+          map[norm] = val;
+          const pref = norm.match(/^(\d+)/)?.[1];
+          if (pref && !map[pref]) map[pref] = val;
+        }
+      } else {
+        // Format chambre (normalisée ou préfixe) : indexé directement
+        map[key] = val;
+      }
+    });
+    return map;
+  }, [pecNuitProtections, residents]);
+
+  /**
+   * Auto-protection calculée depuis les comptages PEC Nuit (colonnes XL/L/M/…).
+   * Permet d'afficher la protection même si l'utilisateur n'a pas explicitement
+   * sélectionné une valeur dans le menu déroulant ProtecSelect de PEC Nuit.
+   * Le calcul est identique à celui de pec-nuit : si UNE SEULE colonne protection
+   * a un comptage > 0 (ou est cochée), c'est l'auto-protection du résident.
+   */
+  const autoProtByRoom = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (!pecNuitValues) return map;
+    residents.forEach(r => {
+      if (!r.room || r.archived) return;
+      const floor = (r.floor ?? '').toUpperCase();
+      // On cherche dans les deux sections (mapad et long séjour)
+      const rv =
+        pecNuitValues?.[floor]?.mapad?.[r.id] ??
+        pecNuitValues?.[floor]?.long?.[r.id] ??
+        {};
+      const auto = computeAutoProtection(rv as Record<string, number | boolean>, pecNuitColumns);
+      if (!auto) return;
+      const key = normalizeRoom(r.room);
+      if (!map[key]) map[key] = auto;
+      const pref = key.match(/^(\d+)/)?.[1];
+      if (pref && !map[pref]) map[pref] = auto;
+    });
+    console.log('[PriseEnCharge] autoProtByRoom :', JSON.stringify(map).slice(0, 200));
+    return map;
+  }, [pecNuitValues, pecNuitColumns, residents]);
 
   // ── Auto-seed si la table est vide pour ce floor ──────────────────────────
   useEffect(() => {
@@ -607,8 +756,22 @@ export default function PrisesEnChargePage() {
       (a.room ?? '').localeCompare(b.room ?? '', undefined, { numeric: true, sensitivity: 'base' })
     );
 
-  const residentByRoom = (room: string) =>
-    floorResidents.find(r => (r.room ?? '') === room);
+  /** Extrait le préfixe numérique d'une chambre (ex : '30 SDB' → '30', '29 P' → '29') */
+  const roomNumPrefix = (s: string) => normalizeRoom(s).match(/^(\d+)/)?.[1] ?? normalizeRoom(s);
+
+  const residentByRoom = (room: string) => {
+    const norm = normalizeRoom(room);
+    // 1. Correspondance exacte (après normalisation)
+    const exact = floorResidents.find(r => normalizeRoom(r.room ?? '') === norm);
+    if (exact) return exact;
+    // 2. Correspondance sur le préfixe numérique uniquement
+    // (ex : row.chambre='30 SDB' → préfixe '30' ; resident.room='30' → préfixe '30')
+    const prefix = roomNumPrefix(room);
+    if (!prefix) return undefined;
+    const byPrefix = floorResidents.filter(r => normalizeRoom(r.room ?? '') === prefix);
+    // N'accepte que si un seul résident a ce numéro exact (évite les faux positifs)
+    return byPrefix.length === 1 ? byPrefix[0] : undefined;
+  };
 
   const nomFromRoom = (room: string): string => {
     const r = residentByRoom(room);
@@ -742,7 +905,7 @@ export default function PrisesEnChargePage() {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
 
     const trRows = tableRows.map(row => {
-      const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+      const matched = residentByRoom(row.chambre ?? '');
       const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
       const first = matched?.first_name || '';
       const age = ageFromBirth(matched?.date_naissance);
@@ -754,13 +917,18 @@ export default function PrisesEnChargePage() {
         <div class="last">${esc(last) || '—'}${age !== null ? ` <span class="age">(${age} ans)</span>` : ''}</div>
         ${first ? `<div class="first">${esc(first)}</div>` : ''}
       </td>`;
-      const prot = matched ? pecNuitProtections[matched.id] : undefined;
+      const normCh = normalizeRoom(row.chambre ?? '');
+      const prefCh = normCh.match(/^(\d+)/)?.[1] ?? '';
+      const prot = protByNormRoom[normCh] ?? (prefCh ? protByNormRoom[prefCh] : undefined);
       const jourProt = prot?.jour ?? '';
       const nuitProt = prot?.nuit ?? '';
+      const autoP = (!jourProt && !nuitProt)
+        ? ((autoProtByRoom[normCh] ?? (prefCh ? autoProtByRoom[prefCh] : '')) ?? '')
+        : '';
       const protText = [
-        jourProt ? `J : ${jourProt}` : '',
-        nuitProt ? `N : ${nuitProt}` : '',
-      ].filter(Boolean).join(' / ');
+        (jourProt || autoP) ? `Jour : ${jourProt || autoP}` : '',
+        (nuitProt || autoP) ? `Nuit : ${nuitProt || autoP}` : '',
+      ].filter(Boolean).join(' / ') || row.protection || '';
       return `<tr>
         <td class="ch">${esc(row.chambre || '—')}</td>
         ${photoCell}
@@ -1129,7 +1297,7 @@ export default function PrisesEnChargePage() {
                             disabled={!canEditAdminCols}
                             className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:border-rose-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                           >
-                            {row.chambre && !floorResidents.find(r => r.room === row.chambre) && (
+                            {row.chambre && !residentByRoom(row.chambre ?? '') && (
                               <option value={row.chambre}>Ch. {row.chambre}</option>
                             )}
                             {floorResidents.map(r => (
@@ -1145,7 +1313,7 @@ export default function PrisesEnChargePage() {
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           <div className="flex items-center gap-2">
                             {(() => {
-                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              const matched = residentByRoom(row.chambre ?? '');
                               return matched?.photo_url ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={matched.photo_url} alt={row.nom || ''}
@@ -1153,7 +1321,7 @@ export default function PrisesEnChargePage() {
                               ) : null;
                             })()}
                             {(() => {
-                              const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                              const matched = residentByRoom(row.chambre ?? '');
                               const last = matched ? [matched.title, matched.last_name].filter(Boolean).join(' ') : (row.nom || '');
                               const first = matched?.first_name || '';
                               const age = ageFromBirth(matched?.date_naissance);
@@ -1189,6 +1357,9 @@ export default function PrisesEnChargePage() {
                                   <MiniCheck label="Aide" checked={chk('hydratation', 'aide')} onChange={() => tog('hydratation', 'aide')} disabled={ro} />
                                   <MiniCheck label="Pétillante" checked={chk('hydratation', 'petillante')} onChange={() => tog('hydratation', 'petillante')} disabled={ro} />
                                   <MiniCheck label="Gélifiée" checked={chk('hydratation', 'gelifiee')} onChange={() => tog('hydratation', 'gelifiee')} disabled={ro} />
+                                </DetailGroup>
+                                <DetailGroup title="Risques">
+                                  <MiniCheck label="Fausse route" checked={chk('fausseRoute', 'oui')} onChange={() => tog('fausseRoute', 'oui')} disabled={ro} />
                                 </DetailGroup>
                                 <DetailGroup title="Dentier">
                                   <MiniCheck label="Haut" checked={chk('dentier', 'haut')} onChange={() => tog('dentier', 'haut')} disabled={ro} />
@@ -1293,7 +1464,7 @@ export default function PrisesEnChargePage() {
                         {/* Matin */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const matched = residentByRoom(row.chambre ?? '');
                             const auto = buildAutoMatin(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1315,7 +1486,7 @@ export default function PrisesEnChargePage() {
                         {/* Après-midi / Soir */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
+                            const matched = residentByRoom(row.chambre ?? '');
                             const auto = buildAutoApresMidi(row.details, matched);
                             return (
                               <div className="space-y-1">
@@ -1337,27 +1508,73 @@ export default function PrisesEnChargePage() {
                         {/* Protection — lecture seule, modifiable depuis PEC Nuit */}
                         <td className="border border-slate-200 px-2 py-1.5 align-top">
                           {(() => {
-                            const matched = floorResidents.find(r => (r.room ?? '') === row.chambre);
-                            const prot = matched ? pecNuitProtections[matched.id] : undefined;
+                            // 1. Lookup par chambre normalisée complète ('29p'), puis préfixe numérique ('29')
+                            const normCh = normalizeRoom(row.chambre ?? '');
+                            const prefCh = normCh.match(/^(\d+)/)?.[1] ?? '';
+                            const lookup = (m: Record<string, unknown>) =>
+                              m[normCh] ?? (prefCh ? m[prefCh] : undefined);
+
+                            // 2. Protection explicitement saisie dans PEC Nuit (menu déroulant)
+                            const prot = lookup(protByNormRoom) as { jour?: string; nuit?: string } | undefined;
                             const j = prot?.jour ?? '';
                             const n = prot?.nuit ?? '';
+
+                            // 3. Si aucune protection explicite → auto-protection depuis les comptages PEC Nuit
+                            //    (cas où l'utilisateur a rempli XL=1 mais n'a pas touché au menu déroulant)
+                            const auto = (!j && !n)
+                              ? ((lookup(autoProtByRoom) as string | undefined) ?? '')
+                              : '';
+
+                            // 4. Affichage
+                            if (j || n) {
+                              // Protection explicite (jour et/ou nuit peuvent être différents)
+                              return (
+                                <div className="space-y-1 text-[11px] leading-snug">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-slate-500 shrink-0">Jour</span>
+                                    <span className={j ? 'text-slate-800 font-medium' : 'text-slate-300'}>
+                                      {j || '—'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-slate-500 shrink-0">Nuit</span>
+                                    <span className={n ? 'text-slate-800 font-medium' : 'text-slate-300'}>
+                                      {n || '—'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-300 italic pt-0.5">
+                                    Modifiable depuis PEC Nuit
+                                  </p>
+                                </div>
+                              );
+                            }
+                            if (auto) {
+                              // Auto-protection calculée depuis les comptages PEC Nuit (même valeur J et N)
+                              return (
+                                <div className="space-y-1 text-[11px] leading-snug">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-slate-500 shrink-0">Jour</span>
+                                    <span className="text-slate-800 font-medium">{auto}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-slate-500 shrink-0">Nuit</span>
+                                    <span className="text-slate-800 font-medium">{auto}</span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-300 italic pt-0.5">
+                                    Modifiable depuis PEC Nuit
+                                  </p>
+                                </div>
+                              );
+                            }
+                            // Dernier recours : texte du champ protection de la ligne
                             return (
-                              <div className="space-y-1 text-[11px] leading-snug">
-                                <div className="flex items-center gap-1">
-                                  <span className="font-semibold text-slate-500 w-3 shrink-0">J</span>
-                                  <span className={j ? 'text-slate-800 font-medium' : 'text-slate-300'}>
-                                    {j || '—'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="font-semibold text-slate-500 w-3 shrink-0">N</span>
-                                  <span className={n ? 'text-slate-800 font-medium' : 'text-slate-300'}>
-                                    {n || '—'}
-                                  </span>
-                                </div>
-                                <p className="text-[9px] text-slate-300 italic pt-0.5">
-                                  Modifiable depuis PEC Nuit
-                                </p>
+                              <div className="text-[11px] leading-snug text-slate-700">
+                                {row.protection || <span className="text-slate-300 italic">—</span>}
+                                {row.protection && (
+                                  <p className="text-[9px] text-slate-300 italic pt-0.5">
+                                    Modifiable depuis PEC Nuit
+                                  </p>
+                                )}
                               </div>
                             );
                           })()}

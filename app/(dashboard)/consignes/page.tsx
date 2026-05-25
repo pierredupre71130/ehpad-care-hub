@@ -92,6 +92,15 @@ function CaduceusIcon() {
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
+interface RespirationDSI {
+  o2?: boolean;
+  o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
 interface Resident {
   id: string;
   room: string;
@@ -112,6 +121,7 @@ interface Resident {
   chaussettes_de_contention: boolean;
   bas_de_contention: boolean;
   bande_de_contention: boolean;
+  dsi?: { respiration?: RespirationDSI } | null;
 }
 
 interface ContentionFiche {
@@ -256,6 +266,31 @@ async function updateConsignes(id: string, consignes: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// HELPER : texte O2 / VNI depuis DSI
+// ─────────────────────────────────────────────────────────────
+
+function buildRespiText(resp: RespirationDSI | undefined | null): { o2Text: string; vniText: string } {
+  if (!resp) return { o2Text: '', vniText: '' };
+  let o2Text = '';
+  if (resp.o2) {
+    const parts: string[] = ['O2'];
+    if (resp.o2Debit) parts.push(resp.o2Debit);
+    const when: string[] = [];
+    if (resp.o2Jour) when.push('jour');
+    if (resp.o2Nuit) when.push('nuit');
+    if (when.length) parts.push(when.join('+'));
+    o2Text = parts.join(' ');
+  }
+  let vniText = '';
+  if (resp.vni) {
+    const parts: string[] = ['VNI'];
+    if (resp.vniDebit) parts.push(resp.vniDebit);
+    vniText = parts.join(' ');
+  }
+  return { o2Text, vniText };
+}
+
+// ─────────────────────────────────────────────────────────────
 // COMPOSANT : LIGNE RÉSIDENT
 // ─────────────────────────────────────────────────────────────
 
@@ -285,6 +320,7 @@ function ResidentRow({
   const gir = niveauSoin?.gir;
   const niveau = niveauSoin?.niveau_soin;
   const age = calcAge(resident.date_naissance);
+  const { o2Text, vniText } = buildRespiText(resident.dsi?.respiration);
 
   const annotationLines = (resident.annotations ?? '')
     .split('\n')
@@ -376,28 +412,52 @@ function ResidentRow({
             rows={2}
           />
         ) : (
-          <span className="whitespace-pre-line text-black" style={{ fontSize: `${fontSize}px` }}>
-            {(resident.insuline_matin || resident.insuline_soir || resident.anticoagulants) && (
-              <span className="inline-flex flex-col gap-0.5 mr-1.5 align-top float-left">
-                {resident.insuline_matin && (
-                  <span title="Insuline matin" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700">
-                    <Syringe className="h-2.5 w-2.5" /><Sun className="h-2.5 w-2.5" />
+          <div className="text-black" style={{ fontSize: `${fontSize}px` }}>
+            {/* ── O2 / VNI depuis DSI (non modifiable ici) ── */}
+            {(o2Text || vniText) && (
+              <div style={{
+                borderBottom: '1px solid #bfdbfe',
+                paddingBottom: '2px',
+                marginBottom: '3px',
+                fontSize: '9px',
+                lineHeight: '1.4',
+              }}>
+                {o2Text && (
+                  <span style={{ color: '#1d4ed8', fontWeight: 'bold', display: 'block' }}>
+                    💨 {o2Text}
                   </span>
                 )}
-                {resident.insuline_soir && (
-                  <span title="Insuline soir" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700">
-                    <Syringe className="h-2.5 w-2.5" /><Moon className="h-2.5 w-2.5" />
+                {vniText && (
+                  <span style={{ color: '#7c3aed', fontWeight: 'bold', display: 'block' }}>
+                    🫁 {vniText}
                   </span>
                 )}
-                {resident.anticoagulants && (
-                  <span title="Anticoagulants" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700">
-                    <AlertTriangle className="h-2.5 w-2.5" />
-                  </span>
-                )}
-              </span>
+              </div>
             )}
-            {resident.consignes ?? ''}
-          </span>
+            {/* ── Icônes insuline / anticoagulants + texte consignes ── */}
+            <span className="whitespace-pre-line">
+              {(resident.insuline_matin || resident.insuline_soir || resident.anticoagulants) && (
+                <span className="inline-flex flex-col gap-0.5 mr-1.5 align-top float-left">
+                  {resident.insuline_matin && (
+                    <span title="Insuline matin" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700">
+                      <Syringe className="h-2.5 w-2.5" /><Sun className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                  {resident.insuline_soir && (
+                    <span title="Insuline soir" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700">
+                      <Syringe className="h-2.5 w-2.5" /><Moon className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                  {resident.anticoagulants && (
+                    <span title="Anticoagulants" className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-700">
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                </span>
+              )}
+              {resident.consignes ?? ''}
+            </span>
+          </div>
         )}
       </td>
 

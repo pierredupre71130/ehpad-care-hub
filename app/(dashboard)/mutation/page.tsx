@@ -21,6 +21,46 @@ import { cn } from '@/lib/utils';
 // TYPES
 // ─────────────────────────────────────────────────────────────
 
+interface PersonneAPrevenir {
+  nom?: string;
+  prenom?: string;
+  lien?: string;
+  adresse?: string;
+  tel?: string;
+  mobile?: string;
+}
+
+interface TutelleCuratelle {
+  type?: 'tutelle' | 'curatelle';
+  nom?: string;
+  tel?: string;
+}
+
+interface Respiration {
+  normale?: boolean;
+  dyspnee?: boolean;
+  o2?: boolean;
+  o2Debit?: string;
+  o2Jour?: boolean;
+  o2Nuit?: boolean;
+  vni?: boolean;
+  vniDebit?: string;
+}
+
+interface Comportement {
+  coherent?: boolean;
+  communique?: boolean;
+}
+
+interface DSI {
+  personne_prevenir?: PersonneAPrevenir;
+  autres_personnes?: Array<{ nom?: string; prenom?: string; lien?: string; adresse?: string; tel?: string }>;
+  motif_entree?: string;
+  tutelle_curatelle?: TutelleCuratelle;
+  respiration?: Respiration;
+  comportement?: Comportement;
+}
+
 interface Resident {
   id: string;
   room: string;
@@ -41,6 +81,8 @@ interface Resident {
   epargne_intestinale?: boolean;
   photo_url?: string | null;
   archived?: boolean;
+  dsi?: DSI | null;
+  situation_familiale?: '' | 'marie' | 'celibataire' | 'divorce' | 'veuf';
 }
 
 interface PoidsMesure { resident_id: string; date: string; poids_kg: number; }
@@ -73,6 +115,7 @@ interface FicheMenu { resident_id: string; repas: string; observation: string; }
 interface PecDetails {
   aideAlim?: string[];
   hydratation?: string[];
+  fausseRoute?: string[];
   dentier?: string[];
   urinaire?: string[];
   fecale?: string[];
@@ -89,7 +132,7 @@ interface PecDetails {
 }
 interface PecRow { chambre: string; protection: string; details?: PecDetails | null; }
 interface Contention { chambre: string; traitement: string; date_debut: string; date_fin: string; pas_de_fin: boolean; }
-interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; }
+interface MatCouss { resident_id: string | null; kind: string; type_name: string | null; notes: string | null; }
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -311,6 +354,7 @@ function ZoneSaisie({ value, onChange, placeholder, className, multiline = false
 export default function MutationPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [floorFilter, setFloorFilter] = useState<'ALL' | 'RDC' | '1ER'>('ALL');
 
   const [form, setForm] = useState({
     // En-tête
@@ -328,9 +372,9 @@ export default function MutationPage() {
     vit: { famille: false, seul: false, etablissement: true, autre: '' },
     suiviSocialOui: false,
     suiviSocialNom: '',
+    suiviSocialTel: '',
     tutelle: false,
     curatelle: false,
-    apa: false,
     // Devenir
     retourDomicileOui: false,
     retourDomicileNon: false,
@@ -395,8 +439,11 @@ export default function MutationPage() {
     o2Oui: false,
     o2Non: false,
     o2Debit: '',
-    vmiOui: false,
-    vmiNon: false,
+    o2Jour: false,
+    o2Nuit: false,
+    vniOui: false,
+    vniNon: false,
+    vniDebit: '',
     tracheotomie: false,
     coherentOui: false,
     coherentNon: false,
@@ -463,9 +510,12 @@ export default function MutationPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return residents;
-    return residents.filter(r => `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q));
-  }, [residents, search]);
+    return residents.filter(r => {
+      if (floorFilter !== 'ALL' && r.floor !== floorFilter) return false;
+      if (!q) return true;
+      return `${r.last_name} ${r.first_name} ${r.room}`.toLowerCase().includes(q);
+    });
+  }, [residents, search, floorFilter]);
 
   const selected = useMemo(() => residents.find(r => r.id === selectedId) ?? null, [residents, selectedId]);
 
@@ -483,26 +533,61 @@ export default function MutationPage() {
     if (selected.viande_mixee) flags.push('Viande mixée');
     if (selected.regime_diabetique) flags.push('Diabétique');
     if (selected.epargne_intestinale) flags.push('Épargne intestinale');
+
+    // Observations des fiches menu (midi + soir) — flags cochés + texte libre
+    const obsSet = new Set<string>();
+    const FLAG_MAP: [RegExp, string][] = [
+      [/\[POISSON\]/gi,         'Allergie poisson'],
+      [/\[SANS_POISSON\]/gi,    'Sans poisson'],
+      [/\[SANS_PORC\]/gi,       'Sans porc'],
+      [/\[VIN_SANS_ALCOOL\]/gi, 'Vin sans alcool'],
+      [/\[PAS_ALCOOL\]/gi,      "Pas d'alcool"],
+      [/\[SANS_ALCOOL\]/gi,     "Pas d'alcool"],
+      [/\[SANS_VIANDE\]/gi,     'Sans viande'],
+      [/\[SANS_SALADE\]/gi,     'Sans salade'],
+    ];
+    (ctx?.fichesMenu ?? []).forEach(fm => {
+      if (!fm.observation) return;
+      let text = fm.observation;
+      FLAG_MAP.forEach(([re, label]) => {
+        if (re.test(text)) {
+          obsSet.add(label);
+          text = text.replace(re, '');
+        }
+      });
+      const libre = text.replace(/\s{2,}/g, ' ').trim();
+      if (libre) obsSet.add(libre);
+    });
+    obsSet.forEach(v => flags.push(v));
+
     return flags.join(', ');
-  }, [selected]);
+  }, [selected, ctx?.fichesMenu]);
 
   const personnePrevenir = useMemo(() => {
-    if (!ctx?.niveau) return '';
+    const pp = selected?.dsi?.personne_prevenir;
+    if (!pp) return '';
     const parts: string[] = [];
-    if (ctx.niveau.appel_nuit_info) parts.push(ctx.niveau.appel_nuit_info);
-    return parts.join(' — ');
-  }, [ctx]);
+    if (pp.prenom || pp.nom) parts.push([pp.prenom, pp.nom].filter(Boolean).join(' '));
+    if (pp.lien) parts.push(`(${pp.lien})`);
+    return parts.join(' ');
+  }, [selected]);
 
-  const tutelleText = useMemo(() => ctx?.niveau?.tutelle || '', [ctx]);
+  const telPrevenir = useMemo(() => {
+    const pp = selected?.dsi?.personne_prevenir;
+    if (!pp) return '';
+    return pp.tel || pp.mobile || '';
+  }, [selected]);
+
 
   const matelasAirText = useMemo(() => {
     if (!ctx?.matCouss?.length) return '';
-    return ctx.matCouss.filter(m => m.kind === 'matelas' && m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
-  }, [ctx]);
-
-  const matelasAntiText = useMemo(() => {
-    if (!ctx?.matCouss?.length) return '';
-    return ctx.matCouss.filter(m => m.kind === 'matelas' && !m.type_name?.toLowerCase().includes('air')).map(m => m.type_name ?? '').join(', ');
+    // Inclut tous les matelas attribués au résident (l'utilisateur les a enregistrés dans
+    // le module Matelas/Coussins ; inutile de filtrer sur le nom).
+    // Format : "Type — Notes" quand des notes (couchage, etc.) sont renseignées.
+    return ctx.matCouss
+      .filter(m => m.kind === 'matelas')
+      .map(m => [m.type_name, m.notes].filter(Boolean).join(' — '))
+      .join(', ');
   }, [ctx]);
 
   const contentionText = useMemo(() => {
@@ -544,6 +629,14 @@ export default function MutationPage() {
     return lines.join(' · ');
   }, [ctx]);
 
+  const dentierLabel = useMemo(() => {
+    const dent = asArr(ctx?.pec?.details?.dentier);
+    if (dent.includes('haut') && dent.includes('bas')) return 'Haut/Bas';
+    if (dent.includes('haut')) return 'Haut';
+    if (dent.includes('bas')) return 'Bas';
+    return '';
+  }, [ctx?.pec?.details?.dentier]);
+
   const protectionText = useMemo(() => {
     const d = ctx?.pec?.details;
     const j = d?.protectionJour ?? '';
@@ -569,12 +662,46 @@ export default function MutationPage() {
     const dent = asArr(d?.dentier);
     const aideA = asArr(d?.aideAlim);
     const hyd = asArr(d?.hydratation);
+    const fausseRouteArr = asArr(d?.fausseRoute);
 
+    const sf = selected?.situation_familiale ?? '';
+    const tc = selected?.dsi?.tutelle_curatelle;
+    const resp = selected?.dsi?.respiration;
+    const comp = selected?.dsi?.comportement;
     setForm(s => ({
       ...s,
+      // Situation familiale
+      sitFamiliale: {
+        celibataire: sf === 'celibataire' || sf === 'divorce',
+        marie: sf === 'marie',
+        veuf: sf === 'veuf',
+      },
+      // Tutelle / Curatelle depuis DSI
+      tutelle: tc?.type === 'tutelle',
+      curatelle: tc?.type === 'curatelle',
+      suiviSocialOui: !!(tc?.type),
+      suiviSocialNom: tc?.nom ?? '',
+      suiviSocialTel: tc?.tel ?? '',
+      // Respiration depuis DSI
+      respirationNormale: !!(resp?.normale),
+      dyspnee: !!(resp?.dyspnee),
+      o2Oui: resp?.o2 === true,
+      o2Non: resp?.o2 === false,
+      o2Debit: resp?.o2Debit ?? '',
+      o2Jour: !!(resp?.o2Jour),
+      o2Nuit: !!(resp?.o2Nuit),
+      vniOui: resp?.vni === true,
+      vniNon: resp?.vni === false,
+      vniDebit: resp?.vniDebit ?? '',
+      // Comportement depuis DSI
+      coherentOui: comp?.coherent === true,
+      coherentNon: comp?.coherent === false,
+      communiqueOui: comp?.communique === true,
+      communiqueNon: comp?.communique === false,
       // Alimentation
       alimentNormale: !selected?.regime_mixe && !selected?.viande_mixee,
       alimentMixee: !!(selected?.regime_mixe || selected?.viande_mixee),
+      fausseRoute: fausseRouteArr.includes('oui'),
       eauGelifiee: hyd.includes('gelifiee'),
       aideAlim: {
         autonome: aideA.includes('autonome'),
@@ -614,15 +741,9 @@ export default function MutationPage() {
       matelasAirOui: matelasAirText.length > 0,
       matelasAirNon: matelasAirText.length === 0,
       matelasAirLequel: matelasAirText,
-      matelasAntiEscarreOui: matelasAntiText.length > 0,
-      matelasAntiEscarreNon: matelasAntiText.length === 0,
-      matelasAntiEscarreLequel: matelasAntiText,
-      // Tutelle
-      tutelle: !!(tutelleText && /tutelle/i.test(tutelleText)),
-      curatelle: !!(tutelleText && /curatelle/i.test(tutelleText)),
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.pec, selected, matelasAirText, matelasAntiText, tutelleText]);
+  }, [ctx?.pec, selected, matelasAirText]);
 
   const fem = isFemaleTitle(selected?.title);
 
@@ -654,6 +775,23 @@ export default function MutationPage() {
                 placeholder="Rechercher un résident (nom, prénom, chambre)…"
                 className="pl-9"
               />
+            </div>
+            {/* Filtre étage */}
+            <div className="flex gap-1 mb-3">
+              {(['ALL', 'RDC', '1ER'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFloorFilter(f)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+                    floorFilter === f
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-700'
+                  )}
+                >
+                  {f === 'ALL' ? 'Tous' : f === '1ER' ? '1er étage' : 'RDC'}
+                </button>
+              ))}
             </div>
             {loadingResidents ? (
               <p className="text-sm text-slate-500">Chargement…</p>
@@ -749,11 +887,13 @@ export default function MutationPage() {
                 <div className="grid grid-cols-2 gap-x-4">
                   <Ligne label="Personne à prévenir :">
                     {personnePrevenir
-                      ? <span>{personnePrevenir}</span>
+                      ? <span className="font-medium">{personnePrevenir}</span>
                       : <ZoneSaisie value={form.personneAPrevenirManuel} onChange={v => patch('personneAPrevenirManuel', v)} />}
                   </Ligne>
                   <Ligne label="N° tél :">
-                    <ZoneSaisie value={form.telPrevenir} onChange={v => patch('telPrevenir', v)} />
+                    {telPrevenir
+                      ? <span className="font-medium">{telPrevenir}</span>
+                      : <ZoneSaisie value={form.telPrevenir} onChange={v => patch('telPrevenir', v)} />}
                   </Ligne>
                 </div>
                 <div className="flex items-center gap-4">
@@ -793,12 +933,17 @@ export default function MutationPage() {
                   <Case checked={form.suiviSocialOui} onChange={v => patch('suiviSocialOui', v)} label="Oui" />
                   <Case checked={!form.suiviSocialOui} onChange={v => patch('suiviSocialOui', !v)} label="Non" />
                   <span className="font-semibold ml-2">Nom :</span>
-                  <ZoneSaisie value={form.suiviSocialNom || tutelleText} onChange={v => patch('suiviSocialNom', v)} className="flex-1" />
+                  <ZoneSaisie value={form.suiviSocialNom} onChange={v => patch('suiviSocialNom', v)} className="flex-1" />
                 </div>
-                <div className="flex gap-8 flex-wrap">
+                <div className="flex gap-6 flex-wrap items-center">
                   <Case checked={form.tutelle} onChange={v => patch('tutelle', v)} label="Tutelle" />
                   <Case checked={form.curatelle} onChange={v => patch('curatelle', v)} label="Curatelle" />
-                  <Case checked={form.apa} onChange={v => patch('apa', v)} label="APA" />
+                  {(form.tutelle || form.curatelle) && (
+                    <>
+                      <span className="font-semibold">Tél :</span>
+                      <ZoneSaisie value={form.suiviSocialTel} onChange={v => patch('suiviSocialTel', v)} className="w-32" />
+                    </>
+                  )}
                 </div>
                 <div className="flex gap-2 items-center">
                   <span className="font-semibold">Devenir :</span>
@@ -884,12 +1029,18 @@ export default function MutationPage() {
                 {vaccinsText && (
                   <Ligne label="Vaccins :"><span className="text-[9px]">{vaccinsText}</span></Ligne>
                 )}
-                {ctx?.niveau?.niveau_soin && (
+                <div className="grid grid-cols-2 gap-x-4">
                   <Ligne label="Niveau de soins :">
-                    <span className="font-medium">{ctx.niveau.niveau_soin}</span>
-                    {ctx.niveau.gir && <span className="ml-2">— GIR {ctx.niveau.gir}</span>}
+                    {ctx?.niveau?.niveau_soin
+                      ? <span className="font-medium">{ctx.niveau.niveau_soin}{' '}<span className="font-normal italic">acté avec famille / résident par Médecin Co.</span></span>
+                      : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
                   </Ligne>
-                )}
+                  <Ligne label="GIR :">
+                    {ctx?.niveau?.gir
+                      ? <span className="font-medium">{ctx.niveau.gir}</span>
+                      : <ZoneSaisie value="" onChange={() => {}} placeholder="…" />}
+                  </Ligne>
+                </div>
                 {contentionText && (
                   <Ligne label="Contention :"><span>{contentionText}</span></Ligne>
                 )}
@@ -927,6 +1078,9 @@ export default function MutationPage() {
                     <div className="flex gap-2 items-center flex-wrap">
                       <span className="font-semibold">Prothèse dentaire :</span>
                       <Case checked={form.protheseDentaireOui} onChange={v => { patch('protheseDentaireOui', v); if (v) patch('protheseDentaireNon', false); }} label="Oui" />
+                      {form.protheseDentaireOui && dentierLabel && (
+                        <span className="text-[10px]">({dentierLabel})</span>
+                      )}
                       <Case checked={form.protheseDentaireNon} onChange={v => { patch('protheseDentaireNon', v); if (v) patch('protheseDentaireOui', false); }} label="Non" />
                     </div>
                   </div>
@@ -1014,11 +1168,19 @@ export default function MutationPage() {
                       <Case checked={form.o2Non} onChange={v => { patch('o2Non', v); if (v) patch('o2Oui', false); }} label="Non" />
                       <span className="font-semibold">Débit :</span>
                       <ZoneSaisie value={form.o2Debit} onChange={v => patch('o2Debit', v)} className="w-16" />
+                      {form.o2Oui && (
+                        <span className="text-[10px]">
+                          ({form.o2Jour && form.o2Nuit ? '24H' : form.o2Jour ? 'Jour' : form.o2Nuit ? 'Nuit' : ''})
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2 items-center flex-wrap">
-                      <span className="font-semibold">VMI :</span>
-                      <Case checked={form.vmiOui} onChange={v => { patch('vmiOui', v); if (v) patch('vmiNon', false); }} label="Oui" />
-                      <Case checked={form.vmiNon} onChange={v => { patch('vmiNon', v); if (v) patch('vmiOui', false); }} label="Non" />
+                      <span className="font-semibold">VNI :</span>
+                      <Case checked={form.vniOui} onChange={v => { patch('vniOui', v); if (v) patch('vniNon', false); }} label="Oui" />
+                      <Case checked={form.vniNon} onChange={v => { patch('vniNon', v); if (v) patch('vniOui', false); }} label="Non" />
+                      {form.vniOui && (
+                        <ZoneSaisie value={form.vniDebit} onChange={v => patch('vniDebit', v)} placeholder="réglages…" className="w-28" />
+                      )}
                       <Case checked={form.tracheotomie} onChange={v => patch('tracheotomie', v)} label="Trachéotomie" />
                     </div>
                     <div className="border-t border-black mt-1 pt-1">
