@@ -50,6 +50,8 @@ const PROTECTION_CHOICES = ['', 'XL', 'L', 'M', 'Molif', 'Pants XL', 'Pants L', 
 
 /** Mot de passe admin requis pour supprimer une colonne. */
 const ADMIN_PASSWORD = 'mapad2022';
+/** Mot de passe requis pour activer l'édition des champs. */
+const EDIT_PASSWORD = 'mapadnuit';
 
 const FLOORS: Floor[] = ['RDC', '1ER'];
 const SECTIONS: { key: Section; label: string }[] = [
@@ -197,13 +199,28 @@ function computeFloorTotals(
 export default function PecNuitPage() {
   const qc = useQueryClient();
   const access = useModuleAccess('pecNuit');
-  const canEdit = access !== 'read';
 
+  const [editMode, setEditMode] = useState(false);
   const [activeFloor, setActiveFloor] = useState<Floor>('RDC');
   const [showAddCol, setShowAddCol] = useState(false);
   const [newColLabel, setNewColLabel] = useState('');
   const [newColType, setNewColType] = useState<ColType>('number');
   const [adminMode, setAdminMode] = useState(false);
+
+  // canEdit = accès module + mode édition déverrouillé par mot de passe
+  const canEdit = (access !== 'read') && editMode;
+
+  const toggleEditMode = () => {
+    if (editMode) {
+      setEditMode(false);
+      setAdminMode(false); // verrouiller aussi le mode admin
+      return;
+    }
+    const pwd = prompt('Saisir le mot de passe pour activer l\'édition :');
+    if (pwd == null) return;
+    if (pwd === EDIT_PASSWORD) setEditMode(true);
+    else alert('Mot de passe incorrect.');
+  };
 
   const toggleAdminMode = () => {
     if (adminMode) { setAdminMode(false); return; }
@@ -427,62 +444,80 @@ export default function PecNuitPage() {
             ))}
           </div>
 
-          {canEdit && (
-            <div className="flex items-center gap-2">
-              {showAddCol ? (
-                <div className="flex items-center gap-2 bg-white rounded-xl p-2 ring-1 ring-slate-200 shadow-sm">
-                  <Input
-                    value={newColLabel}
-                    onChange={e => setNewColLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') addColumn(); }}
-                    placeholder="Nom de la colonne"
-                    autoFocus
-                    className="h-8 w-44 text-sm"
-                  />
-                  <select
-                    value={newColType}
-                    onChange={e => setNewColType(e.target.value as ColType)}
-                    className="h-8 rounded-md border border-slate-200 text-sm px-2 bg-white"
+          <div className="flex items-center gap-2">
+            {/* Contrôles d'édition — visibles uniquement en mode édition */}
+            {canEdit && (
+              <>
+                {showAddCol ? (
+                  <div className="flex items-center gap-2 bg-white rounded-xl p-2 ring-1 ring-slate-200 shadow-sm">
+                    <Input
+                      value={newColLabel}
+                      onChange={e => setNewColLabel(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addColumn(); }}
+                      placeholder="Nom de la colonne"
+                      autoFocus
+                      className="h-8 w-44 text-sm"
+                    />
+                    <select
+                      value={newColType}
+                      onChange={e => setNewColType(e.target.value as ColType)}
+                      className="h-8 rounded-md border border-slate-200 text-sm px-2 bg-white"
+                    >
+                      <option value="number">Nombre</option>
+                      <option value="check">Case à cocher</option>
+                    </select>
+                    <Button size="sm" onClick={addColumn} className="h-8 bg-indigo-600 hover:bg-indigo-700">
+                      Ajouter
+                    </Button>
+                    <button
+                      onClick={() => { setShowAddCol(false); setNewColLabel(''); }}
+                      className="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-slate-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowAddCol(true)}
+                    className="h-9 gap-1.5 bg-white"
                   >
-                    <option value="number">Nombre</option>
-                    <option value="check">Case à cocher</option>
-                  </select>
-                  <Button size="sm" onClick={addColumn} className="h-8 bg-indigo-600 hover:bg-indigo-700">
-                    Ajouter
+                    <Plus className="h-4 w-4" /> Ajouter une colonne
                   </Button>
-                  <button
-                    onClick={() => { setShowAddCol(false); setNewColLabel(''); }}
-                    className="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-slate-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowAddCol(true)}
-                  className="h-9 gap-1.5 bg-white"
-                >
-                  <Plus className="h-4 w-4" /> Ajouter une colonne
-                </Button>
-              )}
-              {/* Bouton mode admin (réorganisation des colonnes) */}
-              <button
-                onClick={toggleAdminMode}
-                title={adminMode ? 'Désactiver le mode admin' : 'Activer le mode admin (réorganiser les colonnes)'}
-                className={cn(
-                  'h-9 px-3 rounded-xl text-sm font-semibold flex items-center gap-1.5 border transition-colors',
-                  adminMode
-                    ? 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
-                    : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
                 )}
-              >
-                {adminMode ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                Admin
-              </button>
-            </div>
-          )}
+                {/* Bouton mode admin (réorganisation des colonnes) */}
+                <button
+                  onClick={toggleAdminMode}
+                  title={adminMode ? 'Désactiver le mode admin' : 'Activer le mode admin (réorganiser les colonnes)'}
+                  className={cn(
+                    'h-9 px-3 rounded-xl text-sm font-semibold flex items-center gap-1.5 border transition-colors',
+                    adminMode
+                      ? 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
+                      : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  )}
+                >
+                  {adminMode ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                  Admin
+                </button>
+              </>
+            )}
+
+            {/* Bouton verrouillage/déverrouillage de l'édition — toujours visible */}
+            <button
+              onClick={toggleEditMode}
+              title={editMode ? 'Verrouiller l\'édition' : 'Activer l\'édition (mot de passe requis)'}
+              className={cn(
+                'h-9 px-3 rounded-xl text-sm font-semibold flex items-center gap-1.5 border transition-colors',
+                editMode
+                  ? 'bg-emerald-500 border-emerald-600 text-white hover:bg-emerald-600'
+                  : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+              )}
+            >
+              {editMode ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+              {editMode ? 'Verrouiller' : 'Modifier'}
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
