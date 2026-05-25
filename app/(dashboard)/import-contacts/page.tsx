@@ -817,7 +817,10 @@ function RowCard({
   }[row.status];
 
   const existingPP = row.matched?.dsi
-    ? (row.matched.dsi as Record<string, unknown>).personne_prevenir as Record<string, unknown> | undefined
+    ? (row.matched.dsi as Record<string, unknown>).personne_prevenir as {
+        nom?: string; prenom?: string; lien?: string;
+        adresse?: string; tel?: string; mobile?: string;
+      } | undefined
     : undefined;
   const hasExisting = !!(existingPP && Object.keys(existingPP).length > 0 && (existingPP.nom || existingPP.tel));
 
