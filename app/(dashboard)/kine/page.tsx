@@ -684,7 +684,13 @@ export default function KinePage() {
     queryFn: fetchKineConfig,
   });
 
-  const { data: assignations = [], isLoading: loadingAssignations } = useQuery({
+  const {
+    data: assignations = [],
+    isLoading: loadingAssignations,
+    isError: isAssignationsError,
+    error: assignationsError,
+    refetch: refetchAssignations,
+  } = useQuery({
     queryKey: ['kine_assignations'],
     queryFn: fetchAssignations,
   });
@@ -748,9 +754,10 @@ export default function KinePage() {
   }, []);
 
   const handleModalSaved = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['kine_assignations'] });
+    // Force an immediate re-fetch (not just marking stale)
+    refetchAssignations();
     queryClient.invalidateQueries({ queryKey: ['settings', 'kine_config'] });
-  }, [queryClient]);
+  }, [queryClient, refetchAssignations]);
 
   const isLoading = loadingConfig || loadingAssignations || loadingResidents;
 
@@ -851,6 +858,22 @@ export default function KinePage() {
           </span>
         </div>
       </div>
+
+      {/* ══ ERREUR CHARGEMENT ════════════════════════════════════ */}
+      {isAssignationsError && (
+        <div className="max-w-6xl mx-auto px-4 pt-3">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-red-700">
+            <span className="font-bold shrink-0">⚠️ Erreur base de données :</span>
+            <span>{(assignationsError as Error)?.message ?? 'Impossible de charger les assignations.'}</span>
+            <button
+              onClick={() => refetchAssignations()}
+              className="ml-auto shrink-0 underline text-red-600 hover:text-red-800"
+            >
+              Réessayer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ══ CONTENU PRINCIPAL ════════════════════════════════════ */}
       <div className="max-w-6xl mx-auto px-4 pb-10">
