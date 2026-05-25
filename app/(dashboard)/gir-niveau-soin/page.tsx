@@ -127,6 +127,9 @@ function parseTutelle(tutelle: string): { type: MesureType; nom: string; tel: st
       tel: m[3]?.trim() ?? '',
     };
   }
+  // Cas "Nom — Tél" sans type (ancienne sauvegarde sans mesure) — détecte le tél par son format
+  const sepMatch = trimmed.match(/^(.+?)\s*[—\-–]\s*(\d[\d\s.\-+()]{4,})$/);
+  if (sepMatch) return { type: '', nom: sepMatch[1].trim(), tel: sepMatch[2].trim() };
   return { type: '', nom: tutelle, tel: '' };
 }
 
@@ -533,12 +536,13 @@ function HistoryModal({
 // ─────────────────────────────────────────────────────────────
 
 function TutelleCell({
-  tutelle, tuteurs, canEdit, onSave,
+  tutelle, tuteurs, canEdit, onSave, onManageTuteurs,
 }: {
   tutelle: string;
   tuteurs: TuteurEntry[];
   canEdit: boolean;
   onSave: (combined: string) => void;
+  onManageTuteurs?: () => void;
 }) {
   const parsed = parseTutelle(tutelle);
   const [type, setType] = useState<MesureType>(parsed.type);
@@ -606,7 +610,13 @@ function TutelleCell({
             <button
               key={t.id}
               type="button"
-              onClick={() => { setNom(t.nom); setTel(t.tel); commit(type, t.nom, t.tel); }}
+              onClick={() => {
+                setNom(t.nom);
+                setTel(t.tel);
+                // Ne committer que si un type de mesure est déjà sélectionné
+                // (évite de sauvegarder "Nom — Tél" sans préfixe de type)
+                if (type) commit(type, t.nom, t.tel);
+              }}
               className={cn(
                 'px-1.5 py-0.5 rounded text-[10px] border transition-colors',
                 nom === t.nom && tel === t.tel
@@ -618,6 +628,15 @@ function TutelleCell({
             </button>
           ))}
         </div>
+      )}
+      {canEdit && onManageTuteurs && (
+        <button
+          type="button"
+          onClick={onManageTuteurs}
+          className="mt-0.5 text-[10px] text-purple-500 hover:text-purple-700 hover:underline flex items-center gap-0.5"
+        >
+          <Users className="h-2.5 w-2.5" /> Gérer la liste des tuteurs
+        </button>
       )}
     </div>
   );
@@ -1414,6 +1433,7 @@ export default function GIRNiveauSoinPage() {
                       tuteurs={tuteurs}
                       canEdit={canEdit('tutelle')}
                       onSave={combined => doUpdate(r, 'tutelle', combined)}
+                      onManageTuteurs={() => setModal('tuteurs')}
                     />
                   </td>
 
