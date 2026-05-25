@@ -110,6 +110,19 @@ interface TutelleCuratelle {
   tel?: string;
 }
 
+interface TuteurEntry {
+  id: string;
+  nom: string;
+  tel: string;
+}
+
+const DEFAULT_TUTEURS: TuteurEntry[] = [
+  { id: 'default-1', nom: 'Hastings Antoine', tel: '0385882011' },
+  { id: 'default-2', nom: 'Mme Organo',       tel: '0385883265' },
+  { id: 'default-3', nom: 'Mme Ribeiro',      tel: '0385690404' },
+  { id: 'default-4', nom: 'Mme Rodrigues',    tel: '0385883265' },
+];
+
 interface Respiration {
   normale?: boolean;
   dyspnee?: boolean;
@@ -201,6 +214,13 @@ async function fetchSetting<T>(key: string, fallback: T): Promise<T> {
   const sb = createClient();
   const { data } = await sb.from('settings').select('value').eq('key', key).maybeSingle();
   return data ? (data.value as T) : fallback;
+}
+
+async function fetchTuteurs(): Promise<TuteurEntry[]> {
+  const sb = createClient();
+  const { data } = await sb.from('settings').select('value').eq('key', 'tuteurs_curators').maybeSingle();
+  if (data?.value && Array.isArray(data.value)) return data.value as TuteurEntry[];
+  return DEFAULT_TUTEURS;
 }
 
 async function saveSetting(key: string, value: unknown): Promise<void> {
@@ -582,6 +602,11 @@ function EditForm({
   onDelete?: () => void;
   isAdmin?: boolean;
 }) {
+  const { data: tuteurs = DEFAULT_TUTEURS } = useQuery({
+    queryKey: ['settings', 'tuteurs_curators'],
+    queryFn: fetchTuteurs,
+  });
+
   const headerTitle = isNew
     ? 'Nouveau résident'
     : `Édition — ${form.title ?? ''} ${(form.last_name ?? '').toUpperCase()} ${form.first_name ?? ''}`.trim();
@@ -1077,6 +1102,29 @@ function EditForm({
                     />
                   </div>
                 </div>
+                {/* Sélection rapide tuteurs pré-enregistrés */}
+                {tuteurs.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-slate-400 mb-1.5">Sélection rapide :</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tuteurs.map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setTC({ nom: t.nom, tel: t.tel })}
+                          className={cn(
+                            'px-2 py-1 rounded-full text-xs border transition-colors',
+                            tc.nom === t.nom && tc.tel === t.tel
+                              ? 'bg-purple-100 border-purple-400 text-purple-800 font-semibold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-purple-300 hover:text-purple-700'
+                          )}
+                        >
+                          {t.nom}{t.tel ? ` · ${t.tel}` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Personne à prévenir */}
