@@ -797,17 +797,25 @@ function TotalsBox({
         </div>
       </header>
       <div className="p-3 grid grid-cols-3 sm:grid-cols-5 gap-2">
-        {numberCols.map(c => (
-          <div
-            key={c.key}
-            className="rounded-lg bg-indigo-50/70 ring-1 ring-indigo-100 px-2 py-1.5 text-center"
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 leading-tight truncate">
-              {c.label}
+        {numberCols.map(c => {
+          const qteNuit = totals[c.key] ?? 0;
+          return (
+            <div
+              key={c.key}
+              className="rounded-lg bg-indigo-50/70 ring-1 ring-indigo-100 px-2 py-1.5 text-center"
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 leading-tight truncate">
+                {c.label}
+              </div>
+              <div className="text-xl font-bold text-slate-900 tabular-nums">{qteNuit}</div>
+              {onPrint && (
+                <div className="text-[11px] font-semibold text-indigo-700 tabular-nums mt-0.5">
+                  × 14 = {qteNuit * 14}
+                </div>
+              )}
             </div>
-            <div className="text-xl font-bold text-slate-900 tabular-nums">{totals[c.key] ?? 0}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
