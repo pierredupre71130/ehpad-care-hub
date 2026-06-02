@@ -808,11 +808,9 @@ function TotalsBox({
                 {c.label}
               </div>
               <div className="text-xl font-bold text-slate-900 tabular-nums">{qteNuit}</div>
-              {onPrint && (
-                <div className="text-[11px] font-semibold text-indigo-700 tabular-nums mt-0.5">
-                  × 14 = {qteNuit * 14}
-                </div>
-              )}
+              <div className="text-[11px] font-semibold text-indigo-700 tabular-nums mt-0.5">
+                × 14 = {qteNuit * 14}
+              </div>
             </div>
           );
         })}
