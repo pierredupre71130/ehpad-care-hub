@@ -10,10 +10,10 @@
  * Stockage des valeurs : table `settings` (clés pec_nuit_*).
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, Moon, Plus, Minus, X, ChevronLeft, ChevronRight, Lock, LockOpen } from 'lucide-react';
+import { ArrowLeft, Moon, Plus, Minus, X, ChevronLeft, ChevronRight, Lock, LockOpen, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -206,6 +206,7 @@ export default function PecNuitPage() {
   const [newColLabel, setNewColLabel] = useState('');
   const [newColType, setNewColType] = useState<ColType>('number');
   const [adminMode, setAdminMode] = useState(false);
+  const [printFloor, setPrintFloor] = useState<Floor | null>(null);
 
   // canEdit = accès module + mode édition déverrouillé par mot de passe
   const canEdit = (access !== 'read') && editMode;
@@ -413,6 +414,7 @@ export default function PecNuitPage() {
               subtitle="Mapad + Long séjour"
               columns={columns}
               totals={floorTotals[f]}
+              onPrint={() => setPrintFloor(f)}
             />
           ))}
         </div>
@@ -547,6 +549,17 @@ export default function PecNuitPage() {
           })
         )}
       </main>
+
+      {printFloor && (
+        <PrintView
+          floor={printFloor}
+          residents={residents}
+          allValues={safeValues}
+          columns={columns}
+          protections={protections}
+          onClose={() => setPrintFloor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -763,14 +776,25 @@ function NumberCell({
 }
 
 function TotalsBox({
-  title, subtitle, columns, totals,
-}: { title: string; subtitle: string; columns: Column[]; totals: Record<string, number> }) {
+  title, subtitle, columns, totals, onPrint,
+}: { title: string; subtitle: string; columns: Column[]; totals: Record<string, number>; onPrint?: () => void }) {
   const numberCols = columns.filter(c => c.type === 'number');
   return (
     <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
       <header className="flex items-center justify-between px-4 py-2.5 bg-indigo-900 text-white">
         <h2 className="text-sm font-bold uppercase tracking-wide">{title}</h2>
-        <span className="text-xs text-white/60">{subtitle}</span>
+        <div className="flex items-center gap-2">
+          {onPrint && (
+            <button
+              onClick={onPrint}
+              title="Imprimer cet étage (× 14 nuits)"
+              className="h-6 w-6 rounded flex items-center justify-center text-white/60 hover:text-white hover:bg-white/20 transition-colors"
+            >
+              <Printer className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <span className="text-xs text-white/60">{subtitle}</span>
+        </div>
       </header>
       <div className="p-3 grid grid-cols-3 sm:grid-cols-5 gap-2">
         {numberCols.map(c => (
@@ -826,5 +850,245 @@ function CheckCell({
         </svg>
       )}
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// IMPRESSION
+// ─────────────────────────────────────────────────────────────
+
+function PrintSectionTable({
+  residents, values, columns, protections,
+}: {
+  residents: Resident[];
+  values: ValuesMap;
+  columns: Column[];
+  protections: ProtectionsMap;
+}) {
+  if (residents.length === 0) {
+    return <p style={{ color: '#999', fontStyle: 'italic', marginBottom: '12px' }}>Aucun résident.</p>;
+  }
+  return (
+    <table className="pv-table">
+      <thead>
+        <tr>
+          <th style={{ textAlign: 'left', minWidth: '160px' }}>Nom</th>
+          <th>Ch.</th>
+          {columns.map(c => <th key={c.key}>{c.label}</th>)}
+          <th>Protec. Jr</th>
+          <th>Protec. Nuit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {residents.map(r => {
+          const rv = values[r.id] ?? {};
+          const prot = protections[normalizeRoom(r.room ?? '')] ?? {};
+          const autoP = defaultProtection(rv, columns);
+          return (
+            <tr key={r.id}>
+              <td style={{ textAlign: 'left' }}>
+                <strong>{r.last_name.toUpperCase()}</strong>
+                {r.first_name ? ` ${r.first_name}` : ''}
+              </td>
+              <td>{r.room ?? ''}</td>
+              {columns.map(c => (
+                <td key={c.key}>
+                  {c.type === 'check'
+                    ? (rv[c.key] === true ? '✓' : '')
+                    : (typeof rv[c.key] === 'number' && (rv[c.key] as number) > 0
+                        ? String(rv[c.key])
+                        : '')}
+                </td>
+              ))}
+              <td>{prot.jour ?? autoP || '—'}</td>
+              <td>{prot.nuit ?? autoP || '—'}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function PrintCommandeTable({
+  totals, columns,
+}: { totals: Record<string, number>; columns: Column[] }) {
+  const numCols = columns.filter(c => c.type === 'number');
+  return (
+    <table className="pv-table pv-commande" style={{ maxWidth: '480px' }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: 'left' }}>Article</th>
+          <th>Qté / nuit</th>
+          <th>× 14</th>
+          <th>Total 2 semaines</th>
+        </tr>
+      </thead>
+      <tbody>
+        {numCols.map(c => {
+          const qteNuit = totals[c.key] ?? 0;
+          return (
+            <tr key={c.key}>
+              <td style={{ textAlign: 'left' }}>{c.label}</td>
+              <td>{qteNuit}</td>
+              <td style={{ color: '#666' }}>14</td>
+              <td>{qteNuit * 14}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function PrintView({
+  floor, residents, allValues, columns, protections, onClose,
+}: {
+  floor: Floor;
+  residents: Resident[];
+  allValues: AllValues;
+  columns: Column[];
+  protections: ProtectionsMap;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(() => window.print(), 250);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => onClose();
+    window.addEventListener('afterprint', handler);
+    return () => window.removeEventListener('afterprint', handler);
+  }, [onClose]);
+
+  const floorRes = residents.filter(r => (r.floor ?? '').toUpperCase() === floor && !r.archived);
+  const mapadRes = floorRes.filter(r => sectionOf(r) === 'mapad').sort(sortByRoom);
+  const longRes  = floorRes.filter(r => sectionOf(r) === 'long').sort(sortByRoom);
+  const totals   = computeFloorTotals(floor, residents, allValues, columns);
+  const numCols  = columns.filter(c => c.type === 'number');
+  const today    = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  return (
+    <div id="pec-print-view">
+      {/* eslint-disable-next-line react/no-danger */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * { visibility: hidden; }
+          #pec-print-view, #pec-print-view * { visibility: visible; }
+          #pec-print-view { position: absolute; top: 0; left: 0; width: 100%; padding: 0; }
+          .pv-no-print { display: none !important; }
+          @page { size: A4 landscape; margin: 1.2cm; }
+        }
+        @media screen {
+          #pec-print-view {
+            position: fixed; inset: 0; z-index: 9999;
+            background: white; overflow-y: auto; padding: 24px;
+          }
+        }
+        .pv-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-bottom: 1.4em; }
+        .pv-table th, .pv-table td { border: 1px solid #c8c8d8; padding: 3px 6px; text-align: center; }
+        .pv-table th { background: #1e1b4b; color: white; font-weight: 600; }
+        .pv-table tbody tr:nth-child(even) td { background: #f4f4fb; }
+        .pv-commande td:last-child { font-weight: 700; font-size: 11pt; color: #1e1b4b; }
+        .pv-h2 { font-size: 12pt; font-weight: 700; margin: 1em 0 0.4em; color: #1e1b4b;
+                 border-bottom: 2px solid #1e1b4b; padding-bottom: 3px; }
+      `}} />
+
+      {/* Barre d'action (écran seulement) */}
+      <div className="pv-no-print" style={{
+        position: 'sticky', top: 0, background: 'white', zIndex: 10,
+        borderBottom: '1px solid #e2e8f0', padding: '12px 0 12px',
+        marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
+          Aperçu impression — PEC Nuit {floor}
+        </h1>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => window.print()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '6px 16px', borderRadius: '8px',
+              background: '#4338ca', color: 'white', border: 'none',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <Printer style={{ width: '16px', height: '16px' }} /> Imprimer
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '6px 16px', borderRadius: '8px',
+              background: 'white', color: '#475569',
+              border: '1px solid #e2e8f0', fontSize: '14px', cursor: 'pointer',
+            }}
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+
+      {/* Contenu imprimé */}
+      <div style={{ fontFamily: 'Arial, sans-serif' }}>
+        {/* En-tête */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
+          <div>
+            <h1 style={{ fontSize: '20pt', fontWeight: 700, margin: 0, color: '#1e1b4b' }}>
+              PEC Nuit — {floor}
+            </h1>
+            <p style={{ fontSize: '10pt', color: '#666', margin: '4px 0 0' }}>Édité le {today}</p>
+          </div>
+          <div style={{ fontSize: '10pt', color: '#888', textAlign: 'right' }}>
+            EHPAD — Prises en charge de nuit
+          </div>
+        </div>
+
+        {/* MAPAD */}
+        <div className="pv-h2">
+          MAPAD · {floor} &nbsp;<span style={{ fontWeight: 400, fontSize: '10pt' }}>({mapadRes.length} résident{mapadRes.length > 1 ? 's' : ''})</span>
+        </div>
+        <PrintSectionTable
+          residents={mapadRes}
+          values={allValues[floor].mapad}
+          columns={columns}
+          protections={protections}
+        />
+
+        {/* Long séjour */}
+        <div className="pv-h2">
+          Long séjour · {floor} &nbsp;<span style={{ fontWeight: 400, fontSize: '10pt' }}>({longRes.length} résident{longRes.length > 1 ? 's' : ''})</span>
+        </div>
+        <PrintSectionTable
+          residents={longRes}
+          values={allValues[floor].long}
+          columns={columns}
+          protections={protections}
+        />
+
+        {/* Total par nuit */}
+        <div className="pv-h2">Total {floor} — par nuit</div>
+        <table className="pv-table" style={{ maxWidth: '700px' }}>
+          <thead>
+            <tr>{numCols.map(c => <th key={c.key}>{c.label}</th>)}</tr>
+          </thead>
+          <tbody>
+            <tr>
+              {numCols.map(c => (
+                <td key={c.key} style={{ fontWeight: 700, fontSize: '13pt' }}>
+                  {totals[c.key] ?? 0}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Commande × 14 */}
+        <div className="pv-h2">Tableau des comptes — × 14 nuits (2 semaines)</div>
+        <PrintCommandeTable totals={totals} columns={columns} />
+      </div>
+    </div>
   );
 }
