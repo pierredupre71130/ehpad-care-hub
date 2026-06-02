@@ -900,8 +900,8 @@ function PrintSectionTable({
                         : '')}
                 </td>
               ))}
-              <td>{prot.jour ?? autoP || '—'}</td>
-              <td>{prot.nuit ?? autoP || '—'}</td>
+              <td>{(prot.jour ?? autoP) || '—'}</td>
+              <td>{(prot.nuit ?? autoP) || '—'}</td>
             </tr>
           );
         })}
