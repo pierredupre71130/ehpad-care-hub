@@ -74,6 +74,7 @@ const TRAITEMENTS = [
   'Durogesic 25 µg/h',
   'Durogesic 50 µg/h',
   'Durogesic 75 µg/h',
+  'Oxycodone LP 5 mg',
   'Oxycodone LP 10 mg',
 ];
 
