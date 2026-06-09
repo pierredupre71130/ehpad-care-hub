@@ -792,11 +792,21 @@ export default function EtiquettesRepasPage() {
             .print-zone { display: block !important; padding: 0 !important; max-width: 100% !important; }
             .print-zone-inner { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
             .print-zone-header { display: none !important; }
-            .print-only { display: flex !important; }
+            .print-page-header {
+              display: flex !important;
+              position: fixed;
+              top: 0; left: 0; right: 0;
+              justify-content: space-between;
+              align-items: center;
+              padding: 4px 0 8px;
+              border-bottom: 3px solid #1e293b;
+              background: white;
+            }
+            .print-etiquettes-list { padding-top: 44px; }
             .etiquette-item { width: 100% !important; box-sizing: border-box; }
             img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           }
-          .print-only { display: none; }
+          .print-page-header { display: none; }
         `}</style>
 
         {selectedResidents.length > 0 && (
@@ -809,8 +819,8 @@ export default function EtiquettesRepasPage() {
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">avec photos</span>
                 )}
               </div>
-              {/* En-tête visible uniquement à l'impression */}
-              <div className="print-only" style={{
+              {/* En-tête répété sur chaque feuille à l'impression */}
+              <div className="print-page-header" style={{
                 justifyContent: 'space-between', alignItems: 'center',
                 marginBottom: 14, paddingBottom: 10,
                 borderBottom: '3px solid #1e293b',
@@ -837,7 +847,7 @@ export default function EtiquettesRepasPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="print-etiquettes-list flex flex-col gap-2">
                 {selectedResidents.map(r => (
                   <Etiquette key={r.id} resident={r} withPhoto={withPhoto} regimeInfo={regimeFor(r)} />
                 ))}
