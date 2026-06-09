@@ -792,9 +792,11 @@ export default function EtiquettesRepasPage() {
             .print-zone { display: block !important; padding: 0 !important; max-width: 100% !important; }
             .print-zone-inner { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
             .print-zone-header { display: none !important; }
+            .print-only { display: flex !important; }
             .etiquette-item { width: 100% !important; box-sizing: border-box; }
             img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           }
+          .print-only { display: none; }
         `}</style>
 
         {selectedResidents.length > 0 && (
@@ -807,6 +809,34 @@ export default function EtiquettesRepasPage() {
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">avec photos</span>
                 )}
               </div>
+              {/* En-tête visible uniquement à l'impression */}
+              <div className="print-only" style={{
+                justifyContent: 'space-between', alignItems: 'center',
+                marginBottom: 14, paddingBottom: 10,
+                borderBottom: '3px solid #1e293b',
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
+                  Étiquettes Repas
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{
+                    background: '#1e293b', color: 'white',
+                    padding: '4px 14px', borderRadius: 6,
+                    fontSize: 17, fontWeight: 800, fontFamily: 'Arial, sans-serif',
+                  }}>
+                    {activeFloor}
+                  </span>
+                  <span style={{
+                    background: activeRepas === 'midi' ? '#d97706' : '#4f46e5',
+                    color: 'white',
+                    padding: '4px 14px', borderRadius: 6,
+                    fontSize: 17, fontWeight: 800, fontFamily: 'Arial, sans-serif',
+                  }}>
+                    {activeRepas === 'midi' ? 'MIDI' : 'SOIR'}
+                  </span>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2">
                 {selectedResidents.map(r => (
                   <Etiquette key={r.id} resident={r} withPhoto={withPhoto} regimeInfo={regimeFor(r)} />
