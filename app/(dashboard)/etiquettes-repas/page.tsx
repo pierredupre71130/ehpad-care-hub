@@ -792,21 +792,22 @@ export default function EtiquettesRepasPage() {
             .print-zone { display: block !important; padding: 0 !important; max-width: 100% !important; }
             .print-zone-inner { box-shadow: none !important; border: none !important; padding: 0 !important; border-radius: 0 !important; }
             .print-zone-header { display: none !important; }
-            .print-page-header {
-              display: flex !important;
-              position: fixed;
-              top: 0; left: 0; right: 0;
-              justify-content: space-between;
-              align-items: center;
-              padding: 4px 0 8px;
-              border-bottom: 3px solid #1e293b;
-              background: white;
-            }
-            .print-etiquettes-list { padding-top: 44px; }
-            .etiquette-item { width: 100% !important; box-sizing: border-box; }
+            .etiquettes-table { display: table !important; width: 100%; border-collapse: collapse; }
+            .etiquettes-thead { display: table-header-group !important; }
+            .etiquettes-thead tr { display: table-row !important; }
+            .etiquettes-thead th { display: table-cell !important; padding-bottom: 8px; border-bottom: 3px solid #1e293b; }
+            .etiquettes-tbody { display: table-row-group !important; }
+            .etiquettes-tbody tr { display: table-row !important; }
+            .etiquettes-tbody td { display: table-cell !important; padding: 4px 0; }
+            .etiquette-item { width: 100% !important; box-sizing: border-box; margin-bottom: 0 !important; }
             img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           }
-          .print-page-header { display: none; }
+          /* Écran : table se comporte comme un bloc normal */
+          .etiquettes-table { display: block; width: 100%; }
+          .etiquettes-thead { display: none; }
+          .etiquettes-tbody { display: flex; flex-direction: column; gap: 8px; }
+          .etiquettes-tbody tr { display: block; }
+          .etiquettes-tbody td { display: block; padding: 0; }
         `}</style>
 
         {selectedResidents.length > 0 && (
@@ -819,39 +820,34 @@ export default function EtiquettesRepasPage() {
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">avec photos</span>
                 )}
               </div>
-              {/* En-tête répété sur chaque feuille à l'impression */}
-              <div className="print-page-header" style={{
-                justifyContent: 'space-between', alignItems: 'center',
-                marginBottom: 14, paddingBottom: 10,
-                borderBottom: '3px solid #1e293b',
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', fontFamily: 'Arial, sans-serif' }}>
-                  Étiquettes Repas
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{
-                    background: '#1e293b', color: 'white',
-                    padding: '4px 14px', borderRadius: 6,
-                    fontSize: 17, fontWeight: 800, fontFamily: 'Arial, sans-serif',
-                  }}>
-                    {activeFloor}
-                  </span>
-                  <span style={{
-                    background: activeRepas === 'midi' ? '#d97706' : '#4f46e5',
-                    color: 'white',
-                    padding: '4px 14px', borderRadius: 6,
-                    fontSize: 17, fontWeight: 800, fontFamily: 'Arial, sans-serif',
-                  }}>
-                    {activeRepas === 'midi' ? 'MIDI' : 'SOIR'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="print-etiquettes-list flex flex-col gap-2">
-                {selectedResidents.map(r => (
-                  <Etiquette key={r.id} resident={r} withPhoto={withPhoto} regimeInfo={regimeFor(r)} />
-                ))}
-              </div>
+              <table className="etiquettes-table">
+                <thead className="etiquettes-thead">
+                  <tr>
+                    <th style={{ fontWeight: 'normal' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Arial, sans-serif' }}>
+                        <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a' }}>Étiquettes Repas</div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ background: '#1e293b', color: 'white', padding: '4px 14px', borderRadius: 6, fontSize: 17, fontWeight: 800 }}>
+                            {activeFloor}
+                          </span>
+                          <span style={{ background: activeRepas === 'midi' ? '#d97706' : '#4f46e5', color: 'white', padding: '4px 14px', borderRadius: 6, fontSize: 17, fontWeight: 800 }}>
+                            {activeRepas === 'midi' ? 'MIDI' : 'SOIR'}
+                          </span>
+                        </div>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="etiquettes-tbody">
+                  {selectedResidents.map(r => (
+                    <tr key={r.id}>
+                      <td>
+                        <Etiquette resident={r} withPhoto={withPhoto} regimeInfo={regimeFor(r)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
               {/* Récapitulatif */}
               {(() => {
