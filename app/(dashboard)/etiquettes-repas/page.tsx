@@ -854,7 +854,7 @@ export default function EtiquettesRepasPage() {
                   !i.hache && !i.viandeHachee && !i.diab && !i.epargne && i.obsFlags.length === 0,
                 ).length;
                 return (
-                  <div className="mt-4 border border-slate-300 rounded-xl p-3 bg-slate-50">
+                  <div className="screen-only mt-4 border border-slate-300 rounded-xl p-3 bg-slate-50">
                     <div className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
                       Récapitulatif ({selectedResidents.length} résident{selectedResidents.length > 1 ? 's' : ''})
                     </div>
