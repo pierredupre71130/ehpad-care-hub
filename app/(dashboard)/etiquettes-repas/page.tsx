@@ -801,6 +801,7 @@ export default function EtiquettesRepasPage() {
             .etiquettes-tbody td { display: table-cell !important; padding: 4px 0; }
             .etiquette-item { width: 100% !important; box-sizing: border-box; margin-bottom: 0 !important; }
             img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .recap-print { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           }
           /* Écran : table se comporte comme un bloc normal */
           .etiquettes-table { display: block; width: 100%; }
@@ -860,7 +861,7 @@ export default function EtiquettesRepasPage() {
                   !i.hache && !i.viandeHachee && !i.diab && !i.epargne && i.obsFlags.length === 0,
                 ).length;
                 return (
-                  <div className="screen-only mt-4 border border-slate-300 rounded-xl p-3 bg-slate-50">
+                  <div className="recap-print mt-4 border border-slate-300 rounded-xl p-3 bg-slate-50" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                     <div className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
                       Récapitulatif ({selectedResidents.length} résident{selectedResidents.length > 1 ? 's' : ''})
                     </div>
