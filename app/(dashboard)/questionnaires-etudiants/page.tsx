@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   GraduationCap, ChevronRight, Eye, X, Pencil, Trash2, Save,
@@ -1155,7 +1156,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
     try {
       const sb = createClient();
       const titre = `Rapport IA — ${filtresLabel} — ${new Date().toLocaleDateString('fr-FR')}`;
-      await sb.from(ANALYSE).insert({
+      const { error: insertError } = await sb.from(ANALYSE).insert({
         titre,
         statut_filtre: filterStatut,
         nb_reponses: records.length,
@@ -1167,10 +1168,13 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
         commentaires: rapport,
         created_at: new Date().toISOString(),
       });
+      if (insertError) throw insertError;
       setSavedOk(true);
       refetchSaved();
       setTimeout(() => setSavedOk(false), 3000);
-    } catch { /* silent */ } finally { setSaving(false); }
+    } catch (e) {
+      toast.error(`Erreur sauvegarde : ${(e as Error).message}`);
+    } finally { setSaving(false); }
   };
 
   const handleDeleteSaved = async (id: string) => {
@@ -1229,6 +1233,52 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
 
   return (
     <div className="space-y-5">
+      {/* ── Rapports sauvegardés ── */}
+      {savedRapports.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-violet-600" />
+              Rapports sauvegardés ({savedRapports.length})
+            </p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {savedRapports.map(r => (
+              <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{r.titre ?? '—'}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {r.nb_reponses ? ` · ${r.nb_reponses} questionnaire${r.nb_reponses > 1 ? 's' : ''}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewSaved(r)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Voir
+                  </button>
+                  <button
+                    onClick={() => handlePrint(r.resultats?.rapport_text ?? '', r.titre ?? '')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> Imprimer
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSaved(r.id)}
+                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Paramètres */}
       <div className="bg-white border border-slate-200 rounded-xl p-5">
         <p className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
@@ -1376,52 +1426,6 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                 )}
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* ── Rapports sauvegardés ── */}
-      {savedRapports.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-violet-600" />
-              Rapports sauvegardés ({savedRapports.length})
-            </p>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {savedRapports.map(r => (
-              <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{r.titre ?? '—'}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                    {r.nb_reponses ? ` · ${r.nb_reponses} questionnaire${r.nb_reponses > 1 ? 's' : ''}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setViewSaved(r)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors"
-                  >
-                    <Eye className="h-3.5 w-3.5" /> Voir
-                  </button>
-                  <button
-                    onClick={() => handlePrint(r.resultats?.rapport_text ?? '', r.titre ?? '')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                  >
-                    <Printer className="h-3.5 w-3.5" /> Imprimer
-                  </button>
-                  <button
-                    onClick={() => handleDeleteSaved(r.id)}
-                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Supprimer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
