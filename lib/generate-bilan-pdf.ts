@@ -371,6 +371,24 @@ export async function generateBilanPDF(params: GeneratePdfParams): Promise<Uint8
 
   // À jeun
   if (aJeun) {
+    const bannerH = 20;
+    page.drawRectangle({
+      x: 0,
+      y: height - bannerH,
+      width,
+      height: bannerH,
+      color: rgb(1, 0.93, 0.05),
+    });
+    const ajeunLabel = 'À JEUN';
+    const ajeunSize = 12;
+    const ajeunW = helveticaBold.widthOfTextAtSize(ajeunLabel, ajeunSize);
+    page.drawText(ajeunLabel, {
+      x: (width - ajeunW) / 2,
+      y: height - bannerH + 5,
+      size: ajeunSize,
+      font: helveticaBold,
+      color: rgb(0, 0, 0),
+    });
     page.drawText('X', {
       x: calib.ajeun_x, y: height - calib.ajeun_y_from_top,
       size: checkSize, font: helveticaBold, color: black,
