@@ -96,14 +96,13 @@ export interface AnalyseRecord {
 export interface RapportIARecord {
   id: string;
   titre?: string;
-  statut_filtre?: string;
-  nb_reponses?: number;
+  statut_etudiant?: string;
+  stats?: { total: number; moyenne: number };
   resultats?: {
     type: 'rapport_ia';
     rapport_text: string;
     filtres_label: string;
   };
-  commentaires?: string;
   created_at: string;
 }
 

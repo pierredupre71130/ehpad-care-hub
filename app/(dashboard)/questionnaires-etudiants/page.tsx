@@ -1158,14 +1158,15 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
       const titre = `Rapport IA — ${filtresLabel} — ${new Date().toLocaleDateString('fr-FR')}`;
       const { error: insertError } = await sb.from(ANALYSE).insert({
         titre,
-        statut_filtre: filterStatut,
-        nb_reponses: records.length,
+        statut_etudiant: filterStatut,
+        questionnaire_ids: [],
+        stats: { total: records.length, moyenne: 0 },
+        ratings_data: [],
         resultats: {
           type: 'rapport_ia',
           rapport_text: rapport,
           filtres_label: filtresLabel,
         },
-        commentaires: rapport,
         created_at: new Date().toISOString(),
       });
       if (insertError) throw insertError;
@@ -1249,7 +1250,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                   <p className="text-sm font-semibold text-slate-800">{r.titre ?? '—'}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                    {r.nb_reponses ? ` · ${r.nb_reponses} questionnaire${r.nb_reponses > 1 ? 's' : ''}` : ''}
+                    {r.stats?.total ? ` · ${r.stats.total} questionnaire${r.stats.total > 1 ? 's' : ''}` : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
