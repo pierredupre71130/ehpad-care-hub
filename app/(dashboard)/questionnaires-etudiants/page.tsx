@@ -1071,7 +1071,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
       const { data, error } = await sb.from(ANALYSE).select('*').order('created_at', { ascending: false });
       if (error) throw error;
       return ((data ?? []) as RapportIARecord[]).filter(r =>
-        r.resultats?.type === 'rapport_ia'
+        r.stats?.type === 'rapport_ia'
       );
     },
   });
@@ -1160,13 +1160,14 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
         titre,
         statut_etudiant: filterStatut,
         questionnaire_ids: [],
-        stats: { total: records.length, moyenne: 0 },
-        ratings_data: [],
-        resultats: {
+        stats: {
+          total: records.length,
+          moyenne: 0,
           type: 'rapport_ia',
           rapport_text: rapport,
           filtres_label: filtresLabel,
         },
+        ratings_data: [],
         created_at: new Date().toISOString(),
       });
       if (insertError) throw insertError;
@@ -1261,7 +1262,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
                     <Eye className="h-3.5 w-3.5" /> Voir
                   </button>
                   <button
-                    onClick={() => handlePrint(r.resultats?.rapport_text ?? '', r.titre ?? '')}
+                    onClick={() => handlePrint(r.stats?.rapport_text ?? '', r.titre ?? '')}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <Printer className="h-3.5 w-3.5" /> Imprimer
@@ -1444,7 +1445,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handlePrint(viewSaved.resultats?.rapport_text ?? '', viewSaved.titre ?? '')}
+                  onClick={() => handlePrint(viewSaved.stats?.rapport_text ?? '', viewSaved.titre ?? '')}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
                 >
                   <Printer className="h-4 w-4" /> Imprimer
@@ -1456,7 +1457,7 @@ function RapportIAView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
             </div>
             <div
               className="overflow-y-auto px-6 py-5 prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(viewSaved.resultats?.rapport_text ?? '') }}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(viewSaved.stats?.rapport_text ?? '') }}
             />
           </div>
         </div>

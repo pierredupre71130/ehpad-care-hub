@@ -97,11 +97,12 @@ export interface RapportIARecord {
   id: string;
   titre?: string;
   statut_etudiant?: string;
-  stats?: { total: number; moyenne: number };
-  resultats?: {
-    type: 'rapport_ia';
-    rapport_text: string;
-    filtres_label: string;
+  stats?: {
+    total: number;
+    moyenne: number;
+    type?: string;
+    rapport_text?: string;
+    filtres_label?: string;
   };
   created_at: string;
 }
