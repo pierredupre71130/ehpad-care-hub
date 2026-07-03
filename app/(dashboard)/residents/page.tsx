@@ -12,6 +12,7 @@ import {
   Search, Pencil, Save, X, Lock, Unlock,
   Loader2, UserPlus, Users, AlertTriangle,
   Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home, Eye,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
@@ -1417,6 +1418,173 @@ function DoctorsCard({
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// ROOM SWAP DIALOG
+// ─────────────────────────────────────────────────────────────
+
+function RoomSwapDialog({
+  open, onOpenChange, residents, onChangeRoom, onSwapRooms, isPending,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  residents: Resident[];
+  onChangeRoom: (residentId: string, oldRoom: string, newRoom: string) => void;
+  onSwapRooms: (resA: Resident, resB: Resident) => void;
+  isPending: boolean;
+}) {
+  const [tab, setTab] = useState<'swap' | 'change'>('swap');
+  const [changeResId, setChangeResId] = useState('');
+  const [changeNewRoom, setChangeNewRoom] = useState('');
+  const [swapResAId, setSwapResAId] = useState('');
+  const [swapResBId, setSwapResBId] = useState('');
+
+  const active = residents.filter(r => !r.archived && r.room?.trim());
+  const resA = active.find(r => r.id === swapResAId);
+  const resB = active.find(r => r.id === swapResBId);
+  const changeRes = active.find(r => r.id === changeResId);
+
+  const residentLabel = (r: Resident) =>
+    `Ch. ${r.room} — ${r.title ?? ''} ${r.last_name?.toUpperCase() ?? ''} ${r.first_name ?? ''}`.trim();
+
+  return (
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <ArrowLeftRight className="h-4 w-4 text-blue-600" />
+            Chambres — Changer / Permuter
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Tabs */}
+        <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 mt-1">
+          {(['swap', 'change'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={cn(
+                'flex-1 text-sm py-1.5 rounded-md font-medium transition-all',
+                tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+              )}
+            >
+              {t === 'swap' ? 'Permuter deux résidents' : 'Changer de chambre'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'swap' && (
+          <div className="space-y-3 pt-1">
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Résident A</Label>
+              <Select value={swapResAId} onValueChange={setSwapResAId}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Sélectionner…" /></SelectTrigger>
+                <SelectContent>
+                  {active.filter(r => r.id !== swapResBId).map(r => (
+                    <SelectItem key={r.id} value={r.id}>{residentLabel(r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-center py-0.5">
+              <div className="flex items-center gap-2 text-slate-400">
+                <div className="h-px w-12 bg-slate-200" />
+                <ArrowLeftRight className="h-4 w-4" />
+                <div className="h-px w-12 bg-slate-200" />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Résident B</Label>
+              <Select value={swapResBId} onValueChange={setSwapResBId}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Sélectionner…" /></SelectTrigger>
+                <SelectContent>
+                  {active.filter(r => r.id !== swapResAId).map(r => (
+                    <SelectItem key={r.id} value={r.id}>{residentLabel(r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {resA && resB && (
+              <div className="bg-blue-50 ring-1 ring-blue-100 rounded-xl p-3 text-sm text-center text-blue-700 space-y-1">
+                <p className="font-semibold">Ch. {resA.room} ↔ Ch. {resB.room}</p>
+                <p className="text-xs text-blue-500">
+                  {resA.last_name} → ch. {resB.room} · {resB.last_name} → ch. {resA.room}
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={() => resA && resB && onSwapRooms(resA, resB)}
+              disabled={!resA || !resB || resA.id === resB.id || isPending}
+              className="w-full"
+            >
+              {isPending
+                ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                : <ArrowLeftRight className="h-4 w-4 mr-2" />}
+              Permuter les chambres
+            </Button>
+          </div>
+        )}
+
+        {tab === 'change' && (
+          <div className="space-y-3 pt-1">
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Résident à déplacer</Label>
+              <Select value={changeResId} onValueChange={v => { setChangeResId(v); setChangeNewRoom(''); }}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Sélectionner…" /></SelectTrigger>
+                <SelectContent>
+                  {active.map(r => (
+                    <SelectItem key={r.id} value={r.id}>{residentLabel(r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {changeRes && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+                <Home className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                Chambre actuelle : <strong className="text-slate-700">Ch. {changeRes.room}</strong>
+              </div>
+            )}
+
+            <div>
+              <Label className="text-xs text-slate-500 mb-1 block">Nouvelle chambre</Label>
+              <Input
+                placeholder="Ex : 15, 101, 12.G…"
+                value={changeNewRoom}
+                onChange={e => setChangeNewRoom(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+
+            {changeRes && changeNewRoom.trim() && changeNewRoom.trim() !== changeRes.room && (
+              <div className="bg-blue-50 ring-1 ring-blue-100 rounded-xl p-3 text-sm text-center text-blue-700">
+                <p className="font-semibold">Ch. {changeRes.room} → Ch. {changeNewRoom.trim()}</p>
+                <p className="text-xs text-blue-500 mt-0.5">
+                  {changeRes.title} {changeRes.last_name} {changeRes.first_name}
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={() => changeRes && changeNewRoom.trim() && onChangeRoom(changeRes.id, changeRes.room, changeNewRoom.trim())}
+              disabled={!changeRes || !changeNewRoom.trim() || changeNewRoom.trim() === changeRes?.room || isPending}
+              className="w-full"
+            >
+              {isPending
+                ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                : <Home className="h-4 w-4 mr-2" />}
+              Confirmer le changement
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DoctorsEditDialog({
   open, onOpenChange, doctors, onSave,
 }: { open: boolean; onOpenChange: (v: boolean) => void; doctors: DoctorConfig[]; onSave: (d: DoctorConfig[]) => void }) {
@@ -1532,6 +1700,7 @@ export default function ResidentsPage() {
   const [roomUnlocked, setRoomUnlocked] = useState(false);
 
   const [showAdminDlg, setShowAdminDlg] = useState(false);
+  const [showRoomModal, setShowRoomModal] = useState(false);
 
   const { data: doctors = DEFAULT_DOCTORS, refetch: refetchDoctors } = useQuery({
     queryKey: ['settings', 'doctors'],
@@ -1652,6 +1821,47 @@ export default function ResidentsPage() {
       queryClient.invalidateQueries({ queryKey: ['residents'] });
       queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
       toast.success('Résident supprimé définitivement');
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Mutation changement de chambre ── */
+  const changeRoomMutation = useMutation({
+    mutationFn: async ({ residentId, oldRoom, newRoom }: { residentId: string; oldRoom: string; newRoom: string }) => {
+      const sb = createClient();
+      const newFloor = inferFloor(newRoom);
+      const { error } = await sb.from('residents').update({ room: newRoom, floor: newFloor }).eq('id', residentId);
+      if (error) throw new Error(error.message);
+      if (oldRoom) {
+        await sb.from('prise_en_charge').update({ chambre: newRoom }).eq('chambre', oldRoom);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      toast.success('Chambre modifiée ✓');
+      setShowRoomModal(false);
+    },
+    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
+  });
+
+  /* ── Mutation permutation de chambres ── */
+  const swapRoomsMutation = useMutation({
+    mutationFn: async ({ resA, resB }: { resA: Resident; resB: Resident }) => {
+      const sb = createClient();
+      const temp = `__SWAP_${Date.now()}__`;
+      await sb.from('residents').update({ room: temp }).eq('id', resA.id);
+      await sb.from('residents').update({ room: resA.room, floor: inferFloor(resA.room) }).eq('id', resB.id);
+      await sb.from('residents').update({ room: resB.room, floor: inferFloor(resB.room) }).eq('id', resA.id);
+      if (resA.room && resB.room) {
+        await sb.from('prise_en_charge').update({ chambre: temp }).eq('chambre', resA.room);
+        await sb.from('prise_en_charge').update({ chambre: resA.room }).eq('chambre', resB.room);
+        await sb.from('prise_en_charge').update({ chambre: resB.room }).eq('chambre', temp);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      toast.success('Chambres permutées ✓');
+      setShowRoomModal(false);
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -1815,15 +2025,26 @@ export default function ResidentsPage() {
               </div>
             </div>
             {isAdmin && (
-              <button
-                onClick={startCreate}
-                disabled={editingId !== null || readOnly}
-                className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
-              >
-                <UserPlus className="h-4 w-4" />
-                <span className="hidden sm:inline">Nouveau résident</span>
-                <span className="sm:hidden">+</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowRoomModal(true)}
+                  disabled={editingId !== null}
+                  className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-xl px-3 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
+                  title="Changer / Permuter des chambres"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                  <span className="hidden sm:inline">Chambres</span>
+                </button>
+                <button
+                  onClick={startCreate}
+                  disabled={editingId !== null || readOnly}
+                  className="flex items-center gap-1.5 bg-white text-slate-800 hover:bg-white/90 rounded-xl px-4 py-2 text-sm font-semibold shadow-md transition-colors disabled:opacity-50"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Nouveau résident</span>
+                  <span className="sm:hidden">+</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -2079,6 +2300,20 @@ export default function ResidentsPage() {
         open={showAdminDlg}
         onOpenChange={setShowAdminDlg}
         onUnlock={() => setRoomUnlocked(true)}
+      />
+
+      {/* Dialog changement / permutation de chambre */}
+      <RoomSwapDialog
+        open={showRoomModal}
+        onOpenChange={setShowRoomModal}
+        residents={residents}
+        isPending={changeRoomMutation.isPending || swapRoomsMutation.isPending}
+        onChangeRoom={(residentId, oldRoom, newRoom) =>
+          changeRoomMutation.mutate({ residentId, oldRoom, newRoom })
+        }
+        onSwapRooms={(resA, resB) =>
+          swapRoomsMutation.mutate({ resA, resB })
+        }
       />
 
       {/* ── Modale suppression résident archivé ── */}
