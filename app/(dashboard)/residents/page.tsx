@@ -1438,7 +1438,8 @@ function RoomSwapDialog({
   const [swapResAId, setSwapResAId] = useState('');
   const [swapResBId, setSwapResBId] = useState('');
 
-  const active = residents.filter(r => !r.archived && r.room?.trim());
+  const active = residents.filter(r => !r.archived && r.room?.trim() && r.last_name?.trim());
+  const emptyRooms = residents.filter(r => !r.archived && r.room?.trim() && !r.last_name?.trim());
   const resA = active.find(r => r.id === swapResAId);
   const resB = active.find(r => r.id === swapResBId);
   const changeRes = active.find(r => r.id === changeResId);
@@ -1550,13 +1551,29 @@ function RoomSwapDialog({
             )}
 
             <div>
-              <Label className="text-xs text-slate-500 mb-1 block">Nouvelle chambre</Label>
-              <Input
-                placeholder="Ex : 15, 101, 12.G…"
-                value={changeNewRoom}
-                onChange={e => setChangeNewRoom(e.target.value)}
-                className="text-sm"
-              />
+              <Label className="text-xs text-slate-500 mb-1 block">
+                Chambre de destination
+                {emptyRooms.length === 0 && <span className="ml-1 text-amber-500">(aucune chambre libre)</span>}
+              </Label>
+              {emptyRooms.length > 0 ? (
+                <Select value={changeNewRoom} onValueChange={setChangeNewRoom}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="Sélectionner une chambre libre…" /></SelectTrigger>
+                  <SelectContent>
+                    {emptyRooms.map(r => (
+                      <SelectItem key={r.id} value={r.room}>
+                        Ch. {r.room} — libre ({r.floor})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="Ex : 15, 101…"
+                  value={changeNewRoom}
+                  onChange={e => setChangeNewRoom(e.target.value)}
+                  className="text-sm"
+                />
+              )}
             </div>
 
             {changeRes && changeNewRoom.trim() && changeNewRoom.trim() !== changeRes.room && (
