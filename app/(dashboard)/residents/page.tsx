@@ -1842,15 +1842,48 @@ export default function ResidentsPage() {
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
 
-  /* ── Mutation changement de chambre ── */
+  /* ── Helper permutation bas-niveau (room + floor + sort_order + section + prise_en_charge) ── */
+  async function swapTwoResidents(sb: ReturnType<typeof createClient>, rA: Resident, rB: Resident) {
+    const temp = `__SWAP_${Date.now()}__`;
+    // Étape 1 : mettre A en chambre temporaire pour éviter tout conflit
+    await sb.from('residents').update({ room: temp }).eq('id', rA.id);
+    // Étape 2 : B prend les attributs positionnels de A
+    await sb.from('residents').update({
+      room: rA.room, floor: rA.floor, sort_order: rA.sort_order, section: rA.section,
+    }).eq('id', rB.id);
+    // Étape 3 : A prend les attributs positionnels de B
+    await sb.from('residents').update({
+      room: rB.room, floor: rB.floor, sort_order: rB.sort_order, section: rB.section,
+    }).eq('id', rA.id);
+    // Étape 4 : permuter prise_en_charge (keyed par chambre)
+    if (rA.room && rB.room) {
+      await sb.from('prise_en_charge').update({ chambre: temp }).eq('chambre', rA.room);
+      await sb.from('prise_en_charge').update({ chambre: rA.room }).eq('chambre', rB.room);
+      await sb.from('prise_en_charge').update({ chambre: rB.room }).eq('chambre', temp);
+    }
+  }
+
+  /* ── Mutation changement de chambre (vers une chambre vide = permutation avec le placeholder) ── */
   const changeRoomMutation = useMutation({
     mutationFn: async ({ residentId, oldRoom, newRoom }: { residentId: string; oldRoom: string; newRoom: string }) => {
       const sb = createClient();
-      const newFloor = inferFloor(newRoom);
-      const { error } = await sb.from('residents').update({ room: newRoom, floor: newFloor }).eq('id', residentId);
-      if (error) throw new Error(error.message);
-      if (oldRoom) {
-        await sb.from('prise_en_charge').update({ chambre: newRoom }).eq('chambre', oldRoom);
+      // Le résident à déplacer
+      const resX = residents.find(r => r.id === residentId);
+      if (!resX) throw new Error('Résident introuvable');
+      // Placeholder vide à la chambre destination (si existant)
+      const placeholder = residents.find(r => !r.archived && r.room === newRoom && !r.last_name?.trim());
+      if (placeholder) {
+        // On fait une vraie permutation : le placeholder récupère l'ancienne chambre
+        await swapTwoResidents(sb, resX, placeholder);
+      } else {
+        // Chambre cible inexistante dans la DB → simple mise à jour
+        const { error } = await sb.from('residents')
+          .update({ room: newRoom, floor: inferFloor(newRoom) })
+          .eq('id', residentId);
+        if (error) throw new Error(error.message);
+        if (oldRoom) {
+          await sb.from('prise_en_charge').update({ chambre: newRoom }).eq('chambre', oldRoom);
+        }
       }
     },
     onSuccess: () => {
@@ -1865,15 +1898,7 @@ export default function ResidentsPage() {
   const swapRoomsMutation = useMutation({
     mutationFn: async ({ resA, resB }: { resA: Resident; resB: Resident }) => {
       const sb = createClient();
-      const temp = `__SWAP_${Date.now()}__`;
-      await sb.from('residents').update({ room: temp }).eq('id', resA.id);
-      await sb.from('residents').update({ room: resA.room, floor: inferFloor(resA.room) }).eq('id', resB.id);
-      await sb.from('residents').update({ room: resB.room, floor: inferFloor(resB.room) }).eq('id', resA.id);
-      if (resA.room && resB.room) {
-        await sb.from('prise_en_charge').update({ chambre: temp }).eq('chambre', resA.room);
-        await sb.from('prise_en_charge').update({ chambre: resA.room }).eq('chambre', resB.room);
-        await sb.from('prise_en_charge').update({ chambre: resB.room }).eq('chambre', temp);
-      }
+      await swapTwoResidents(sb, resA, resB);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['residents'] });
