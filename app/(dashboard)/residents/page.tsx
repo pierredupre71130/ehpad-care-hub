@@ -724,6 +724,27 @@ function EditForm({
               </p>
             </div>
 
+            {/* Section — protégée comme la chambre */}
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-600">Section</Label>
+              <Select
+                value={form.section ?? 'Mapad'}
+                onValueChange={v => patch({ section: v })}
+                disabled={!roomUnlocked}
+              >
+                <SelectTrigger className={cn('h-9 text-sm', !roomUnlocked && 'bg-slate-100 cursor-not-allowed text-slate-400')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mapad">MAPAD</SelectItem>
+                  <SelectItem value="Long Séjour">Long Séjour</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-slate-400 leading-tight">
+                {roomUnlocked ? 'Partie sur la feuille de consignes' : '🔒 Déverrouiller la chambre'}
+              </p>
+            </div>
+
             {/* Titre */}
             <div className="space-y-1">
               <Label className="text-xs font-semibold text-slate-600">Titre</Label>
