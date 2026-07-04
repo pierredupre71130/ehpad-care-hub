@@ -1484,8 +1484,12 @@ function RoomSwapDialog({
     }
   }
 
-  const active = residents.filter(r => !r.archived && r.room?.trim() && r.last_name?.trim());
-  const emptyRooms = residents.filter(r => !r.archived && r.room?.trim() && !r.last_name?.trim());
+  const active = residents
+    .filter(r => !r.archived && r.room?.trim() && r.last_name?.trim())
+    .sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? '', 'fr'));
+  const emptyRooms = residents
+    .filter(r => !r.archived && r.room?.trim() && !r.last_name?.trim())
+    .sort((a, b) => (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true }));
   const resA = active.find(r => r.id === swapResAId);
   const resB = active.find(r => r.id === swapResBId);
   const changeRes = active.find(r => r.id === changeResId);
@@ -2135,8 +2139,8 @@ export default function ResidentsPage() {
                 <p className="text-sm text-white/60 mt-0.5">Résidence La Fourrier</p>
               </div>
             </div>
-            {isAdmin && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              {!readOnly && (
                 <button
                   onClick={() => setShowRoomModal(true)}
                   disabled={editingId !== null}
@@ -2146,6 +2150,8 @@ export default function ResidentsPage() {
                   <ArrowLeftRight className="h-4 w-4" />
                   <span className="hidden sm:inline">Chambres</span>
                 </button>
+              )}
+              {isAdmin && (
                 <button
                   onClick={startCreate}
                   disabled={editingId !== null || readOnly}
@@ -2155,8 +2161,8 @@ export default function ResidentsPage() {
                   <span className="hidden sm:inline">Nouveau résident</span>
                   <span className="sm:hidden">+</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </header>
