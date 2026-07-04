@@ -29,7 +29,7 @@ Rédige un rapport complet structuré avec exactement ces sections (utilise des 
 (3-4 phrases résumant les points clés à retenir)
 
 ## Analyse quantitative
-(Commentaire sur le volume de chutes, la gravité, le taux de récidive, la couverture pharmaceutique)
+(Commentaire sur le volume de chutes, la gravité et le taux de récidive)
 
 ## Facteurs de risque identifiés
 ### Facteurs intrinsèques
