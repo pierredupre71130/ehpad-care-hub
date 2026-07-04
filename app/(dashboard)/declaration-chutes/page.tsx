@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   TriangleAlert, ChevronRight, Eye, X, Printer, Pencil, Trash2,
   Pill, CheckCircle2, Clock, Filter, Search, ChevronDown, ChevronUp,
-  AlertCircle, TrendingUp, Users, Calendar,
+  AlertCircle, TrendingUp, Users, Calendar, Sparkles, Loader2, FileText,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -885,6 +885,14 @@ export default function DeclarationChutesPage() {
   const [dateTo, setDateTo]         = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Stats — filtre par période indépendant de l'historique
+  const [statsFrom, setStatsFrom]   = useState('');
+  const [statsTo, setStatsTo]       = useState('');
+  // Analyse IA
+  const [iaRapport, setIaRapport]   = useState('');
+  const [iaLoading, setIaLoading]   = useState(false);
+  const [iaError, setIaError]       = useState('');
+
   // Modals
   const [viewFall, setViewFall]     = useState<ChuteRecord | null>(null);
   const [editFall, setEditFall]     = useState<ChuteRecord | null>(null);
@@ -959,6 +967,95 @@ export default function DeclarationChutesPage() {
       if (updated) setViewFall({ ...updated, ...data } as ChuteRecord);
     }
     setPharmaFall(null);
+  };
+
+  // Falls filtrés pour l'onglet stats
+  const statsFalls = useMemo(() => falls.filter(f => {
+    if (statsFrom && f.date_chute < statsFrom) return false;
+    if (statsTo   && f.date_chute > statsTo)   return false;
+    return true;
+  }), [falls, statsFrom, statsTo]);
+
+  const renderMarkdown = (md: string) =>
+    md
+      .replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-slate-800 mt-6 mb-2 pb-1 border-b border-slate-200">$1</h2>')
+      .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-orange-700 mt-4 mb-1">$1</h3>')
+      .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-slate-700">$1</li>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^(?!<[hli])(.+)$/gm, '<p class="text-slate-700 mb-2">$1</p>')
+      .replace(/<\/li>\n<li/g, '</li><li')
+      .replace(/(<li[\s\S]*?<\/li>)/gm, '<ul class="space-y-1 mb-3">$1</ul>');
+
+  const handleGenerateIA = async () => {
+    if (statsFalls.length === 0) return;
+    setIaLoading(true);
+    setIaRapport('');
+    setIaError('');
+    try {
+      const now = new Date();
+      const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const thisYear  = String(now.getFullYear());
+      const total = statsFalls.length;
+
+      const byGravity = { critique: 0, grave: 0, moderee: 0, legere: 0 };
+      statsFalls.forEach(f => { byGravity[getGravity(f.consequences ?? [])]++; });
+
+      const patientFalls: Record<string, number> = {};
+      statsFalls.forEach(f => {
+        const key = `${f.patient_nom}|${f.patient_prenom ?? ''}`.toLowerCase();
+        patientFalls[key] = (patientFalls[key] ?? 0) + 1;
+      });
+      const uniquePatients = Object.keys(patientFalls).length;
+      const recidivists = Object.values(patientFalls).filter(n => n > 1).length;
+
+      const lieuCount: Record<string, number> = {};
+      statsFalls.forEach(f => { const l = f.lieu === 'Autre' ? (f.lieu_autre || 'Autre') : (f.lieu ?? 'Non renseigné'); lieuCount[l] = (lieuCount[l] ?? 0) + 1; });
+      const topLieux = Object.entries(lieuCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+      const fiCount: Record<string, number> = {};
+      statsFalls.forEach(f => (f.facteurs_intrinseques ?? []).forEach(fi => { fiCount[fi] = (fiCount[fi] ?? 0) + 1; }));
+      const topFI = Object.entries(fiCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+      const feCount: Record<string, number> = {};
+      statsFalls.forEach(f => (f.facteurs_extrinseques ?? []).forEach(fe => { feCount[fe] = (feCount[fe] ?? 0) + 1; }));
+      const topFE = Object.entries(feCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+      const pharmaCompleted = statsFalls.filter(f => f.pharma_complete).length;
+
+      const statsText = [
+        `- Total chutes : ${total}`,
+        `- Ce mois (${thisMonth}) : ${statsFalls.filter(f => f.date_chute?.startsWith(thisMonth)).length}`,
+        `- Cette année (${thisYear}) : ${statsFalls.filter(f => f.date_chute?.startsWith(thisYear)).length}`,
+        `- Gravité : Critique ${byGravity.critique}, Grave ${byGravity.grave}, Modérée ${byGravity.moderee}, Légère ${byGravity.legere}`,
+        `- Patients distincts : ${uniquePatients}, dont récidivistes : ${recidivists}`,
+        `- Taux récidive : ${uniquePatients > 0 ? Math.round((recidivists / uniquePatients) * 100) : 0}%`,
+        `- Analyses pharmaceutiques réalisées : ${pharmaCompleted}/${total} (${total > 0 ? Math.round((pharmaCompleted / total) * 100) : 0}%)`,
+        `\nLieux fréquents :`,
+        ...topLieux.map(([l, n]) => `  - ${l} : ${n} chutes`),
+        `\nFacteurs intrinsèques principaux :`,
+        ...topFI.map(([f, n]) => `  - ${f} : ${n} fois`),
+        `\nFacteurs extrinsèques principaux :`,
+        ...topFE.map(([f, n]) => `  - ${f} : ${n} fois`),
+      ].join('\n');
+
+      const periode = statsFrom || statsTo
+        ? `${statsFrom ? `Du ${statsFrom}` : 'Depuis le début'} ${statsTo ? `au ${statsTo}` : "jusqu'à aujourd'hui"} · ${total} chute${total > 1 ? 's' : ''}`
+        : `Toutes périodes · ${total} chute${total > 1 ? 's' : ''}`;
+
+      const res = await fetch('/api/rapport-chutes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stats: statsText, periode }),
+      });
+      const data = await res.json();
+      if (data.error) setIaError(data.error);
+      else setIaRapport(data.rapport ?? '');
+    } catch (e) {
+      setIaError(String(e));
+    } finally {
+      setIaLoading(false);
+    }
   };
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -1152,7 +1249,90 @@ export default function DeclarationChutesPage() {
         {tab === 'stats' && (
           isLoading
             ? <div className="py-12 text-center text-slate-400">Chargement…</div>
-            : <StatsView falls={falls} />
+            : (
+              <div className="space-y-5">
+                {/* Filtre par période */}
+                <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+                  <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                  <span className="text-sm font-semibold text-slate-600">Période</span>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Du</label>
+                    <input type="date" value={statsFrom} onChange={e => { setStatsFrom(e.target.value); setIaRapport(''); }}
+                      className="px-2 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-orange-400" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-500">Au</label>
+                    <input type="date" value={statsTo} onChange={e => { setStatsTo(e.target.value); setIaRapport(''); }}
+                      className="px-2 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-orange-400" />
+                  </div>
+                  {(statsFrom || statsTo) && (
+                    <button onClick={() => { setStatsFrom(''); setStatsTo(''); setIaRapport(''); }}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline">
+                      Toutes périodes
+                    </button>
+                  )}
+                  <span className="text-xs text-slate-400 ml-auto">
+                    {statsFalls.length} chute{statsFalls.length > 1 ? 's' : ''}{statsFalls.length !== falls.length ? ` / ${falls.length} au total` : ''}
+                  </span>
+                </div>
+
+                {/* Bouton Analyse IA */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleGenerateIA}
+                    disabled={iaLoading || statsFalls.length === 0}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white rounded-xl text-sm font-semibold shadow-md transition-all disabled:opacity-50"
+                  >
+                    {iaLoading
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Sparkles className="h-4 w-4" />}
+                    {iaLoading ? 'Analyse en cours…' : 'Analyse IA ✨'}
+                  </button>
+                  {iaRapport && !iaLoading && (
+                    <button
+                      onClick={() => setIaRapport('')}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Masquer le rapport
+                    </button>
+                  )}
+                </div>
+
+                {/* Rapport IA */}
+                {iaError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                    {iaError}
+                  </div>
+                )}
+                {iaRapport && (
+                  <div className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="flex items-center justify-between px-5 py-3 bg-orange-50 border-b border-orange-100">
+                      <p className="text-sm font-bold text-orange-800 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" /> Rapport d&apos;analyse IA
+                        {(statsFrom || statsTo) && (
+                          <span className="text-xs font-normal text-orange-600">
+                            · {statsFrom || '…'} → {statsTo || 'aujourd\'hui'}
+                          </span>
+                        )}
+                      </p>
+                      <button
+                        onClick={() => window.print()}
+                        className="flex items-center gap-1.5 text-xs text-orange-700 hover:text-orange-900 border border-orange-200 rounded-lg px-2.5 py-1 hover:bg-orange-100 transition-colors"
+                      >
+                        <FileText className="h-3.5 w-3.5" /> Imprimer
+                      </button>
+                    </div>
+                    <div
+                      className="px-6 py-5 prose max-w-none"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(iaRapport) }}
+                    />
+                  </div>
+                )}
+
+                {/* Stats visuelles */}
+                <StatsView falls={statsFalls} />
+              </div>
+            )
         )}
       </div>
 
