@@ -536,8 +536,11 @@ function SectionTable({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const sortByRoom = (a: { room?: string | null }, b: { room?: string | null }) =>
+    (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
+
   const sorted = useMemo(
-    () => [...residents].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    () => [...residents].sort(sortByRoom),
     [residents]
   );
 
@@ -730,12 +733,15 @@ export default function ConsignesPage() {
     () => residents.filter(r => r.floor === activeFloor),
     [residents, activeFloor]
   );
+  const sortByRoomNum = (a: { room?: string | null }, b: { room?: string | null }) =>
+    (a.room ?? '').localeCompare(b.room ?? '', 'fr', { numeric: true });
+
   const mapadResidents = useMemo(
-    () => floorResidents.filter(r => r.section === 'Mapad').sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    () => floorResidents.filter(r => r.section === 'Mapad').sort(sortByRoomNum),
     [floorResidents]
   );
   const longSejourResidents = useMemo(
-    () => floorResidents.filter(r => r.section === 'Long Séjour').sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    () => floorResidents.filter(r => r.section === 'Long Séjour').sort(sortByRoomNum),
     [floorResidents]
   );
   const longSejourOffset = mapadResidents.length;
