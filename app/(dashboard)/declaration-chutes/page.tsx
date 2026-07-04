@@ -12,6 +12,7 @@ import {
   LineChart, Line,
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  Cell,
 } from 'recharts';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -606,6 +607,130 @@ function hasTraumatisme(consequences: string[] = []) {
   return consequences.some(c => TRAUMATISME_KEYS.includes(c));
 }
 
+function RapportCharts({ falls, periode }: { falls: ChuteRecord[]; periode: string }) {
+  const total = falls.length;
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Données mensuelles
+  const allKeys = falls.map(f => f.date_chute?.slice(0, 7)).filter(Boolean) as string[];
+  const minKey = allKeys.length > 0 ? allKeys.reduce((a, b) => a < b ? a : b) : thisMonth;
+  const monthlyData: Array<{ label: string; total: number; traumatisme: number; legere: number }> = [];
+  let cur = new Date(minKey + '-01');
+  const end = new Date(thisMonth + '-01');
+  while (cur <= end) {
+    const key   = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`;
+    const label = cur.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+    const mFalls = falls.filter(f => f.date_chute?.startsWith(key));
+    monthlyData.push({
+      label,
+      total: mFalls.length,
+      traumatisme: mFalls.filter(f => hasTraumatisme(f.consequences ?? [])).length,
+      legere: mFalls.filter(f => !hasTraumatisme(f.consequences ?? [])).length,
+    });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+
+  // Gravité
+  const byGravity = { Critique: 0, Grave: 0, Modérée: 0, Légère: 0 };
+  falls.forEach(f => {
+    const g = getGravity(f.consequences ?? []);
+    if (g === 'critique') byGravity['Critique']++;
+    else if (g === 'grave') byGravity['Grave']++;
+    else if (g === 'moderee') byGravity['Modérée']++;
+    else byGravity['Légère']++;
+  });
+  const gravityData = Object.entries(byGravity).map(([name, value]) => ({ name, value }));
+  const GRAVITY_COLORS: Record<string, string> = {
+    Critique: '#dc2626', Grave: '#ea580c', Modérée: '#d97706', Légère: '#16a34a',
+  };
+
+  // Top lieux
+  const lieuCount: Record<string, number> = {};
+  falls.forEach(f => { const l = f.lieu === 'Autre' ? (f.lieu_autre || 'Autre') : (f.lieu ?? 'Non renseigné'); lieuCount[l] = (lieuCount[l] ?? 0) + 1; });
+  const topLieux = Object.entries(lieuCount).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, value]) => ({ name, value }));
+
+  if (total === 0) return null;
+
+  return (
+    <div className="px-6 pt-4 pb-2 border-b border-orange-100 bg-orange-50/30 space-y-5 print:break-inside-avoid">
+      {/* Titre période */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Calendar className="h-4 w-4 text-orange-500 flex-shrink-0" />
+        <span className="text-sm font-bold text-slate-700">{periode}</span>
+        <span className="text-xs text-slate-400">— {total} chute{total > 1 ? 's' : ''} analysée{total > 1 ? 's' : ''}</span>
+      </div>
+
+      {/* KPI pills */}
+      <div className="flex flex-wrap gap-2">
+        {gravityData.filter(g => g.value > 0).map(g => (
+          <span key={g.name} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-700">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: GRAVITY_COLORS[g.name] }} />
+            {g.name} : {g.value}
+          </span>
+        ))}
+      </div>
+
+      {/* Graphiques côte à côte */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Évolution mensuelle */}
+        <div className="bg-white rounded-xl border border-slate-100 p-3">
+          <p className="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1">
+            <TrendingUp className="h-3.5 w-3.5 text-blue-500" /> Évolution mensuelle
+          </p>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={monthlyData} margin={{ top: 2, right: 8, left: -20, bottom: 0 }} barSize={monthlyData.length > 8 ? 6 : 14}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94a3b8' }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+              <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }} />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Bar dataKey="traumatisme" name="Avec traumatisme" fill="#ef4444" radius={[2, 2, 0, 0]} stackId="a" />
+              <Bar dataKey="legere" name="Sans traumatisme" fill="#22c55e" radius={[2, 2, 0, 0]} stackId="a" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Répartition par gravité */}
+        <div className="bg-white rounded-xl border border-slate-100 p-3">
+          <p className="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1">
+            <AlertCircle className="h-3.5 w-3.5 text-orange-500" /> Gravité des chutes
+          </p>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={gravityData} layout="vertical" margin={{ top: 2, right: 24, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} width={55} />
+              <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }} />
+              <Bar dataKey="value" name="Chutes" radius={[0, 3, 3, 0]}>
+                {gravityData.map(entry => (
+                  <Cell key={entry.name} fill={GRAVITY_COLORS[entry.name]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Top lieux */}
+      {topLieux.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-100 p-3">
+          <p className="text-xs font-bold text-slate-600 mb-2">📍 Lieux des chutes</p>
+          <ResponsiveContainer width="100%" height={Math.max(90, topLieux.length * 28)}>
+            <BarChart data={topLieux} layout="vertical" margin={{ top: 2, right: 32, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} width={100} />
+              <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }} />
+              <Bar dataKey="value" name="Chutes" fill="#3b82f6" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatBar({ label, value, max, color = 'bg-orange-500' }: { label: string; value: number; max: number; color?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
@@ -892,6 +1017,7 @@ export default function DeclarationChutesPage() {
   const [iaRapport, setIaRapport]   = useState('');
   const [iaLoading, setIaLoading]   = useState(false);
   const [iaError, setIaError]       = useState('');
+  const [iaPeriode, setIaPeriode]   = useState('');
 
   // Modals
   const [viewFall, setViewFall]     = useState<ChuteRecord | null>(null);
@@ -1042,6 +1168,7 @@ export default function DeclarationChutesPage() {
       const periode = statsFrom || statsTo
         ? `${statsFrom ? `Du ${statsFrom}` : 'Depuis le début'} ${statsTo ? `au ${statsTo}` : "jusqu'à aujourd'hui"} · ${total} chute${total > 1 ? 's' : ''}`
         : `Toutes périodes · ${total} chute${total > 1 ? 's' : ''}`;
+      setIaPeriode(periode);
 
       const res = await fetch('/api/rapport-chutes', {
         method: 'POST',
@@ -1306,14 +1433,10 @@ export default function DeclarationChutesPage() {
                 )}
                 {iaRapport && (
                   <div className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+                    {/* En-tête */}
                     <div className="flex items-center justify-between px-5 py-3 bg-orange-50 border-b border-orange-100">
                       <p className="text-sm font-bold text-orange-800 flex items-center gap-2">
                         <Sparkles className="h-4 w-4" /> Rapport d&apos;analyse IA
-                        {(statsFrom || statsTo) && (
-                          <span className="text-xs font-normal text-orange-600">
-                            · {statsFrom || '…'} → {statsTo || 'aujourd\'hui'}
-                          </span>
-                        )}
                       </p>
                       <button
                         onClick={() => window.print()}
@@ -1322,6 +1445,9 @@ export default function DeclarationChutesPage() {
                         <FileText className="h-3.5 w-3.5" /> Imprimer
                       </button>
                     </div>
+                    {/* Graphiques avec titre période */}
+                    <RapportCharts falls={statsFalls} periode={iaPeriode} />
+                    {/* Texte narratif */}
                     <div
                       className="px-6 py-5 prose max-w-none"
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(iaRapport) }}
