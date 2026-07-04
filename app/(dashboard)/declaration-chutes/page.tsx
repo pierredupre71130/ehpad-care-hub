@@ -1147,8 +1147,6 @@ export default function DeclarationChutesPage() {
       statsFalls.forEach(f => (f.facteurs_extrinseques ?? []).forEach(fe => { feCount[fe] = (feCount[fe] ?? 0) + 1; }));
       const topFE = Object.entries(feCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-      const pharmaCompleted = statsFalls.filter(f => f.pharma_complete).length;
-
       const statsText = [
         `- Total chutes : ${total}`,
         `- Ce mois (${thisMonth}) : ${statsFalls.filter(f => f.date_chute?.startsWith(thisMonth)).length}`,
@@ -1156,7 +1154,6 @@ export default function DeclarationChutesPage() {
         `- Gravité : Critique ${byGravity.critique}, Grave ${byGravity.grave}, Modérée ${byGravity.moderee}, Légère ${byGravity.legere}`,
         `- Patients distincts : ${uniquePatients}, dont récidivistes : ${recidivists}`,
         `- Taux récidive : ${uniquePatients > 0 ? Math.round((recidivists / uniquePatients) * 100) : 0}%`,
-        `- Analyses pharmaceutiques réalisées : ${pharmaCompleted}/${total} (${total > 0 ? Math.round((pharmaCompleted / total) * 100) : 0}%)`,
         `\nLieux fréquents :`,
         ...topLieux.map(([l, n]) => `  - ${l} : ${n} chutes`),
         `\nFacteurs intrinsèques principaux :`,
