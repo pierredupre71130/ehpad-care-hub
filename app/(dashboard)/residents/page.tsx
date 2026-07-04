@@ -1781,6 +1781,9 @@ export default function ResidentsPage() {
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [editForm, setEditForm]         = useState<Partial<Resident>>({});
   const [roomUnlocked, setRoomUnlocked] = useState(false);
+  const [showRoomPwdDlg, setShowRoomPwdDlg] = useState(false);
+  const [roomPwd, setRoomPwd]           = useState('');
+  const [roomPwdError, setRoomPwdError] = useState(false);
 
   const [showAdminDlg, setShowAdminDlg] = useState(false);
   const [showRoomModal, setShowRoomModal] = useState(false);
@@ -2299,7 +2302,7 @@ export default function ResidentsPage() {
                       <EditForm
                         form={editForm}   patch={patch}
                         roomUnlocked={roomUnlocked}
-                        onUnlockRoom={() => setShowAdminDlg(true)}
+                        onUnlockRoom={() => { setRoomPwd(''); setRoomPwdError(false); setShowRoomPwdDlg(true); }}
                         onSave={handleSave} onCancel={cancelEdit}
                         saving={isSaving}   isNew={false}
                         onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie }, {
@@ -2403,7 +2406,46 @@ export default function ResidentsPage() {
         )}
       </main>
 
-      {/* Dialog déverrouillage numéro de chambre */}
+      {/* Dialog mot de passe — déverrouillage chambre / section */}
+      <Dialog open={showRoomPwdDlg} onOpenChange={v => { setShowRoomPwdDlg(v); setRoomPwdError(false); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Lock className="h-4 w-4 text-slate-500" /> Déverrouiller chambre &amp; section
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-500">Saisissez le mot de passe administrateur pour modifier le numéro de chambre et la section.</p>
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              if (roomPwd === 'mapad2022') {
+                setRoomUnlocked(true);
+                setShowRoomPwdDlg(false);
+                setRoomPwdError(false);
+              } else {
+                setRoomPwdError(true);
+              }
+            }}
+            className="space-y-3 pt-1"
+          >
+            <Input
+              type="password"
+              placeholder="Mot de passe"
+              value={roomPwd}
+              onChange={e => { setRoomPwd(e.target.value); setRoomPwdError(false); }}
+              autoFocus
+              className={roomPwdError ? 'border-red-400 focus-visible:ring-red-300' : ''}
+            />
+            {roomPwdError && <p className="text-xs text-red-600">Mot de passe incorrect.</p>}
+            <div className="flex gap-2">
+              <Button type="submit" className="flex-1">Déverrouiller</Button>
+              <Button type="button" variant="outline" onClick={() => setShowRoomPwdDlg(false)}>Annuler</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog admin (navigation paramètres) */}
       <AdminUnlockDialog
         open={showAdminDlg}
         onOpenChange={setShowAdminDlg}
