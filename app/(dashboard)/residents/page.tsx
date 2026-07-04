@@ -1453,11 +1453,36 @@ function RoomSwapDialog({
   onSwapRooms: (resA: Resident, resB: Resident) => void;
   isPending: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<'swap' | 'change'>('swap');
   const [changeResId, setChangeResId] = useState('');
   const [changeNewRoom, setChangeNewRoom] = useState('');
   const [swapResAId, setSwapResAId] = useState('');
   const [swapResBId, setSwapResBId] = useState('');
+  const [resettingOrder, setResettingOrder] = useState(false);
+
+  async function resetSortOrder() {
+    setResettingOrder(true);
+    try {
+      const sb = createClient();
+      const sorted = [...residents]
+        .filter(r => !r.archived && r.room?.trim())
+        .sort((a, b) => {
+          const aNum = parseInt(a.room ?? '9999', 10);
+          const bNum = parseInt(b.room ?? '9999', 10);
+          return aNum - bNum;
+        });
+      for (let i = 0; i < sorted.length; i++) {
+        await sb.from('residents').update({ sort_order: i + 1 }).eq('id', sorted[i].id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['residents'] });
+      toast.success('Ordre recalculé ✓');
+    } catch {
+      toast.error('Erreur lors du recalcul');
+    } finally {
+      setResettingOrder(false);
+    }
+  }
 
   const active = residents.filter(r => !r.archived && r.room?.trim() && r.last_name?.trim());
   const emptyRooms = residents.filter(r => !r.archived && r.room?.trim() && !r.last_name?.trim());
@@ -1618,6 +1643,26 @@ function RoomSwapDialog({
             </Button>
           </div>
         )}
+
+        {/* Outil de correction de l'ordre d'affichage */}
+        <div className="border-t border-slate-100 pt-3 mt-1">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Outils</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetSortOrder}
+            disabled={resettingOrder || isPending}
+            className="w-full text-xs text-slate-600"
+          >
+            {resettingOrder
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              : null}
+            Recalculer l&apos;ordre par numéro de chambre
+          </Button>
+          <p className="text-[10px] text-slate-400 mt-1 text-center">
+            Remet l&apos;ordre d&apos;affichage dans les consignes selon les numéros de chambre croissants
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   );
