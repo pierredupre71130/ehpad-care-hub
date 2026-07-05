@@ -543,6 +543,51 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
   const [showCompare, setShowCompare]   = useState(false);
   const [saveTitle, setSaveTitle]       = useState('');
   const [saving, setSaving]             = useState(false);
+  const [viewAnalyse, setViewAnalyse]   = useState<AnalyseRecord | null>(null);
+
+  const handlePrintAnalyse = (a: AnalyseRecord) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const bars = (a.ratings_data ?? [])
+      .filter(r => r.avg > 0)
+      .map(r => {
+        const pct = Math.round((r.avg / 4) * 100);
+        return `<tr>
+          <td style="padding:5px 10px;font-size:12px;width:220px;white-space:nowrap">${r.label}</td>
+          <td style="padding:5px 10px">
+            <div style="background:#f1f5f9;border-radius:4px;height:14px;width:280px;overflow:hidden">
+              <div style="background:#7c3aed;height:14px;width:${pct}%;border-radius:4px"></div>
+            </div>
+          </td>
+          <td style="padding:5px 10px;font-size:12px;font-weight:700;color:#7c3aed">${r.avg.toFixed(2)}/4</td>
+        </tr>`;
+      }).join('');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${a.titre}</title>
+<style>body{font-family:Georgia,serif;padding:2cm;color:#1e293b;max-width:800px}h1{font-size:18px;margin-bottom:4px}table{border-collapse:collapse;width:100%;margin-top:16px}@media print{body{margin:0}}</style>
+</head><body>
+<h1>${a.titre}</h1>
+<p style="color:#64748b;font-size:12px;margin:0">${a.stats.total} questionnaire${a.stats.total !== 1 ? 's' : ''} · Moyenne globale : ${Number(a.stats.moyenne).toFixed(2)}/4${a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}</p>
+<h2 style="font-size:14px;color:#7c3aed;margin-top:20px">Scores par critère</h2>
+<table>${bars}</table>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  const handlePrintCompare = () => {
+    const el = document.getElementById('compare-chart-area');
+    if (!el) { window.print(); return; }
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comparaison analyses</title>
+<style>body{font-family:Georgia,serif;padding:2cm}svg{max-width:100%;height:auto}@media print{body{margin:0}}</style>
+</head><body><h1 style="font-size:18px;margin-bottom:12px">Comparaison des analyses</h1>
+${el.innerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
 
   const { data: savedAnalyses = [] } = useQuery({
     queryKey: ['analyse_questionnaire'],
@@ -712,18 +757,28 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
           <div className="space-y-2">
             {savedAnalyses.map(a => (
               <div key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div>
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewAnalyse(a)}>
                   <p className="text-sm font-semibold text-slate-800">{a.titre}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {a.stats.total} questionnaire{a.stats.total !== 1 ? 's' : ''} · moy. {Number(a.stats.moyenne).toFixed(2)}/4 · {fmtDate(a.created_at)}
                   </p>
                 </div>
-                {!readOnly && (
-                  <button onClick={() => deleteAnalyseMut.mutate(a.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
-                    <Trash2 className="h-4 w-4" />
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => setViewAnalyse(a)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Voir">
+                    <Eye className="h-4 w-4" />
                   </button>
-                )}
+                  <button onClick={() => handlePrintAnalyse(a)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Imprimer">
+                    <Printer className="h-4 w-4" />
+                  </button>
+                  {!readOnly && (
+                    <button onClick={() => deleteAnalyseMut.mutate(a.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Supprimer">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -731,7 +786,14 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
           {/* Graphique de comparaison */}
           {showCompare && compareData.length > 0 && (
             <div className="pt-3 border-t border-slate-100">
-              <p className="text-sm font-bold text-slate-700 mb-4">Comparaison — scores moyens par question</p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-bold text-slate-700">Comparaison — scores moyens par question</p>
+                <button onClick={handlePrintCompare}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors">
+                  <Printer className="h-3.5 w-3.5" /> Imprimer
+                </button>
+              </div>
+              <div id="compare-chart-area">
               <ResponsiveContainer width="100%" height={320}>
                 <LineChart data={compareData} margin={{ top: 5, right: 20, left: -10, bottom: 90 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -746,8 +808,60 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
                   ))}
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal : Voir une analyse sauvegardée ── */}
+      {viewAnalyse && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setViewAnalyse(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 flex-shrink-0">
+              <div>
+                <p className="font-bold text-slate-800">{viewAnalyse.titre}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {viewAnalyse.stats.total} questionnaire{viewAnalyse.stats.total !== 1 ? 's' : ''} · moy. {Number(viewAnalyse.stats.moyenne).toFixed(2)}/4
+                  {viewAnalyse.created_at ? ` · ${fmtDate(viewAnalyse.created_at)}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => handlePrintAnalyse(viewAnalyse)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors">
+                  <Printer className="h-3.5 w-3.5" /> Imprimer
+                </button>
+                <button onClick={() => setViewAnalyse(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              {(viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0).length > 0 ? (
+                <>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Scores moyens par critère (sur 4)</p>
+                  <ResponsiveContainer width="100%" height={Math.max(260, (viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0).length * 32)}>
+                    <BarChart
+                      data={(viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0)}
+                      layout="vertical"
+                      margin={{ top: 2, right: 48, left: 8, bottom: 2 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                      <XAxis type="number" domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                      <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} width={160} />
+                      <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }}
+                        formatter={(v: number) => [`${v.toFixed(2)}/4`, 'Moyenne']} />
+                      <Bar dataKey="avg" name="Moyenne" fill="#7c3aed" radius={[0, 4, 4, 0]}>
+                        <LabelList dataKey="avg" position="right" formatter={(v: number) => v.toFixed(2)} style={{ fontSize: 11, fill: '#7c3aed', fontWeight: 700 }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
+              ) : (
+                <p className="text-sm text-slate-400 text-center py-8">Aucune donnée de notation disponible.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -879,6 +993,14 @@ function GraphiquesView({ allRecords }: { allRecords: QuestionnaireRecord[] }) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Bouton imprimer */}
+      <div className="flex justify-end">
+        <button onClick={() => window.print()}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm">
+          <Printer className="h-3.5 w-3.5" /> Imprimer les graphiques
+        </button>
       </div>
 
       {/* KPIs */}
