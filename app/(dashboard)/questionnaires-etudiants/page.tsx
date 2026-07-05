@@ -545,30 +545,57 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
   const [saving, setSaving]             = useState(false);
   const [viewAnalyse, setViewAnalyse]   = useState<AnalyseRecord | null>(null);
 
+  const modalRecords = useMemo(
+    () => viewAnalyse ? allRecords.filter(r => (viewAnalyse.questionnaire_ids ?? []).includes(r.id)) : [],
+    [allRecords, viewAnalyse]
+  );
+  const modalQuestions = viewAnalyse?.statut_etudiant === 'eas' ? QUESTIONS_BASE : [...QUESTIONS_BASE, ...QUESTIONS_ESI];
+
   const handlePrintAnalyse = (a: AnalyseRecord) => {
     const w = window.open('', '_blank');
     if (!w) return;
-    const bars = (a.ratings_data ?? [])
-      .filter(r => r.avg > 0)
-      .map(r => {
-        const pct = Math.round((r.avg / 4) * 100);
-        return `<tr>
-          <td style="padding:5px 10px;font-size:12px;width:220px;white-space:nowrap">${r.label}</td>
-          <td style="padding:5px 10px">
-            <div style="background:#f1f5f9;border-radius:4px;height:14px;width:280px;overflow:hidden">
-              <div style="background:#7c3aed;height:14px;width:${pct}%;border-radius:4px"></div>
-            </div>
-          </td>
-          <td style="padding:5px 10px;font-size:12px;font-weight:700;color:#7c3aed">${r.avg.toFixed(2)}/4</td>
-        </tr>`;
+    const recs = allRecords.filter(r => (a.questionnaire_ids ?? []).includes(r.id));
+    const qs = a.statut_etudiant === 'eas' ? QUESTIONS_BASE : [...QUESTIONS_BASE, ...QUESTIONS_ESI];
+
+    const barsHtml = qs.map(q => {
+      const counts = [0, 0, 0, 0];
+      let total = 0;
+      recs.forEach(r => {
+        const v = parseInt((r as unknown as Record<string, string>)[q.key] ?? '', 10);
+        if (v >= 1 && v <= 4) { counts[v - 1]++; total++; }
+      });
+      const avg = total > 0 ? counts.reduce((s, c, i) => s + c * (i + 1), 0) / total : 0;
+      const segments = SCALE.map((s, i) => {
+        const pct = total > 0 ? (counts[i] / total) * 100 : 0;
+        return pct > 0
+          ? `<div style="width:${pct.toFixed(1)}%;background-color:${s.color};display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700">${pct > 8 ? counts[i] : ''}</div>`
+          : '';
       }).join('');
+      const legend = SCALE.map((s, i) =>
+        `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#64748b"><span style="width:10px;height:10px;border-radius:2px;background-color:${s.color};flex-shrink:0"></span>${s.short} (${counts[i]})</span>`
+      ).join('');
+      const esiDivider = q.key === 'objectifs_role_propre'
+        ? `<div style="font-size:10px;font-weight:600;color:#6d28d9;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #ede9fe;padding-top:12px;margin-bottom:8px">Questions spécifiques ESI</div>`
+        : '';
+      return `${esiDivider}<div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:#334155;font-weight:500">${q.label}</span>
+          <span style="font-size:12px;font-weight:700;color:#6d28d9">${avg > 0 ? avg.toFixed(2) : '—'}</span>
+        </div>
+        ${total > 0
+          ? `<div style="display:flex;height:20px;border-radius:9999px;overflow:hidden">${segments}</div>`
+          : `<div style="height:20px;background:#f1f5f9;border-radius:9999px"></div>`}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">${legend}</div>
+      </div>`;
+    }).join('');
+
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${a.titre}</title>
-<style>body{font-family:Georgia,serif;padding:2cm;color:#1e293b;max-width:800px}h1{font-size:18px;margin-bottom:4px}table{border-collapse:collapse;width:100%;margin-top:16px}@media print{body{margin:0}}</style>
+<style>body{font-family:system-ui,sans-serif;padding:2cm;max-width:800px;margin:0 auto;color:#1e293b}h1{font-size:18px;margin-bottom:4px}h2{font-size:13px;color:#6d28d9;margin:0 0 16px}@media print{body{padding:1cm}}</style>
 </head><body>
 <h1>${a.titre}</h1>
-<p style="color:#64748b;font-size:12px;margin:0">${a.stats.total} questionnaire${a.stats.total !== 1 ? 's' : ''} · Moyenne globale : ${Number(a.stats.moyenne).toFixed(2)}/4${a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}</p>
-<h2 style="font-size:14px;color:#7c3aed;margin-top:20px">Scores par critère</h2>
-<table>${bars}</table>
+<p style="color:#64748b;font-size:12px;margin:0 0 20px">${a.stats.total} questionnaire${a.stats.total !== 1 ? 's' : ''} · Moyenne globale : ${Number(a.stats.moyenne).toFixed(2)}/4${a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}</p>
+<h2>Distribution des réponses par question</h2>
+${barsHtml}
 </body></html>`);
     w.document.close();
     w.focus();
@@ -837,28 +864,21 @@ ${el.innerHTML}</body></html>`);
               </div>
             </div>
             <div className="p-5 overflow-y-auto flex-1">
-              {(viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0).length > 0 ? (
-                <>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Scores moyens par critère (sur 4)</p>
-                  <ResponsiveContainer width="100%" height={Math.max(260, (viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0).length * 32)}>
-                    <BarChart
-                      data={(viewAnalyse.ratings_data ?? []).filter(r => r.avg > 0)}
-                      layout="vertical"
-                      margin={{ top: 2, right: 48, left: 8, bottom: 2 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                      <XAxis type="number" domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                      <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} width={160} />
-                      <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }}
-                        formatter={(v: unknown) => [`${typeof v === 'number' ? v.toFixed(2) : String(v ?? '')}/4`, 'Moyenne']} />
-                      <Bar dataKey="avg" name="Moyenne" fill="#7c3aed" radius={[0, 4, 4, 0]}>
-                        <LabelList dataKey="avg" position="right" formatter={(v: unknown) => typeof v === 'number' ? v.toFixed(2) : ''} style={{ fontSize: 11, fill: '#7c3aed', fontWeight: 700 }} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </>
+              {modalRecords.length > 0 ? (
+                <div className="space-y-5">
+                  {modalQuestions.map(q => (
+                    <div key={q.key}>
+                      {q.key === 'objectifs_role_propre' && (
+                        <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-4 border-t border-violet-100 pt-3">
+                          Questions spécifiques ESI
+                        </p>
+                      )}
+                      <DistributionBar records={modalRecords} questionKey={q.key} label={q.label} />
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <p className="text-sm text-slate-400 text-center py-8">Aucune donnée de notation disponible.</p>
+                <p className="text-sm text-slate-400 text-center py-8">Aucune donnée de questionnaire disponible.</p>
               )}
             </div>
           </div>
