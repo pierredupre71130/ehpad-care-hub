@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/lib/auth-context';
 import { SessionGuard } from '@/components/auth/session-guard';
+import { AdminUnreadAlert } from '@/components/admin-unread-alert';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <SessionGuard>
           {children}
         </SessionGuard>
+        <AdminUnreadAlert />
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </QueryClientProvider>
