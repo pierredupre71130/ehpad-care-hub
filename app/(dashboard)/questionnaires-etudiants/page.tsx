@@ -62,7 +62,7 @@ async function fetchAnalyses(): Promise<AnalyseRecord[]> {
   const sb = createClient();
   const { data, error } = await sb.from(ANALYSE).select('*').order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as AnalyseRecord[];
+  return ((data ?? []) as AnalyseRecord[]).filter(r => (r.stats as Record<string, unknown>)?.type !== 'rapport_ia');
 }
 
 async function saveAnalyse(data: Omit<AnalyseRecord, 'id' | 'created_at'>): Promise<void> {
@@ -577,20 +577,20 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
       const esiDivider = q.key === 'objectifs_role_propre'
         ? `<div style="font-size:10px;font-weight:600;color:#6d28d9;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #ede9fe;padding-top:12px;margin-bottom:8px">Questions spécifiques ESI</div>`
         : '';
-      return `${esiDivider}<div style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;color:#334155;font-weight:500">${q.label}</span>
-          <span style="font-size:12px;font-weight:700;color:#6d28d9">${avg > 0 ? avg.toFixed(2) : '—'}</span>
+      return `${esiDivider}<div style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:11px;color:#334155;font-weight:500">${q.label}</span>
+          <span style="font-size:11px;font-weight:700;color:#6d28d9">${avg > 0 ? avg.toFixed(2) : '—'}</span>
         </div>
         ${total > 0
-          ? `<div style="display:flex;height:20px;border-radius:9999px;overflow:hidden">${segments}</div>`
-          : `<div style="height:20px;background:#f1f5f9;border-radius:9999px"></div>`}
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">${legend}</div>
+          ? `<div style="display:flex;height:16px;border-radius:9999px;overflow:hidden">${segments}</div>`
+          : `<div style="height:16px;background:#f1f5f9;border-radius:9999px"></div>`}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${legend}</div>
       </div>`;
     }).join('');
 
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${a.titre}</title>
-<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:system-ui,sans-serif;padding:2cm;max-width:800px;margin:0 auto;color:#1e293b}h1{font-size:18px;margin-bottom:4px}h2{font-size:13px;color:#6d28d9;margin:0 0 16px}@media print{body{padding:1cm}}</style>
+<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:system-ui,sans-serif;padding:0.8cm 1.2cm;max-width:800px;margin:0 auto;color:#1e293b}h1{font-size:14px;margin:0 0 2px}h2{font-size:11px;color:#6d28d9;margin:6px 0 8px}@media print{body{padding:0.5cm 1cm}}</style>
 </head><body>
 <h1>${a.titre}</h1>
 <p style="color:#64748b;font-size:12px;margin:0 0 20px">${a.stats.total} questionnaire${a.stats.total !== 1 ? 's' : ''} · Moyenne globale : ${Number(a.stats.moyenne).toFixed(2)}/4${a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}</p>
@@ -678,6 +678,85 @@ ${el.innerHTML}</body></html>`);
 
   return (
     <div className="space-y-5">
+
+      {/* Analyses sauvegardées — en haut */}
+      {savedAnalyses.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-violet-600" /> Analyses sauvegardées ({savedAnalyses.length})
+            </p>
+            {savedAnalyses.length >= 2 && (
+              <button onClick={() => setShowCompare(v => !v)}
+                className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors',
+                  showCompare ? 'bg-violet-600 border-violet-600 text-white' : 'border-violet-300 text-violet-700 hover:bg-violet-50',
+                )}>
+                <TrendingUp className="h-3.5 w-3.5" /> Comparer
+                {showCompare ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {savedAnalyses.map(a => (
+              <div key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewAnalyse(a)}>
+                  <p className="text-sm font-semibold text-slate-800">{a.titre}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {a.stats.total} questionnaire{a.stats.total !== 1 ? 's' : ''} · moy. {Number(a.stats.moyenne).toFixed(2)}/4 · {fmtDate(a.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => setViewAnalyse(a)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Voir">
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => handlePrintAnalyse(a)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Imprimer">
+                    <Printer className="h-4 w-4" />
+                  </button>
+                  {!readOnly && (
+                    <button onClick={() => deleteAnalyseMut.mutate(a.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Supprimer">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Graphique de comparaison */}
+          {showCompare && compareData.length > 0 && (
+            <div className="pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-bold text-slate-700">Comparaison — scores moyens par question</p>
+                <button onClick={handlePrintCompare}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors">
+                  <Printer className="h-3.5 w-3.5" /> Imprimer
+                </button>
+              </div>
+              <div id="compare-chart-area">
+              <ResponsiveContainer width="100%" height={320}>
+                <LineChart data={compareData} margin={{ top: 5, right: 20, left: -10, bottom: 90 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-35} textAnchor="end" interval={0} height={90} />
+                  <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }} labelStyle={{ fontWeight: 600 }} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {savedAnalyses.slice(0, 5).map((a, i) => (
+                    <Line key={a.id} type="monotone" dataKey={a.titre}
+                      stroke={COMPARE_COLORS[i % COMPARE_COLORS.length]} strokeWidth={2}
+                      dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filtres */}
       <div className="bg-white border border-slate-200 rounded-xl p-4">
         <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Filtrer les questionnaires à analyser</p>
@@ -761,84 +840,6 @@ ${el.innerHTML}</body></html>`);
             </div>
           )}
         </>
-      )}
-
-      {/* Analyses sauvegardées */}
-      {savedAnalyses.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-violet-600" /> Analyses sauvegardées ({savedAnalyses.length})
-            </p>
-            {savedAnalyses.length >= 2 && (
-              <button onClick={() => setShowCompare(v => !v)}
-                className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors',
-                  showCompare ? 'bg-violet-600 border-violet-600 text-white' : 'border-violet-300 text-violet-700 hover:bg-violet-50',
-                )}>
-                <TrendingUp className="h-3.5 w-3.5" /> Comparer
-                {showCompare ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            {savedAnalyses.map(a => (
-              <div key={a.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewAnalyse(a)}>
-                  <p className="text-sm font-semibold text-slate-800">{a.titre}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {a.stats.total} questionnaire{a.stats.total !== 1 ? 's' : ''} · moy. {Number(a.stats.moyenne).toFixed(2)}/4 · {fmtDate(a.created_at)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => setViewAnalyse(a)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Voir">
-                    <Eye className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => handlePrintAnalyse(a)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Imprimer">
-                    <Printer className="h-4 w-4" />
-                  </button>
-                  {!readOnly && (
-                    <button onClick={() => deleteAnalyseMut.mutate(a.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Supprimer">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Graphique de comparaison */}
-          {showCompare && compareData.length > 0 && (
-            <div className="pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-bold text-slate-700">Comparaison — scores moyens par question</p>
-                <button onClick={handlePrintCompare}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors">
-                  <Printer className="h-3.5 w-3.5" /> Imprimer
-                </button>
-              </div>
-              <div id="compare-chart-area">
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={compareData} margin={{ top: 5, right: 20, left: -10, bottom: 90 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} angle={-35} textAnchor="end" interval={0} height={90} />
-                  <YAxis domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid #e2e8f0' }} labelStyle={{ fontWeight: 600 }} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  {savedAnalyses.slice(0, 5).map((a, i) => (
-                    <Line key={a.id} type="monotone" dataKey={a.titre}
-                      stroke={COMPARE_COLORS[i % COMPARE_COLORS.length]} strokeWidth={2}
-                      dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* ── Modal : Voir une analyse sauvegardée ── */}
