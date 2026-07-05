@@ -590,7 +590,7 @@ function AnalysesView({ allRecords, readOnly }: { allRecords: QuestionnaireRecor
     }).join('');
 
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${a.titre}</title>
-<style>body{font-family:system-ui,sans-serif;padding:2cm;max-width:800px;margin:0 auto;color:#1e293b}h1{font-size:18px;margin-bottom:4px}h2{font-size:13px;color:#6d28d9;margin:0 0 16px}@media print{body{padding:1cm}}</style>
+<style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:system-ui,sans-serif;padding:2cm;max-width:800px;margin:0 auto;color:#1e293b}h1{font-size:18px;margin-bottom:4px}h2{font-size:13px;color:#6d28d9;margin:0 0 16px}@media print{body{padding:1cm}}</style>
 </head><body>
 <h1>${a.titre}</h1>
 <p style="color:#64748b;font-size:12px;margin:0 0 20px">${a.stats.total} questionnaire${a.stats.total !== 1 ? 's' : ''} · Moyenne globale : ${Number(a.stats.moyenne).toFixed(2)}/4${a.created_at ? ` · ${new Date(a.created_at).toLocaleDateString('fr-FR')}` : ''}</p>
