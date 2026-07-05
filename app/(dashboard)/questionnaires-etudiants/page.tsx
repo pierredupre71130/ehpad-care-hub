@@ -850,9 +850,9 @@ ${el.innerHTML}</body></html>`);
                       <XAxis type="number" domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 10, fill: '#94a3b8' }} />
                       <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} width={160} />
                       <Tooltip contentStyle={{ borderRadius: 6, fontSize: 11, border: '1px solid #e2e8f0' }}
-                        formatter={(v: number) => [`${v.toFixed(2)}/4`, 'Moyenne']} />
+                        formatter={(v: unknown) => [typeof v === 'number' ? `${v.toFixed(2)}/4` : v, 'Moyenne']} />
                       <Bar dataKey="avg" name="Moyenne" fill="#7c3aed" radius={[0, 4, 4, 0]}>
-                        <LabelList dataKey="avg" position="right" formatter={(v: number) => v.toFixed(2)} style={{ fontSize: 11, fill: '#7c3aed', fontWeight: 700 }} />
+                        <LabelList dataKey="avg" position="right" formatter={(v: unknown) => typeof v === 'number' ? v.toFixed(2) : ''} style={{ fontSize: 11, fill: '#7c3aed', fontWeight: 700 }} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
