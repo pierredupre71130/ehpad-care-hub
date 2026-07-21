@@ -236,8 +236,6 @@ function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; wi
   if (resident.allergie_autre && resident.allergie_autre.trim())
     diets.push({ label: `⚠ ${resident.allergie_autre.trim()}`, color: '#dc2626' });
 
-  // Police adaptative pour le nom : réduit progressivement selon la longueur
-  // afin d'éviter la troncature quand le régime prend de la place.
   const nameLen = name.length;
   const nameFontSize =
     nameLen <= 14 ? 32 :
@@ -246,7 +244,7 @@ function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; wi
     nameLen <= 28 ? 20 : 18;
 
   const firstNameFontSize = Math.max(16, Math.round(nameFontSize * 0.78));
-  const roomFontSize = nameLen <= 18 ? 32 : 26;
+  const roomFontSize = 30;
 
   return (
     <div
@@ -300,18 +298,22 @@ function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; wi
         paddingLeft: 14,
         paddingRight: diets.length > 0 ? 14 : 0,
         flexShrink: 0,
+        minWidth: 80,
       }}>
         Ch. {resident.room}
       </div>
       {diets.length > 0 && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 2,
-          alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0, maxWidth: '32%',
+          alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0,
+          maxWidth: '35%', overflow: 'hidden',
         }}>
           {diets.map(d => (
             <span key={d.label} style={{
               fontSize: diets.length > 2 ? 16 : 18,
-              fontWeight: 800, color: d.color, whiteSpace: 'nowrap', lineHeight: 1.15,
+              fontWeight: 800, color: d.color,
+              whiteSpace: 'normal', wordBreak: 'break-word',
+              lineHeight: 1.15, textAlign: 'right',
             }}>
               {d.label}
             </span>
