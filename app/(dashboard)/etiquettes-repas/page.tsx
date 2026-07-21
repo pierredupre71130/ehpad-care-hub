@@ -86,6 +86,7 @@ interface Resident {
   epargne_intestinale?: boolean;
   allergie_poisson?: boolean;
   allergie_autre?: string;
+  traitement_ecrase?: boolean;
   photo_url?: string;   // URL signée pour l'affichage
   photo_path?: string;  // Chemin brut dans le bucket (pour suppression)
 }
@@ -123,7 +124,7 @@ async function fetchResidents(): Promise<Resident[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from('residents')
-    .select('id,title,first_name,last_name,room,floor,archived,regime_mixe,viande_mixee,regime_diabetique,epargne_intestinale,allergie_poisson,allergie_autre,photo_url')
+    .select('id,title,first_name,last_name,room,floor,archived,regime_mixe,viande_mixee,regime_diabetique,epargne_intestinale,allergie_poisson,allergie_autre,traitement_ecrase,photo_url')
     .eq('archived', false)
     .order('room');
   if (error) throw new Error(error.message);
@@ -230,6 +231,8 @@ function Etiquette({ resident, withPhoto, regimeInfo }: { resident: Resident; wi
   if (regimeInfo.hache)        diets.push({ label: 'Régime haché',        color: '#b45309' });
   else if (regimeInfo.viandeHachee) diets.push({ label: 'Viande hachée', color: '#c2410c' });
   for (const o of regimeInfo.obsFlags) diets.push(o);
+  if (resident.traitement_ecrase)
+    diets.push({ label: '💊 Traitement écrasé', color: '#7c3aed' });
   if (resident.allergie_autre && resident.allergie_autre.trim())
     diets.push({ label: `⚠ ${resident.allergie_autre.trim()}`, color: '#dc2626' });
 
@@ -474,7 +477,8 @@ export default function EtiquettesRepasPage() {
     const info = regimeFor(r);
     return info.diab || info.epargne || info.hache || info.viandeHachee
       || info.obsFlags.length > 0
-      || (r.allergie_autre && r.allergie_autre.trim().length > 0);
+      || (r.allergie_autre && r.allergie_autre.trim().length > 0)
+      || !!r.traitement_ecrase;
   };
 
   const isLoading = loadingResidents || loadingSelections;
@@ -857,6 +861,7 @@ export default function EtiquettesRepasPage() {
                 const nbViandeHachee = infos.filter(i => i.viandeHachee).length;
                 const nbDiab = infos.filter(i => i.diab).length;
                 const nbEpargne = infos.filter(i => i.epargne).length;
+                const nbEcrase = selectedResidents.filter(r => r.traitement_ecrase).length;
                 const nbNormal = infos.filter(i =>
                   !i.hache && !i.viandeHachee && !i.diab && !i.epargne && i.obsFlags.length === 0,
                 ).length;
@@ -865,11 +870,12 @@ export default function EtiquettesRepasPage() {
                     <div className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
                       Récapitulatif ({selectedResidents.length} résident{selectedResidents.length > 1 ? 's' : ''})
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 text-sm">
                       <RecapBox label="Régime haché" value={nbHache} color="bg-amber-100 text-amber-800 border-amber-300" />
                       <RecapBox label="Viande hachée" value={nbViandeHachee} color="bg-orange-100 text-orange-800 border-orange-300" />
                       <RecapBox label="Diabétique" value={nbDiab} color="bg-purple-100 text-purple-800 border-purple-300" />
                       <RecapBox label="Épargne intestinale" value={nbEpargne} color="bg-green-100 text-green-800 border-green-300" />
+                      <RecapBox label="💊 Ttt. écrasé" value={nbEcrase} color="bg-violet-100 text-violet-800 border-violet-300" />
                       <RecapBox label="Régime normal" value={nbNormal} color="bg-slate-100 text-slate-800 border-slate-300" />
                     </div>
                   </div>
