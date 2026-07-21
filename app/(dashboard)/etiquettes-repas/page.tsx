@@ -492,7 +492,7 @@ export default function EtiquettesRepasPage() {
   );
 
   return (
-    <div className="min-h-screen relative" style={{ background: '#dde4ee' }}>
+    <div className="relative" style={{ background: '#dde4ee' }}>
 
       {/* Dense page background network */}
       <div className="print:hidden" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -818,7 +818,7 @@ export default function EtiquettesRepasPage() {
         `}</style>
 
         {selectedResidents.length > 0 && (
-          <div className="print-zone max-w-5xl mx-auto px-4 pb-10">
+          <div className="print-zone max-w-5xl mx-auto px-4 pb-4">
             <div className="print-zone-inner bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
               <div className="print-zone-header flex items-center gap-2 mb-4 screen-only">
                 <h2 className="font-semibold text-slate-700">Aperçu des étiquettes</h2>
