@@ -576,7 +576,7 @@ export default function DashboardPage() {
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Cette application traite des données médicales sensibles. Les mesures suivantes ont été mises en place pour garantir leur sécurité et la conformité au Règlement Général sur la Protection des Données (RGPD — UE 2016/679).
+                A des fins de sécurisation de données, les mesures suivantes ont été mises en place pour garantir leur sécurité et la conformité au Règlement Général sur la Protection des Données (RGPD — UE 2016/679).
               </p>
 
               {/* Mesures */}
@@ -591,7 +591,7 @@ export default function DashboardPage() {
                   icon: <Lock className="h-4 w-4" />,
                   color: '#3b72d8',
                   title: 'Contrôle d\'accès par rôle',
-                  desc: 'Chaque utilisateur ne voit que les modules correspondant à son rôle (IDE, cadre, aide-soignant, médecin…). Les routes administratives sont protégées côté serveur.',
+                  desc: 'Les routes administratives sont protégées côté serveur.',
                 },
                 {
                   icon: <ShieldCheck className="h-4 w-4" />,
