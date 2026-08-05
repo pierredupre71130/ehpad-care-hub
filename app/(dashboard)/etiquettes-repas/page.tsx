@@ -483,6 +483,141 @@ export default function EtiquettesRepasPage() {
       || !!r.traitement_ecrase;
   };
 
+  const handleCombinedPrint = useCallback(() => {
+    const midiIds = allSelections[getKey(activeFloor, 'midi')] ?? [];
+    const soirIds = allSelections[getKey(activeFloor, 'soir')] ?? [];
+    if (midiIds.length === 0 && soirIds.length === 0) {
+      toast.error('Aucun résident sélectionné pour le MIDI ou le SOIR sur cet étage');
+      return;
+    }
+
+    const ficheMidiMap = new Map<string, FicheMenu>();
+    const ficheSoirMap = new Map<string, FicheMenu>();
+    fichesMenu.filter(f => f.repas === 'midi').forEach(f => ficheMidiMap.set(f.resident_id, f));
+    fichesMenu.filter(f => f.repas === 'soir').forEach(f => ficheSoirMap.set(f.resident_id, f));
+
+    const floorRes = residents
+      .filter(r => r.floor === activeFloor && r.last_name)
+      .sort((a, b) => {
+        const na = parseInt((a.room || '').replace(/\D/g, '') || '0');
+        const nb = parseInt((b.room || '').replace(/\D/g, '') || '0');
+        if (na !== nb) return na - nb;
+        return (a.room || '').localeCompare(b.room || '');
+      });
+
+    const allIds = [...new Set([...midiIds, ...soirIds])].sort((a, b) => {
+      const ra = floorRes.find(r => r.id === a);
+      const rb = floorRes.find(r => r.id === b);
+      const na = parseInt((ra?.room || '').replace(/\D/g, '') || '0');
+      const nb = parseInt((rb?.room || '').replace(/\D/g, '') || '0');
+      if (na !== nb) return na - nb;
+      return (ra?.room || '').localeCompare(rb?.room || '');
+    });
+
+    type CombinedLabel = { resident: Resident; regimeInfo: RegimeInfo; icon: string };
+    const labels: CombinedLabel[] = [];
+
+    for (const id of allIds) {
+      const resident = floorRes.find(r => r.id === id);
+      if (!resident) continue;
+      const inMidi = midiIds.includes(id);
+      const inSoir = soirIds.includes(id);
+
+      if (inMidi && inSoir) {
+        const mi = computeRegimeInfo(resident, ficheMidiMap.get(id));
+        const si = computeRegimeInfo(resident, ficheSoirMap.get(id));
+        const equal =
+          mi.hache === si.hache &&
+          mi.viandeHachee === si.viandeHachee &&
+          JSON.stringify(mi.obsFlags.map(f => f.label).sort()) ===
+          JSON.stringify(si.obsFlags.map(f => f.label).sort());
+        if (equal) {
+          labels.push({ resident, regimeInfo: mi, icon: '☀ 🌙' });
+        } else {
+          labels.push({ resident, regimeInfo: mi, icon: '☀' });
+          labels.push({ resident, regimeInfo: si, icon: '🌙' });
+        }
+      } else if (inMidi) {
+        labels.push({ resident, regimeInfo: computeRegimeInfo(resident, ficheMidiMap.get(id)), icon: '☀' });
+      } else {
+        labels.push({ resident, regimeInfo: computeRegimeInfo(resident, ficheSoirMap.get(id)), icon: '🌙' });
+      }
+    }
+
+    const buildDiets = (resident: Resident, ri: RegimeInfo) => {
+      const d: { label: string; color: string }[] = [];
+      if (ri.diab) { d.push({ label: 'Diabétique', color: '#7e22ce' }); d.push({ label: 'Ajout féculent', color: '#9333ea' }); }
+      if (ri.epargne)      d.push({ label: 'Épargne intestinale', color: '#15803d' });
+      if (ri.hache)        d.push({ label: 'Régime haché', color: '#b45309' });
+      else if (ri.viandeHachee) d.push({ label: 'Viande hachée', color: '#c2410c' });
+      for (const o of ri.obsFlags) d.push(o);
+      if (resident.traitement_ecrase) d.push({ label: '💊 Traitement écrasé', color: '#7c3aed' });
+      if (resident.allergie_autre?.trim()) d.push({ label: `⚠ ${resident.allergie_autre.trim()}`, color: '#dc2626' });
+      return d;
+    };
+
+    const labelsHtml = labels.map(({ resident, regimeInfo, icon }) => {
+      const name = [resident.title, resident.last_name?.toUpperCase()].filter(Boolean).join(' ');
+      const nl = name.length;
+      const nfs = nl <= 14 ? 32 : nl <= 18 ? 28 : nl <= 22 ? 24 : nl <= 28 ? 20 : 18;
+      const fnfs = Math.max(16, Math.round(nfs * 0.78));
+      const diets = buildDiets(resident, regimeInfo);
+      const dfs = diets.length > 2 ? 16 : 18;
+      const hasDiets = diets.length > 0;
+      const photoHtml = withPhoto && resident.photo_url
+        ? `<img src="${resident.photo_url}" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1.5px solid #e2e8f0;">`
+        : '';
+      const fnHtml = resident.first_name
+        ? `<div style="font-size:${fnfs}px;font-weight:700;color:#1e293b;line-height:1.1;word-break:break-word;">${resident.first_name}</div>`
+        : '';
+      const dietsHtml = hasDiets
+        ? `<div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;justify-content:center;flex-shrink:0;max-width:35%;overflow:hidden;">
+            ${diets.map(d => `<span style="font-size:${dfs}px;font-weight:800;color:${d.color};white-space:normal;word-break:break-word;line-height:1.15;text-align:right;">${d.label}</span>`).join('')}
+          </div>`
+        : '';
+      const minH = withPhoto && resident.photo_url ? 'min-height:90px;' : '';
+      return `<div style="border:2.5px solid #1e293b;border-radius:8px;padding:8px 14px;display:flex;flex-direction:row;align-items:center;width:100%;background:#fff;margin-bottom:8px;page-break-inside:avoid;break-inside:avoid;gap:14px;box-sizing:border-box;${minH}">
+        ${photoHtml}
+        <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
+          <div style="font-size:${nfs}px;font-weight:900;color:#0f172a;line-height:1.1;word-break:break-word;">${name}</div>
+          ${fnHtml}
+        </div>
+        <div style="font-size:30px;font-weight:900;color:#1e293b;white-space:nowrap;border-left:2px solid #e2e8f0;${hasDiets ? 'border-right:2px solid #e2e8f0;' : ''}padding-left:14px;${hasDiets ? 'padding-right:14px;' : ''}flex-shrink:0;min-width:80px;">
+          ${icon}&nbsp;Ch.&nbsp;${resident.room ?? ''}
+        </div>
+        ${dietsHtml}
+      </div>`;
+    }).join('');
+
+    const total = midiIds.length + soirIds.length;
+    const saved = total - labels.length;
+    const savingsHtml = saved > 0
+      ? `<div style="margin-top:12px;padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#15803d;font-weight:600;">
+          ✓ ${saved} étiquette${saved > 1 ? 's' : ''} économisée${saved > 1 ? 's' : ''} — ${labels.length} imprimée${labels.length > 1 ? 's' : ''} au lieu de ${total}
+        </div>`
+      : '';
+
+    const win = window.open('', '_blank');
+    if (!win) { toast.error("Impossible d'ouvrir la fenêtre d'impression"); return; }
+    win.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>Étiquettes MIDI+SOIR — ${activeFloor}</title>
+      <style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box;}@page{size:A4 portrait;margin:10mm;}body{font-family:system-ui,Arial,sans-serif;padding:0;margin:0;}</style>
+    </head><body>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:3px solid #1e293b;">
+        <div style="font-size:20px;font-weight:900;color:#0f172a;">Étiquettes Repas</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="background:#1e293b;color:white;padding:4px 14px;border-radius:6px;font-size:17px;font-weight:800;">${activeFloor}</span>
+          <span style="background:#1e293b;color:white;padding:4px 14px;border-radius:6px;font-size:17px;font-weight:800;">☀ MIDI &amp; 🌙 SOIR</span>
+        </div>
+      </div>
+      ${labelsHtml}
+      ${savingsHtml}
+    </body></html>`);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); win.close(); }, 400);
+  }, [activeFloor, allSelections, residents, fichesMenu, withPhoto]);
+
   const isLoading = loadingResidents || loadingSelections;
 
   if (isLoading) return (
@@ -577,12 +712,22 @@ export default function EtiquettesRepasPage() {
                   Avec photos
                 </button>
 
-                {/* Print */}
+                {/* Print (repas actif) */}
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors"
                 >
                   <Printer className="h-4 w-4" /> Imprimer
+                </button>
+
+                {/* Combined MIDI+SOIR print */}
+                <button
+                  onClick={handleCombinedPrint}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-slate-800 text-sm font-semibold shadow-sm hover:bg-white/90 transition-colors"
+                  title="Imprimer une seule étiquette par résident valable pour le midi et le soir"
+                >
+                  <Printer className="h-4 w-4" />
+                  ☀ 🌙 MIDI+SOIR
                 </button>
               </div>
             </div>
