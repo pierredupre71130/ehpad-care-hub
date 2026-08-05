@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye } from 'lucide-react';
+import { Loader2, Printer, X, Camera, Image as ImageIcon, Check, UtensilsCrossed, Eye, ListChecks } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
 import { useEffectiveRole } from '@/lib/use-effective-role';
@@ -340,6 +340,7 @@ export default function EtiquettesRepasPage() {
   const [activeFloor, setActiveFloor] = useState('RDC');
   const [activeRepas, setActiveRepas] = useState('midi');
   const [withPhoto, setWithPhoto] = useState(true);
+  const [showRecap, setShowRecap] = useState(false);
   const saveTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const fileInputRef  = useRef<HTMLInputElement>(null);
@@ -712,6 +713,19 @@ export default function EtiquettesRepasPage() {
                   Avec photos
                 </button>
 
+                {/* Recap toggle */}
+                <button
+                  onClick={() => setShowRecap(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
+                    showRecap
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'bg-black/20 text-white/80 hover:text-white hover:bg-white/30'
+                  }`}
+                >
+                  <ListChecks className="h-4 w-4" />
+                  Récapitulatif
+                </button>
+
                 {/* Print (repas actif) */}
                 <button
                   onClick={() => window.print()}
@@ -1001,8 +1015,8 @@ export default function EtiquettesRepasPage() {
                 </tbody>
               </table>
 
-              {/* Récapitulatif */}
-              {(() => {
+              {/* Récapitulatif — affiché uniquement si activé */}
+              {showRecap && (() => {
                 const infos = selectedResidents.map(regimeFor);
                 const nbHache = infos.filter(i => i.hache).length;
                 const nbViandeHachee = infos.filter(i => i.viandeHachee).length;
