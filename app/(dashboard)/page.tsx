@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser, LayoutGrid, Layers, FileSignature, FolderHeart } from 'lucide-react';
+import { LogOut, Settings, Users, GripVertical, ChevronDown, ClipboardList, ShieldCheck, X, Lock, ScrollText, Database, Clock, FileCheck, Scale, BookUser, LayoutGrid, Layers, FileSignature, FolderHeart, Kanban } from 'lucide-react';
 import { DashboardGrid } from '@/components/dashboard/dashboard-grid';
 import { BentoDashboardGrid } from '@/components/dashboard/bento-dashboard-grid';
 import { AnnouncementTicker } from '@/components/dashboard/announcement-ticker';
@@ -496,6 +496,19 @@ export default function DashboardPage() {
               </div>
               <span className="text-[11px] font-medium">Admin</span>
             </button>
+          )}
+
+          {/* Bouton Projets IDEC — admin uniquement */}
+          {isAdmin && (
+            <Link
+              href="/projets-idec"
+              className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group"
+            >
+              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                <Kanban className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">Projets</span>
+            </Link>
           )}
 
           {/* Bouton RGPD — visible par tous */}
