@@ -303,13 +303,15 @@ export default function DashboardPage() {
                 Fiches de Poste
               </Link>
             )}
-            <Link
-              href="/annuaire"
-              className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/85 hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-white/15 transition-colors"
-            >
-              <BookUser className="h-3.5 w-3.5" />
-              Annuaire
-            </Link>
+            {isAdmin && (
+              <Link
+                href="/annuaire"
+                className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/85 hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-white/15 transition-colors"
+              >
+                <BookUser className="h-3.5 w-3.5" />
+                Annuaire
+              </Link>
+            )}
             <div className="hidden sm:flex">
               <MessagingHeaderButton />
             </div>
@@ -320,14 +322,6 @@ export default function DashboardPage() {
             {profile?.role === 'admin' && (
               <RoleDropdown currentRole={currentRole} onChange={handleRoleChange} />
             )}
-            <div className="text-right hidden sm:block">
-              <p className="text-lg font-bold text-white leading-none">
-                {getGreeting()}, {displayName}
-              </p>
-              <p className="text-sm text-white/65 mt-0.5">
-                {visibleModules.length} module{visibleModules.length > 1 ? 's' : ''} à votre disposition
-              </p>
-            </div>
           </div>
         </div>
       </header>
@@ -466,19 +460,23 @@ export default function DashboardPage() {
             </Link>
           )}
 
-          <Link href="/dsi" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-              <FolderHeart className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] font-medium">DSI</span>
-          </Link>
+          {isAdmin && (
+            <Link href="/dsi" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                <FolderHeart className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">DSI</span>
+            </Link>
+          )}
 
-          <Link href="/mutation" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-              <FileSignature className="h-4 w-4" />
-            </div>
-            <span className="text-[11px] font-medium">Mutation</span>
-          </Link>
+          {isAdmin && (
+            <Link href="/mutation" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                <FileSignature className="h-4 w-4" />
+              </div>
+              <span className="text-[11px] font-medium">Mutation</span>
+            </Link>
+          )}
 
           {isAdmin && (
             <button
@@ -511,16 +509,18 @@ export default function DashboardPage() {
             </Link>
           )}
 
-          {/* Bouton RGPD — visible par tous */}
-          <button
-            onClick={() => setShowRgpdModal(true)}
-            className="flex flex-col items-center gap-1 px-4 py-3 text-emerald-300 hover:text-emerald-200 transition-colors group"
-          >
-            <div className="w-8 h-8 rounded-full bg-emerald-500/25 group-hover:bg-emerald-500/40 flex items-center justify-center transition-colors ring-1 ring-emerald-400/40">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
-            <span className="text-[10px] font-semibold text-center leading-tight">Sécurité<br/>& RGPD</span>
-          </button>
+          {/* Bouton RGPD — admin uniquement */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowRgpdModal(true)}
+              className="flex flex-col items-center gap-1 px-4 py-3 text-emerald-300 hover:text-emerald-200 transition-colors group"
+            >
+              <div className="w-8 h-8 rounded-full bg-emerald-500/25 group-hover:bg-emerald-500/40 flex items-center justify-center transition-colors ring-1 ring-emerald-400/40">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <span className="text-[10px] font-semibold text-center leading-tight">Sécurité<br/>& RGPD</span>
+            </button>
+          )}
 
           <button
             onClick={signOut}
