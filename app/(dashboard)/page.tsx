@@ -460,23 +460,19 @@ export default function DashboardPage() {
             </Link>
           )}
 
-          {isAdmin && (
-            <Link href="/dsi" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-                <FolderHeart className="h-4 w-4" />
-              </div>
-              <span className="text-[11px] font-medium">DSI</span>
-            </Link>
-          )}
+          <Link href="/dsi" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+              <FolderHeart className="h-4 w-4" />
+            </div>
+            <span className="text-[11px] font-medium">DSI</span>
+          </Link>
 
-          {isAdmin && (
-            <Link href="/mutation" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
-              <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-                <FileSignature className="h-4 w-4" />
-              </div>
-              <span className="text-[11px] font-medium">Mutation</span>
-            </Link>
-          )}
+          <Link href="/mutation" className="flex flex-col items-center gap-1 px-4 py-3 text-white/70 hover:text-white transition-colors group">
+            <div className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+              <FileSignature className="h-4 w-4" />
+            </div>
+            <span className="text-[11px] font-medium">Mutation</span>
+          </Link>
 
           {isAdmin && (
             <button
@@ -509,18 +505,16 @@ export default function DashboardPage() {
             </Link>
           )}
 
-          {/* Bouton RGPD — admin uniquement */}
-          {isAdmin && (
-            <button
-              onClick={() => setShowRgpdModal(true)}
-              className="flex flex-col items-center gap-1 px-4 py-3 text-emerald-300 hover:text-emerald-200 transition-colors group"
-            >
-              <div className="w-8 h-8 rounded-full bg-emerald-500/25 group-hover:bg-emerald-500/40 flex items-center justify-center transition-colors ring-1 ring-emerald-400/40">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <span className="text-[10px] font-semibold text-center leading-tight">Sécurité<br/>& RGPD</span>
-            </button>
-          )}
+          {/* Bouton RGPD — visible par tous */}
+          <button
+            onClick={() => setShowRgpdModal(true)}
+            className="flex flex-col items-center gap-1 px-4 py-3 text-emerald-300 hover:text-emerald-200 transition-colors group"
+          >
+            <div className="w-8 h-8 rounded-full bg-emerald-500/25 group-hover:bg-emerald-500/40 flex items-center justify-center transition-colors ring-1 ring-emerald-400/40">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] font-semibold text-center leading-tight">Sécurité<br/>& RGPD</span>
+          </button>
 
           <button
             onClick={signOut}
