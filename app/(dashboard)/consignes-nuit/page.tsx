@@ -1271,7 +1271,7 @@ export default function ConsignesNuitPage() {
               <input
                 type="date"
                 value={date}
-                onChange={e => { setDate(e.target.value); setShowArchives(false); }}
+                onChange={e => setDate(e.target.value)}
                 className="px-3 py-1.5 rounded-lg text-sm bg-white/15 border border-white/25 text-white placeholder-white/40 focus:outline-none focus:border-white/50 focus:bg-white/20"
               />
             </div>
