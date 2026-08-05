@@ -11,7 +11,7 @@ import { MODULES } from '@/components/dashboard/module-config';
 import { useAuth } from '@/lib/auth-context';
 import { useEffectiveRole } from '@/lib/use-effective-role';
 import {
-  Lock, FolderOpen, Printer, Loader2, ChevronDown, X,
+  Lock, Printer, Loader2, ChevronDown, X,
   AlertTriangle, PhoneCall, Pill, Moon, Eye,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
@@ -276,13 +276,6 @@ async function fetchCadreMailUnlocked(): Promise<boolean> {
   return (data?.value as boolean) ?? false;
 }
 
-async function fetchArchivedDates(): Promise<string[]> {
-  const sb = createClient();
-  const { data } = await sb.from('consigne_nuit').select('date').order('date', { ascending: false });
-  const unique = [...new Set((data ?? []).map((r: { date: string }) => r.date))];
-  return unique as string[];
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function toRoman(num: string | number | undefined): string {
@@ -299,96 +292,6 @@ function calcAge(dateNaissance: string): number | null {
 function isAfterLockTime(selectedDate: string): boolean {
   const today = new Date().toISOString().split('T')[0];
   return selectedDate < today;
-}
-
-// ── ArchivesPanel ────────────────────────────────────────────────────────────
-
-function ArchivesPanel({ archivedDates, currentDate, onSelectDate, onDeleteDate, onClean, readOnly }: {
-  archivedDates: string[];
-  currentDate: string;
-  onSelectDate: (d: string) => void;
-  onDeleteDate: (d: string) => void;
-  onClean: () => void;
-  readOnly: boolean;
-}) {
-  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
-
-  const groupedByMonth: Record<string, string[]> = {};
-  archivedDates.forEach(d => {
-    const date = new Date(d + 'T12:00:00');
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`;
-    if (!groupedByMonth[monthKey]) groupedByMonth[monthKey] = [];
-    groupedByMonth[monthKey].push(d);
-  });
-  const sortedMonths = Object.keys(groupedByMonth).sort().reverse();
-
-  const formatMonth = (mk: string) => {
-    const [year, month] = mk.split('-');
-    return new Date(Number(year), Number(month), 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-  };
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-slate-700">
-          Archives — {archivedDates.length} date{archivedDates.length > 1 ? 's' : ''}
-        </h3>
-        {!readOnly && (
-          <button onClick={onClean} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100">
-            Nettoyer archives vides
-          </button>
-        )}
-      </div>
-      {archivedDates.length === 0 ? (
-        <p className="text-sm text-slate-400">Aucune archive.</p>
-      ) : (
-        <div className="space-y-2">
-          {sortedMonths.map(monthKey => {
-            const isExpanded = expandedMonths[monthKey];
-            const dates = groupedByMonth[monthKey];
-            return (
-              <div key={monthKey} className="border border-slate-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setExpandedMonths(prev => ({ ...prev, [monthKey]: !prev[monthKey] }))}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    <span className="text-sm font-medium text-slate-700 capitalize">{formatMonth(monthKey)}</span>
-                    <span className="text-xs text-slate-500">({dates.length})</span>
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                    {[...dates].sort().reverse().map(d => (
-                      <div key={d} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50">
-                        <button
-                          onClick={() => onSelectDate(d)}
-                          className={`flex items-center gap-2 flex-1 text-left px-2 py-1.5 rounded text-sm transition-colors ${d === currentDate ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-                        >
-                          <Lock className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                          <span>{new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}</span>
-                        </button>
-                        {!readOnly && (
-                          <button
-                            onClick={() => onDeleteDate(d)}
-                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0"
-                            title="Supprimer"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── NuitRow ──────────────────────────────────────────────────────────────────
@@ -628,8 +531,7 @@ export default function ConsignesNuitPage() {
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [ideAstreinte, setIdeAstreinte] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [showArchives, setShowArchives] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ date: string } | null>(null);
+
   const [sendCadre, setSendCadre] = useState(false); // désactivé par défaut
   const [showInfoPopup, setShowInfoPopup] = useState(false);
 
@@ -663,7 +565,6 @@ export default function ConsignesNuitPage() {
   const { data: contentionFiches = [] } = useQuery({ queryKey: ['contentions'], queryFn: fetchContentions });
   const { data: savedRDC = EMPTY_CONSIGNES, isLoading: loadingRDC, status: rdcStatus } = useQuery({ queryKey: ['consignes_nuit', date, 'RDC'], queryFn: () => fetchConsignesNuit(date, 'RDC'), enabled: !!date });
   const { data: saved1ER = EMPTY_CONSIGNES, isLoading: loading1ER, status: erStatus } = useQuery({ queryKey: ['consignes_nuit', date, '1ER'], queryFn: () => fetchConsignesNuit(date, '1ER'), enabled: !!date });
-  const { data: archivedDates = [] } = useQuery({ queryKey: ['consignes_nuit_dates'], queryFn: fetchArchivedDates });
 
   useEffect(() => {
     if (rdcStatus !== 'success') return;
@@ -794,47 +695,8 @@ export default function ConsignesNuitPage() {
       ]);
       queryClient.invalidateQueries({ queryKey: ['consignes_nuit', date, 'RDC'] });
       queryClient.invalidateQueries({ queryKey: ['consignes_nuit', date, '1ER'] });
-      queryClient.invalidateQueries({ queryKey: ['consignes_nuit_dates'] });
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleDeleteArchive = async () => {
-    if (!deleteConfirm) return;
-    const sb = createClient();
-    await sb.from('consigne_nuit').delete().eq('date', deleteConfirm.date);
-    queryClient.invalidateQueries({ queryKey: ['consignes_nuit', deleteConfirm.date, 'RDC'] });
-    queryClient.invalidateQueries({ queryKey: ['consignes_nuit', deleteConfirm.date, '1ER'] });
-    queryClient.invalidateQueries({ queryKey: ['consignes_nuit_dates'] });
-    if (date === deleteConfirm.date) setDate(new Date().toISOString().split('T')[0]);
-    setDeleteConfirm(null);
-    toast.success('Archive supprimée');
-  };
-
-  const cleanEmptyArchives = async () => {
-    try {
-      const sb = createClient();
-      const { data: allRecords } = await sb.from('consigne_nuit').select('*');
-      if (!allRecords) return;
-      const byDate: Record<string, typeof allRecords> = {};
-      allRecords.forEach((r: ConsigneNuit) => { if (!byDate[r.date]) byDate[r.date] = []; byDate[r.date].push(r); });
-      const toDelete: string[] = [];
-      for (const [, records] of Object.entries(byDate)) {
-        const residentRecords = records.filter((r: ConsigneNuit) => r.resident_id !== '__infos__');
-        if (residentRecords.length > 0 && !residentRecords.some((r: ConsigneNuit) => r.contenu?.trim())) {
-          toDelete.push(...records.map((r: ConsigneNuit) => r.id));
-        }
-      }
-      if (toDelete.length > 0) {
-        await sb.from('consigne_nuit').delete().in('id', toDelete);
-        queryClient.invalidateQueries({ queryKey: ['consignes_nuit_dates'] });
-        toast.success(`${toDelete.length} enregistrement(s) supprimé(s)`);
-      } else {
-        toast.success('Aucune archive vide');
-      }
-    } catch (err: unknown) {
-      toast.error('Erreur : ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -1347,15 +1209,6 @@ export default function ConsignesNuitPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowArchives(v => !v)}
-                className="bg-white/15 hover:bg-white/25 text-white border border-white/25 gap-1.5"
-              >
-                <FolderOpen className="h-4 w-4" /> Archives
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
                 onClick={handleQuickPrint}
                 className="bg-white/10 hover:bg-white/20 text-white/80 border border-white/20 border-dashed gap-1.5"
               >
@@ -1455,39 +1308,6 @@ export default function ConsignesNuitPage() {
           <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-0 text-sm text-blue-700 font-medium">
             <Eye className="h-4 w-4 flex-shrink-0" />
             Vous consultez cette page en lecture seule.
-          </div>
-        </div>
-      )}
-
-      {/* ── Archives panel ── */}
-      {showArchives && (
-        <div className="max-w-6xl mx-auto px-4 pt-4">
-          <ArchivesPanel
-            archivedDates={archivedDates}
-            currentDate={date}
-            onSelectDate={d => { setDate(d); setShowArchives(false); }}
-            onDeleteDate={d => setDeleteConfirm({ date: d })}
-            onClean={cleanEmptyArchives}
-            readOnly={readOnly}
-          />
-          <button onClick={() => setShowArchives(false)} className="mt-3 text-slate-400 hover:text-slate-700 text-xs underline">
-            Fermer les archives
-          </button>
-        </div>
-      )}
-
-      {/* ── Delete confirmation modal ── */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="font-bold text-slate-900 mb-1">Supprimer les consignes</h3>
-            <p className="text-sm text-slate-500 mb-5">
-              {new Date(deleteConfirm.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
-              <button onClick={handleDeleteArchive} disabled={readOnly} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50">Supprimer</button>
-            </div>
           </div>
         </div>
       )}
