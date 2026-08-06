@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Search, FolderHeart, User, Phone, MapPin, Heart, Stethoscope,
   Shield, Scale, BedDouble, Syringe, ClipboardList, Pill, AlertTriangle,
-  CalendarDays, ChevronRight,
+  CalendarDays, ChevronRight, Printer,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -530,14 +530,242 @@ function DsiDossier({
 }) {
   const fem = isFemaleTitle(resident.title);
 
+  const handlePrint = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    const safe = (s: string | null | undefined) =>
+      (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const row = (label: string, val: string | null | undefined) =>
+      val?.trim() ? `<tr><td class="lbl">${safe(label)}</td><td>${safe(val)}</td></tr>` : '';
+    const badge = (cls: string, text: string) =>
+      `<span class="badge badge-${cls}">${safe(text)}</span>`;
+
+    const pp = resident.dsi?.personne_prevenir ?? {};
+    const autres = resident.dsi?.autres_personnes ?? [];
+    const hasPP = !!(pp.nom || pp.prenom || pp.tel || pp.mobile || pp.lien);
+
+    const pec = ctx?.pec ?? null;
+    const autoMatin = buildAutoMatin(pec?.details, resident);
+    const autoAprem = buildAutoApresMidi(pec?.details, resident);
+    const fullMatin = autoMatin
+      ? (pec?.matin ? `${autoMatin} - ${pec.matin}` : autoMatin)
+      : (pec?.matin ?? '');
+    const fullAprem = autoAprem
+      ? (pec?.apres_midi ? `${autoAprem} - ${pec.apres_midi}` : autoAprem)
+      : (pec?.apres_midi ?? '');
+
+    const regimeBadges: string[] = [];
+    if (resident.regime_mixe)        regimeBadges.push(badge('sky',     'Mixé'));
+    if (resident.viande_mixee)        regimeBadges.push(badge('sky',     'Viande mixée'));
+    if (resident.regime_diabetique)   regimeBadges.push(badge('amber',   'Diabétique'));
+    if (resident.epargne_intestinale) regimeBadges.push(badge('emerald', 'Épargne intestinale'));
+    if (resident.allergie_poisson)    regimeBadges.push(badge('red',     'Allergie poisson'));
+    if (regimeBadges.length === 0)    regimeBadges.push(badge('emerald', 'Normal'));
+
+    const traitBadges: string[] = [];
+    if (resident.traitement_ecrase)         traitBadges.push(badge('violet', 'Traitement écrasé'));
+    if (resident.insuline_matin)            traitBadges.push(badge('cyan',   'Insuline matin'));
+    if (resident.insuline_soir)             traitBadges.push(badge('cyan',   'Insuline soir'));
+    if (resident.anticoagulants)            traitBadges.push(badge('rose',   'Anticoagulants'));
+    if (resident.chaussettes_de_contention) traitBadges.push(badge('sky',    'Chaussettes contention'));
+    if (resident.bas_de_contention)         traitBadges.push(badge('slate',  'Bas de contention'));
+    if (resident.bande_de_contention)       traitBadges.push(badge('amber',  'Bandes contention'));
+
+    const kine = ctx?.kine ?? null;
+    const weights = ctx?.weights ?? [];
+    const contentions = ctx?.contentions ?? [];
+    const matCouss = ctx?.matCouss ?? [];
+    const matelas = matCouss.filter(m => m.kind === 'matelas');
+    const coussins = matCouss.filter(m => m.kind === 'coussin');
+    const fichesMenu = ctx?.fichesMenu ?? [];
+    const observations = fichesMenu.filter(f => f.observation?.trim()).map(f => ({
+      repas: f.repas === 'midi' ? 'Midi' : f.repas === 'soir' ? 'Soir' : f.repas,
+      obs: f.observation.trim(),
+    }));
+
+    const vaccLines: string[] = [];
+    const vaccRefus: string[] = [];
+    const v = ctx?.vaccination ?? null;
+    const vLT = ctx?.vaccinationLT ?? null;
+    const isDate = (s: string | null | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    if (v) {
+      const { covid, grippe } = parseVaccInfos(v.infos);
+      if (covid && /refus/i.test(covid)) vaccRefus.push(`COVID (${/famille/i.test(covid) ? 'refus famille' : 'refus résident'})`);
+      else { const dates = [v.covid_inj1, v.covid_inj2, v.covid_inj3].filter(isDate).sort().reverse(); if (dates.length) vaccLines.push(`COVID ${v.year} — ${formatDate(dates[0])}`); else if (covid) vaccLines.push(`COVID ${v.year} — ${covid}`); }
+      if (grippe && /refus/i.test(grippe)) vaccRefus.push(`Grippe (${/famille/i.test(grippe) ? 'refus famille' : 'refus résident'})`);
+      else if (isDate(v.grippe_inj1)) vaccLines.push(`Grippe ${v.year} — ${formatDate(v.grippe_inj1)}`);
+      else if (grippe) vaccLines.push(`Grippe ${v.year} — ${grippe}`);
+    }
+    if (vLT?.tetanos_date)   vaccLines.push(`Tétanos — ${formatDate(vLT.tetanos_date)}`);
+    if (vLT?.pneumovax_date) vaccLines.push(`Pneumovax — ${formatDate(vLT.pneumovax_date)}`);
+
+    const sec = (color: string, title: string, body: string, span = false) => `
+      <div class="section${span ? ' span2' : ''}">
+        <div class="section-header" style="background:${color}">${safe(title)}</div>
+        <div class="section-body">${body}</div>
+      </div>`;
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<title>DSI — ${safe(resident.last_name)} ${safe(resident.first_name)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#1e293b;padding:8mm}
+@page{size:A4 portrait;margin:8mm}
+.hero{background:linear-gradient(135deg,#1a3560,#0e6e80);color:white;border-radius:8px;padding:12px;margin-bottom:8px}
+.hero-name{font-size:16pt;font-weight:800;line-height:1.2}
+.hero-sub{font-size:8pt;color:rgba(255,255,255,.65);margin-top:2px}
+.hero-room{font-size:9pt;color:rgba(255,255,255,.8);margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:0}
+.section{border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;break-inside:avoid;margin-bottom:6px}
+.span2{grid-column:span 2}
+.section-header{padding:5px 9px;color:white;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.05em;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.section-body{padding:8px}
+table{width:100%;border-collapse:collapse}
+td.lbl{width:32%;font-size:7.5pt;font-weight:700;text-transform:uppercase;color:#64748b;padding:2px 4px 2px 0;white-space:nowrap;vertical-align:top}
+td:not(.lbl){font-size:8.5pt;color:#1e293b;padding:2px 0;vertical-align:top}
+.block{background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:6px 8px;font-size:8.5pt;line-height:1.5;white-space:pre-wrap;margin-top:4px}
+.block.matin{background:#fffbeb;border-color:#fde68a}
+.block.soir{background:#eff6ff;border-color:#bfdbfe}
+.block.danger{background:#fef2f2;border-color:#fecaca;color:#991b1b;font-weight:600}
+.sub{font-size:7.5pt;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.04em;margin:6px 0 3px}
+.badge{display:inline-block;font-size:7.5pt;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid;margin:2px 2px 2px 0}
+.badge-sky{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
+.badge-amber{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.badge-red{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.badge-violet{background:#ede9fe;color:#5b21b6;border-color:#ddd6fe}
+.badge-cyan{background:#cffafe;color:#164e63;border-color:#a5f3fc}
+.badge-rose{background:#fce7f3;color:#9d174d;border-color:#fbcfe8}
+.badge-emerald{background:#d1fae5;color:#065f46;border-color:#a7f3d0}
+.badge-slate{background:#f1f5f9;color:#334155;border-color:#e2e8f0}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#0ea5e9;margin-right:5px;vertical-align:middle}
+.footer{margin-top:10px;text-align:right;font-size:7pt;color:#94a3b8}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+
+<div class="hero">
+  <div class="hero-sub">Dossier de Soins Infirmiers — Résidence La Fourrier</div>
+  <div class="hero-name">${safe(resident.title)} <span style="text-transform:uppercase">${safe(resident.last_name)}</span> ${safe(resident.first_name)}${resident.maiden_name ? ` <span style="font-weight:400;font-size:10pt">(${fem ? 'née' : 'né'} ${safe(resident.maiden_name.toUpperCase())})</span>` : ''}</div>
+  <div class="hero-room">Chambre ${safe(resident.room)} · ${safe(resident.floor)}${resident.date_naissance ? ` · Né${fem ? 'e' : ''} le ${formatDate(resident.date_naissance)} (${calcAge(resident.date_naissance)})` : ''}</div>
+</div>
+
+<div class="grid">
+
+${sec('#1a3560', 'Identité', `<table>
+  ${row('Titre', resident.title)}
+  ${row('Nom', resident.last_name?.toUpperCase())}
+  ${row('Prénom', resident.first_name)}
+  ${resident.maiden_name ? row(fem ? 'Née' : 'Né', resident.maiden_name.toUpperCase()) : ''}
+  ${row('Né(e) le', resident.date_naissance ? `${formatDate(resident.date_naissance)} (${calcAge(resident.date_naissance)})` : '')}
+  ${row('Situation', situationLabel(resident.situation_familiale, fem))}
+  ${row("Date d'entrée", formatDate(resident.date_entree))}
+  ${row('Chambre', resident.room)} ${row('Étage', resident.floor)}
+</table>`)}
+
+${sec('#9c1d62', 'Personne à prévenir', hasPP || autres.length > 0 ? `
+  ${hasPP ? `<div class="sub">Prioritaire${pp.personne_confiance ? ' <span class="badge badge-amber">Personne de confiance</span>' : ''}</div>
+  <table>
+    ${row('Nom', [pp.prenom, pp.nom].filter(Boolean).join(' '))}
+    ${row('Lien', pp.lien)} ${row('Adresse', pp.adresse)}
+    ${row('Tél fixe', pp.tel)} ${row('Tél mobile', pp.mobile)}
+  </table>` : ''}
+  ${autres.length > 0 ? `<div class="sub" style="margin-top:8px">Autres personnes</div>
+    ${autres.map(a => `<table style="margin-bottom:4px;border-bottom:1px solid #f1f5f9;padding-bottom:4px">
+      ${row('Nom', [a.prenom, a.nom].filter(Boolean).join(' '))}
+      ${row('Lien', a.lien)} ${row('Tél', a.tel)}
+    </table>`).join('')}` : ''}
+` : '<em style="color:#94a3b8">Aucune information.</em>')}
+
+${sec('#0e6e80', 'Motif d\'entrée', `<table>${row("Date d'entrée", formatDate(resident.date_entree))}</table>
+${resident.dsi?.motif_entree ? `<div class="block" style="margin-top:6px">${safe(resident.dsi.motif_entree)}</div>` : '<em style="color:#94a3b8">Aucun motif.</em>'}`, true)}
+
+${sec('#d84040', 'Suivi médical', `<table>
+  ${row('Médecin', resident.medecin)}
+  ${row('GIR', ctx?.niveau?.gir ?? '')}
+  ${row('Niveau de soin', ctx?.niveau?.niveau_soin ?? '')}
+  ${row('Appel nuit', ctx?.niveau?.appel_nuit_info || (resident.appel_nuit ? 'Oui' : ''))}
+  ${row('Tutelle', ctx?.niveau?.tutelle ?? '')}
+  ${row('Allergie médic.', resident.allergie_medicamenteuse)}
+</table>
+${resident.antecedents ? `<div class="sub">Antécédents</div><div class="block">${safe(resident.antecedents)}</div>` : ''}
+${kine && kine.actif ? `<div class="sub">Kinésithérapie</div><div class="block" style="background:#eff6ff;border-color:#bfdbfe">
+  ${kine.types_kine?.map(t => badge('sky', t)).join('') ?? ''}
+  ${kine.kine_nom ? `<br/><b>Kiné :</b> ${safe(kine.kine_nom)}` : ''}
+  ${kine.notes ? `<br/>${safe(kine.notes)}` : ''}
+</div>` : ''}`, true)}
+
+${sec('#16a34a', 'Régimes alimentaires', `<div>${regimeBadges.join('')}</div>
+${resident.allergie_autre ? `<div class="block danger" style="margin-top:6px">⚠ ${safe(resident.allergie_autre)}</div>` : ''}
+${observations.length > 0 ? `<div class="sub">Observations fiches menu</div>${observations.map(o => `<div class="block" style="margin-top:3px"><b>${safe(o.repas)} :</b> ${safe(o.obs)}</div>`).join('')}` : ''}`)}
+
+${sec('#7c3aed', 'Traitements & matériel', traitBadges.length > 0 ? `<div>${traitBadges.join('')}</div>` : '<em style="color:#94a3b8">Rien à signaler.</em>')}
+
+${sec('#3b72d8', 'Prise en charge', `
+${pec?.details?.protectionJour || pec?.details?.protectionNuit ? `<div style="margin-bottom:6px">
+  ${pec.details.protectionJour ? badge('sky', 'Protection J : ' + pec.details.protectionJour) : ''}
+  ${pec.details.protectionNuit ? badge('violet', 'Protection N : ' + pec.details.protectionNuit) : ''}
+</div>` : ''}
+${fullMatin ? `<div class="sub">☀ Matin</div><div class="block matin">${safe(fullMatin)}</div>` : ''}
+${fullAprem ? `<div class="sub">🌙 Après-midi / Soir</div><div class="block soir">${safe(fullAprem)}</div>` : ''}
+${!fullMatin && !fullAprem ? '<em style="color:#94a3b8">Aucune prise en charge.</em>' : ''}
+`, true)}
+
+${sec('#0891b2', 'Surveillance poids', weights.length > 0 ? `
+<div style="font-size:18pt;font-weight:800;color:#0f172a">${weights[0].poids_kg} <span style="font-size:9pt;font-weight:400;color:#64748b">kg</span></div>
+<div style="font-size:7.5pt;color:#64748b;margin:2px 0 6px">Mesuré le ${formatDate(weights[0].date)}</div>
+${weights.length > 1 ? `<table>${weights.slice(1).map(ww => `<tr><td class="lbl">${formatDate(ww.date)}</td><td>${ww.poids_kg} kg</td></tr>`).join('')}</table>` : ''}
+` : '<em style="color:#94a3b8">Aucune mesure.</em>')}
+
+${sec('#0284c7', 'Vaccinations', vaccLines.length > 0 || vaccRefus.length > 0 ? `
+${vaccLines.map(l => `<div><span class="dot"></span>${safe(l)}</div>`).join('')}
+${vaccRefus.length > 0 ? `<div style="margin-top:4px">${vaccRefus.map(r => badge('red', r)).join('')}</div>` : ''}
+` : '<em style="color:#94a3b8">Aucun vaccin enregistré.</em>')}
+
+${sec('#475569', 'Matelas & coussins', matCouss.length > 0 ? `
+${matelas.length > 0 ? `<div class="sub">Matelas</div><div>${matelas.map(m => badge('slate', m.type_name || '—')).join('')}</div>` : ''}
+${coussins.length > 0 ? `<div class="sub">Coussins</div><div>${coussins.map(c => badge('slate', c.type_name || '—')).join('')}</div>` : ''}
+` : '<em style="color:#94a3b8">Aucun matériel.</em>')}
+
+${sec('#b45309', 'Contentions', contentions.length > 0 ? contentions.map(c => `
+<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:5px 8px;margin-bottom:4px">
+  <div style="font-weight:600;color:#78350f">${safe(c.traitement)}</div>
+  <div style="font-size:7.5pt;color:#92400e">
+    ${c.date_debut ? `Depuis ${formatDate(c.date_debut)}` : ''}
+    ${c.pas_de_fin ? ' · sans fin' : c.date_fin ? ` · jusqu'au ${formatDate(c.date_fin)}` : ''}
+  </div>
+</div>`).join('') : '<em style="color:#94a3b8">Aucune contention.</em>')}
+
+${resident.annotations?.trim() ? sec('#475569', 'Annotations & consignes', `<div class="block">${safe(resident.annotations)}</div>`, true) : ''}
+
+</div>
+
+<div class="footer">Imprimé le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })} — DSI Résidence La Fourrier</div>
+
+</body></html>`;
+
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+  };
+
   return (
     <div className="space-y-4">
-      <button
-        onClick={onBack}
-        className="text-sm text-blue-700 hover:underline inline-flex items-center gap-1"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Changer de résident
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="text-sm text-blue-700 hover:underline inline-flex items-center gap-1"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Changer de résident
+        </button>
+        {!loading && ctx && (
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <Printer className="h-4 w-4" /> Imprimer le dossier
+          </button>
+        )}
+      </div>
 
       {/* HERO */}
       <HeroCard resident={resident} fem={fem} />
