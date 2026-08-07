@@ -1,6 +1,25 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+// ─── Villes autorisées ────────────────────────────────────────────────────────
+const ALLOWED_CITIES = [
+  'gueugnon',
+  'paray-le-monial',
+  'paray le monial',
+];
+
+function cityIsAllowed(raw: string): boolean {
+  const city = decodeURIComponent(raw).toLowerCase().trim();
+  return ALLOWED_CITIES.some(
+    allowed => city === allowed || city.replace(/-/g, ' ') === allowed.replace(/-/g, ' ')
+  );
+}
+
+// Routes toujours accessibles (sans auth ni filtre géo)
+function isPublicPath(pathname: string): boolean {
+  return pathname.startsWith('/login') || pathname === '/acces-refuse';
+}
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -29,29 +48,48 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isAuthPage = pathname.startsWith('/login');
 
-  if (!user && !isAuthPage) {
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  if (!user && !isPublicPath(pathname)) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  if (user && isAuthPage) {
+  if (user && pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // ── Filtre géographique par ville (production Vercel uniquement) ──────────
+  const isProduction = process.env.VERCEL === '1';
+
+  if (isProduction && user && !isPublicPath(pathname)) {
+    // Vérifier si l'utilisateur est admin (les admins passent sans contrôle géo)
+    let isAdmin = false;
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      isAdmin = profile?.role === 'admin';
+    } catch { /* en cas d'erreur DB, on laisse passer */ }
+
+    if (!isAdmin) {
+      const rawCity = request.headers.get('x-vercel-ip-city') ?? '';
+      const country  = request.headers.get('x-vercel-ip-country') ?? '';
+
+      if (country !== 'FR' || !cityIsAllowed(rawCity)) {
+        return NextResponse.redirect(new URL('/acces-refuse', request.url));
+      }
+    }
   }
 
   // ── En-têtes de sécurité (RGPD / données médicales) ──────────────────────
   const response = supabaseResponse;
 
-  // Empêche l'intégration dans une iframe (clickjacking)
   response.headers.set('X-Frame-Options', 'DENY');
-
-  // Empêche le sniffing de type MIME
   response.headers.set('X-Content-Type-Options', 'nosniff');
-
-  // Limite les informations de provenance transmises
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Force HTTPS pendant 1 an (uniquement en production)
   if (process.env.NODE_ENV === 'production') {
     response.headers.set(
       'Strict-Transport-Security',
@@ -59,18 +97,16 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  // Désactive les fonctionnalités navigateur non utilisées
   response.headers.set(
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=(), payment=()'
   );
 
-  // Content Security Policy — sources autorisées
   response.headers.set(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next.js nécessite unsafe-eval en dev
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       `img-src 'self' data: blob: ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://*.supabase.co'}`,
       `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''} https://api.resend.com`,
