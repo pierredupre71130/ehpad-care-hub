@@ -8,11 +8,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import {
   Search, Pencil, Save, X, Lock, Unlock,
   Loader2, UserPlus, Users, AlertTriangle,
   Stethoscope, Key, LogOut, ChevronDown, ChevronUp, Camera, Trash2, Home, Eye,
-  ArrowLeftRight,
+  ArrowLeftRight, ChevronRight,
 } from 'lucide-react';
 import { useModuleAccess } from '@/lib/use-module-access';
 import { useAuth } from '@/lib/auth-context';
@@ -486,12 +487,16 @@ function ResidentPhotoButton({ resident, onUploaded }: {
 function ResidentRow({
   r, onEdit, onPhotoUploaded, dimmed, readOnly,
 }: { r: Resident; onEdit: () => void; onPhotoUploaded: (path: string) => void; dimmed: boolean; readOnly?: boolean }) {
+  const canEdit = !readOnly;
   return (
-    <div className={cn(
-      'flex items-start gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0',
-      'hover:bg-blue-50/30 transition-colors',
-      dimmed && 'opacity-20 pointer-events-none select-none',
-    )}>
+    <div
+      onClick={canEdit ? onEdit : undefined}
+      className={cn(
+        'flex items-start gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 transition-colors',
+        canEdit ? 'cursor-pointer hover:bg-blue-50/40' : 'hover:bg-blue-50/20',
+        dimmed && 'opacity-20 pointer-events-none select-none',
+      )}
+    >
       {/* Chambre + étage */}
       <div className="flex-shrink-0 w-14 text-center pt-0.5">
         <div className="text-base font-bold text-slate-800 tabular-nums leading-none">
@@ -524,20 +529,10 @@ function ResidentRow({
       </div>
 
       {/* Actions */}
-      <div className="flex-shrink-0 pt-0.5 flex items-center gap-1">
+      <div className="flex-shrink-0 pt-0.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
         <ResidentPhotoButton resident={r} onUploaded={onPhotoUploaded} />
-        {!readOnly && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onEdit}
-            className="h-8 gap-1.5 text-xs text-slate-400 hover:text-blue-600 hover:bg-blue-100"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Éditer</span>
-          </Button>
-        )}
       </div>
+      {canEdit && <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0 self-center" />}
     </div>
   );
 }
@@ -1775,6 +1770,7 @@ function AccessCodesEditDialog({
 
 export default function ResidentsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const access = useModuleAccess('residents');
   const readOnly = access === 'read';
   const { profile } = useAuth();
@@ -1815,72 +1811,6 @@ export default function ResidentsPage() {
     onSuccess: () => {
       // Uniquement invalidation des données — la fermeture du form est gérée dans mutate()
       queryClient.invalidateQueries({ queryKey: ['residents'] });
-    },
-    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
-  });
-
-  /* ── Mutation sortie/archivage ── */
-  const archiveMutation = useMutation({
-    mutationFn: async ({ id, dateSortie }: { id: string; dateSortie: string }) => {
-      const sb = createClient();
-      // Récupérer les infos du résident avant archivage
-      const { data: res } = await sb.from('residents').select('room, floor, section, sort_order').eq('id', id).single();
-      const room       = res?.room       ?? '';
-      const floor      = res?.floor      ?? 'RDC';
-      const section    = res?.section    ?? 'Mapad';
-      const sort_order = res?.sort_order ?? 999;
-      // Vider la ligne prise_en_charge correspondante
-      if (room) {
-        await sb.from('prise_en_charge')
-          .update({ nom: '', matin: '', apres_midi: '', protection: '', updated_at: new Date().toISOString() })
-          .eq('chambre', room);
-      }
-      // Archiver le résident — conserver toutes ses données pour l'historique
-      const { error: rErr } = await sb.from('residents')
-        .update({ archived: true, date_sortie: dateSortie })
-        .eq('id', id);
-      if (rErr) throw new Error(rErr.message);
-      // Marquer ses vaccinations comme archivées
-      await sb.from('vaccination')
-        .update({ archived: true })
-        .eq('resident_id', id);
-      // Recréer une ligne vide pour la chambre afin qu'elle reste visible dans les listes
-      if (room) {
-        const newId = crypto.randomUUID();
-        const { error: insErr } = await sb.from('residents').insert({
-          id: newId,
-          room, floor, section, sort_order,
-          title: 'Mme', first_name: '', last_name: '',
-          archived: false,
-        });
-        if (insErr) throw new Error(insErr.message);
-        // Transférer les bilans planifiés au nouveau résident pour conserver
-        // la rangée du planning (l'utilisateur les ajustera manuellement)
-        await sb.from('planning_bilan_cell')
-          .update({ resident_id: newId })
-          .eq('resident_id', id);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['residents'] });
-      queryClient.invalidateQueries({ queryKey: ['vaccinations'] });
-      queryClient.invalidateQueries({ queryKey: ['planning_bilan_cell'] });
-    },
-    onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
-  });
-
-  /* ── Mutation suppression définitive (admin uniquement) ── */
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const sb = createClient();
-      const { error } = await sb.from('residents').delete().eq('id', id);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['residents'] });
-      setEditingId(null);
-      setEditForm({});
-      toast.success('Résident supprimé définitivement');
     },
     onError: (err: Error) => toast.error(`Erreur : ${err.message}`),
   });
@@ -2046,13 +1976,6 @@ export default function ResidentsPage() {
   }, [residents, floorFilter, search]);
 
   /* ── Helpers édition ── */
-  function startEdit(r: Resident) {
-    if (readOnly) return;
-    setEditingId(r.id);
-    setEditForm({ ...r });
-    setRoomUnlocked(false);
-  }
-
   function startCreate() {
     if (readOnly) return;
     setEditingId('NEW');
@@ -2265,7 +2188,7 @@ export default function ResidentsPage() {
             <div className="hidden sm:flex items-center px-4 py-2 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-widest gap-3">
               <div className="w-14">Ch.</div>
               <div className="flex-1">Résident</div>
-              <div className="w-16 text-right">Action</div>
+              <div className="w-16 text-right">Photo</div>
             </div>
 
             {/* Aucun résultat */}
@@ -2302,38 +2225,17 @@ export default function ResidentsPage() {
                     </div>
                   )}
 
-                  {/* Formulaire inline si ce résident est en édition */}
-                  {editingId === r.id && !readOnly ? (
-                    <div className="p-3 border-b border-slate-100 last:border-0 bg-slate-50/50">
-                      <EditForm
-                        form={editForm}   patch={patch}
-                        roomUnlocked={roomUnlocked}
-                        onUnlockRoom={() => { setRoomPwd(''); setRoomPwdError(false); setShowRoomPwdDlg(true); }}
-                        onSave={handleSave} onCancel={cancelEdit}
-                        saving={isSaving}   isNew={false}
-                        onArchive={(dateSortie) => archiveMutation.mutate({ id: r.id, dateSortie }, {
-                          onSuccess: () => {
-                            toast.success('Résident archivé — chambre libérée et conservée dans les listes');
-                            flushSync(() => { setEditingId(null); setEditForm({}); });
-                          },
-                        })}
-                        onDelete={() => deleteMutation.mutate(r.id)}
-                        isAdmin={isAdmin}
-                      />
-                    </div>
-                  ) : (
-                    <ResidentRow
-                      r={r}
-                      onEdit={() => startEdit(r)}
-                      onPhotoUploaded={(path) => {
-                        queryClient.setQueryData(['residents'], (prev: Resident[] = []) =>
-                          prev.map(p => p.id === r.id ? { ...p, photo_url: path } : p)
-                        );
-                      }}
-                      dimmed={editingId !== null && editingId !== r.id}
-                      readOnly={readOnly}
-                    />
-                  )}
+                  <ResidentRow
+                    r={r}
+                    onEdit={() => router.push(`/residents/${r.id}/edit`)}
+                    onPhotoUploaded={(path) => {
+                      queryClient.setQueryData(['residents'], (prev: Resident[] = []) =>
+                        prev.map(p => p.id === r.id ? { ...p, photo_url: path } : p)
+                      );
+                    }}
+                    dimmed={editingId === 'NEW'}
+                    readOnly={readOnly}
+                  />
                 </div>
               );
             })}
