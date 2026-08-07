@@ -78,8 +78,10 @@ export async function proxy(request: NextRequest) {
       const country  = request.headers.get('x-vercel-ip-country') ?? '';
       const region   = request.headers.get('x-vercel-ip-country-region') ?? '';
 
-      // Autoriser si : France ET (ville reconnue OU département 71 — Saône-et-Loire)
-      const allowed = country === 'FR' && (cityIsAllowed(rawCity) || region === '71');
+      // Autoriser si : France ET (ville reconnue OU département 71 OU ville non détectable)
+      // La ville peut être absente sur les réseaux d'entreprise — on se fie alors au pays
+      const cityUnknown = rawCity === '' || rawCity === '(non détecté)';
+      const allowed = country === 'FR' && (cityIsAllowed(rawCity) || region === '71' || cityUnknown);
 
       if (!allowed) {
         return NextResponse.redirect(new URL('/acces-refuse', request.url));
