@@ -74,10 +74,14 @@ export async function proxy(request: NextRequest) {
     } catch { /* en cas d'erreur DB, on laisse passer */ }
 
     if (!isAdmin) {
-      const rawCity = request.headers.get('x-vercel-ip-city') ?? '';
+      const rawCity  = request.headers.get('x-vercel-ip-city') ?? '';
       const country  = request.headers.get('x-vercel-ip-country') ?? '';
+      const region   = request.headers.get('x-vercel-ip-country-region') ?? '';
 
-      if (country !== 'FR' || !cityIsAllowed(rawCity)) {
+      // Autoriser si : France ET (ville reconnue OU département 71 — Saône-et-Loire)
+      const allowed = country === 'FR' && (cityIsAllowed(rawCity) || region === '71');
+
+      if (!allowed) {
         return NextResponse.redirect(new URL('/acces-refuse', request.url));
       }
     }
